@@ -1,0 +1,6 @@
+forge-std/=lib/forge-std/src/
+solady/=lib/solady/src/
+@1inch/aqua/=lib/aqua/
+@1inch/swap-vm/=lib/swap-vm/
+@1inch/solidity-utils/=node_modules/@1inch/solidity-utils/
+@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/

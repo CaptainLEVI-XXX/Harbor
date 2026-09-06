@@ -1,0 +1,17 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.30"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 700
+via_ir = true
+
+[profile.compatibility]
+match_path = "test/compatibility/*.t.sol"
+
+[fmt]
+tab_width = 2
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

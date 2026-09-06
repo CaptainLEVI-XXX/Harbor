@@ -1,0 +1,42 @@
+# Compiler files
+cache/
+out/
+
+# Commonly ignored directories
+.logs/
+.ignore/
+node_modules/
+
+# Locally installed upstream sources; revisions are specified in CONTRIBUTING.md.
+/lib/aqua/
+/lib/swap-vm/
+
+# Ignores development broadcast logs
+!/broadcast
+/broadcast/*/31337/
+/broadcast/**/dry-run/
+
+# Private working material — keep local, never publish
+/docs/
+/research/
+/notes/
+/internal/
+/plans/
+/WRITING-GUIDE.md
+/INTERNAL-*.md
+/PLAN.md
+/IMPLEMENTATION_PLAN.md
+/implementation-plan.md
+
+# Local editor and agent configuration
+/.agents/
+/.codex/
+/.claude/
+/.vscode/
+/.idea/
+.DS_Store
+
+# Dotenv file
+.env
+.env.*
+!.env.example
