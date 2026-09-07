@@ -26,6 +26,13 @@ releases are 1inch solidity-utils 6.9.10 and OpenZeppelin 5.4.0; Aqua remains
 `9c5c42e5840e8741fba3597c48456c9510212b66` and SwapVM remains
 `f09a41e689240adc645934f965c8061749397cd2`.
 
+Chainlink's `IReceiver` comes from `chainlink-evm` commit
+`b6427ea1f4847d640abdf24dbd6c6f01d7799d59`. Its version-qualified IERC165
+import alone is mapped to the existing OpenZeppelin 5.4.0 interface: the
+`supportsInterface(bytes4)` ABI is unchanged. This is not a remapping of all
+OpenZeppelin 5.0.2 implementations to another release. No Chainlink npm tree is
+needed for the Solidity receiver.
+
 Build, test, and check formatting:
 
 ```sh

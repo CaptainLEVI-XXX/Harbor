@@ -2,6 +2,9 @@
   "lib/aqua": {
     "rev": "9c5c42e5840e8741fba3597c48456c9510212b66"
   },
+  "lib/chainlink-evm": {
+    "rev": "b6427ea1f4847d640abdf24dbd6c6f01d7799d59"
+  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.16.2",
