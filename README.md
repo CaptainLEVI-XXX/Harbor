@@ -39,8 +39,10 @@ See [settlement tests](test/integration/README.md),
 This is unaudited contract development, not a mainnet-ready yield product.
 Local tests exercise real token-transfer calls through official Aqua/SwapVM,
 using synthetic tokens, public marks, permit approval and issuer finalization.
-The authenticated CRE receiver/workflow, real issuer fork evidence, production
-valuation calibration, stateful portfolio tests and independent review remain
+Two [pinned Lido fork checks](test/fork/README.md) also cover a new real request
+and a separate mature historical recovery; their distinct setup is documented.
+The authenticated CRE receiver/workflow, production valuation calibration,
+stateful portfolio tests and independent review remain
 release requirements. The deployment script rejects non-local chains.
 
 The Foundry Counter examples are development-only and have no Harbor authority.

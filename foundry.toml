@@ -39,7 +39,9 @@ fail_on_revert = false
 
 [profile.fork]
 match_path = "test/fork/**/*.t.sol"
-no_match_path = ""
+# An empty exclusion pattern matches every path in this Foundry version.
+# Override the default fork exclusion with a disjoint, explicit test directory.
+no_match_path = "test/invariant/**"
 
 [profile.gas]
 match_path = "test/gas/**/*.t.sol"
