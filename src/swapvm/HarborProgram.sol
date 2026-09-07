@@ -4,11 +4,12 @@ pragma solidity 0.8.30;
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {MakerTraitsLib} from "@1inch/swap-vm/src/libs/MakerTraits.sol";
 import {Salt} from "@1inch/swap-vm/src/instructions/Controls.sol";
-import {Extruction} from "@1inch/swap-vm/src/instructions/Extruction.sol";
+import {HarborExactFill} from "src/swapvm/instructions/HarborExactFill.sol";
 
 /// @title HarborProgram
-/// @notice Canonical bidirectional Aqua order with a single Book extension.
-/// @dev Uses upstream opcode IDs. This builder grants no registration authority.
+/// @notice Canonical bidirectional Aqua order using the Harbor exact-fill opcode.
+/// @dev Requires HarborSwapVMRouter. Salt is upstream; exact fill is custom.
+/// This builder grants no registration authority. The vault publishes through Aqua.ship.
 library HarborProgram {
   /// @notice A token or authority address is zero, or the pair is degenerate.
   error InvalidConfiguration();
@@ -41,7 +42,7 @@ library HarborProgram {
     args.postTransferInTarget = book;
     args.preTransferOutTarget = book;
     args.postTransferOutTarget = book;
-    args.program = bytes.concat(Salt.build(salt), Extruction.build(book, abi.encode(route, version)));
+    args.program = bytes.concat(Salt.build(salt), HarborExactFill.build(book, route, version));
     return MakerTraitsLib.build(args);
   }
 }

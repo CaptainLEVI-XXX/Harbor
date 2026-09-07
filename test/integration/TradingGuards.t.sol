@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
+import {VaultState} from "src/vault/base/VaultState.sol";
+
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
-import {HarborBook} from "src/book/HarborBook.sol";
+import {BookState} from "src/book/base/BookState.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {Trade, FillTerms, Side, AmountMode} from "src/types/HarborTypes.sol";
 import {TradingFixture} from "test/helpers/TradingFixture.sol";
@@ -18,13 +20,13 @@ contract TradingGuardsTest is TradingFixture {
     vault.refreshStrategy(0);
     assertEq(book.getPosition(0).basis, basis);
     assertEq(book.getPosition(0).shares, 1 ether);
-    vm.expectRevert(HarborBook.InvalidQuote.selector);
+    vm.expectRevert(BookState.InvalidQuote.selector);
     vm.prank(trader);
     executor.execute(t, f, sig, order);
   }
 
   function test_OnlyGovernanceCanRefresh() public {
-    vm.expectRevert(HarborBook.Unauthorized.selector);
+    vm.expectRevert(BookState.Unauthorized.selector);
     vm.prank(alice);
     vault.refreshStrategy(0);
   }
@@ -37,7 +39,7 @@ contract TradingGuardsTest is TradingFixture {
     assertEq(vault.maxWithdraw(alice), 10 ether);
     (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
       _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 16 ether);
-    vm.expectRevert(HarborBook.CapacityExceeded.selector);
+    vm.expectRevert(BookState.CapacityExceeded.selector);
     vm.prank(trader);
     executor.execute(t, f, sig, order);
     vm.prank(alice);
@@ -51,7 +53,7 @@ contract TradingGuardsTest is TradingFixture {
     vault.fulfillWithdrawals(1);
     book.stopTrading();
     assertEq(vault.maxDeposit(bob), 0);
-    vm.expectRevert(HarborVault.ValuationUnavailable.selector);
+    vm.expectRevert(VaultState.ValuationUnavailable.selector);
     vault.checkpointValuation();
     vm.prank(alice);
     vault.withdraw(10 ether, alice, alice);
@@ -62,9 +64,9 @@ contract TradingGuardsTest is TradingFixture {
     book.stopTrading();
     book.scheduleResume();
     book.scheduleSigner(address(0x999));
-    vm.expectRevert(HarborBook.Unauthorized.selector);
+    vm.expectRevert(BookState.Unauthorized.selector);
     book.resumeTrading();
-    vm.expectRevert(HarborBook.Unauthorized.selector);
+    vm.expectRevert(BookState.Unauthorized.selector);
     book.applySigner();
     vm.warp(1000 + 1 days);
     book.resumeTrading();
@@ -79,7 +81,7 @@ contract TradingGuardsTest is TradingFixture {
     book.scheduleResume();
     book.stopTrading();
     vm.warp(1000 + 1 days);
-    vm.expectRevert(HarborBook.Unauthorized.selector);
+    vm.expectRevert(BookState.Unauthorized.selector);
     book.resumeTrading();
   }
 
@@ -110,7 +112,7 @@ contract TradingGuardsTest is TradingFixture {
       _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     newer.nonce = t.nonce;
     nextSig = _sign(newer, next);
-    vm.expectRevert(HarborBook.InvalidQuote.selector);
+    vm.expectRevert(BookState.InvalidQuote.selector);
     vm.prank(trader);
     executor.execute(newer, next, nextSig, nextOrder);
   }

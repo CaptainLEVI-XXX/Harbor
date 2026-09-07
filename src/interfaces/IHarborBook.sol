@@ -20,12 +20,28 @@ interface IHarborBook {
     external
     view
     returns (address base, address adapter, uint256 amount, uint256 managed);
+  /// @notice Acquire Book/Vault transaction context before the executor collects input.
+  /// @param tradeHash Exact trader-intent hash; does not itself authorize a price.
   function beginTrade(bytes32 tradeHash) external;
+  /// @notice Reconcile treasury cash after all router hooks and executor payouts.
+  /// @param fillDigest Authorized fill identity recorded in the active context.
   function finishTrade(bytes32 fillDigest) external;
+  /// @notice Idle-state preflight of exact-fill authority and portfolio capacity.
+  /// @param trade Trader intent; limits and specified amount are raw token units.
+  /// @param terms Exact pair, fee, observations and settlement authority bindings.
+  /// @param signature Signature by the configured quote signer.
+  /// @return Domain-separated fill digest; no capital is reserved by this view.
   function validate(Trade calldata trade, FillTerms calldata terms, bytes calldata signature)
     external
     view
     returns (bytes32);
+  /// @notice Prepare a fresh program for publication by the vault itself.
+  /// @param route Approved token/adapter route.
+  /// @param requester Original caller forwarded by the vault; must be governor.
+  /// @return order Canonical maker order for HarborSwapVMRouter.
+  /// @return previous Retired strategy hash to dock, or zero for first publication.
+  /// @return base Approved wrapped inventory token.
+  /// @return managed Current managed base inventory in raw token units.
   function prepareStrategyFromVault(uint256 route, address requester)
     external
     returns (ISwapVM.Order memory order, bytes32 previous, address base, uint256 managed);

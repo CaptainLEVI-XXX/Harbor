@@ -5,11 +5,11 @@ import {TradingFixture} from "test/helpers/TradingFixture.sol";
 import {MockCREForwarder} from "test/chainlink/HarborPolicyReceiver.t.sol";
 import {HarborPolicyReceiver as Receiver} from "src/HarborPolicyReceiver.sol";
 import {IHarborPolicyReceiver} from "src/interfaces/IHarborPolicyReceiver.sol";
-import {HarborBook} from "src/book/HarborBook.sol";
+import {BookState} from "src/book/base/BookState.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {Trade, FillTerms, Side, AmountMode} from "src/types/HarborTypes.sol";
 
-/// @notice Real receiver and official Aqua/SwapVM, with simulated report delivery.
+/// @notice Real receiver, official Aqua and Harbor's derived router with simulated reports.
 /// @dev No DON signature or confidential-execution claim is made by this fixture.
 contract PermitTradingTest is TradingFixture {
   Receiver private receiver;
@@ -81,7 +81,7 @@ contract PermitTradingTest is TradingFixture {
       _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     assertTrue(receiver.isApproved(executor.fillDigest(t, f)));
     vm.prank(trader);
-    vm.expectRevert(HarborBook.CapacityExceeded.selector);
+    vm.expectRevert(BookState.CapacityExceeded.selector);
     executor.execute(t, f, sig, order);
   }
 
@@ -94,7 +94,7 @@ contract PermitTradingTest is TradingFixture {
       _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     receiver.cancelPermits();
     vm.prank(trader);
-    vm.expectRevert(HarborBook.PolicyNotApproved.selector);
+    vm.expectRevert(BookState.PolicyNotApproved.selector);
     executor.execute(t, f, sig, order);
     uint256 credit = vault.maxWithdraw(alice);
     uint256 beforeBalance = weth.balanceOf(alice);
@@ -111,7 +111,7 @@ contract PermitTradingTest is TradingFixture {
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(QUOTE_TEST_KEY, digest);
     assertFalse(receiver.isApproved(digest));
     vm.prank(trader);
-    vm.expectRevert(HarborBook.PolicyNotApproved.selector);
+    vm.expectRevert(BookState.PolicyNotApproved.selector);
     executor.execute(t, f, abi.encodePacked(r, s, v), order);
   }
 
@@ -123,7 +123,7 @@ contract PermitTradingTest is TradingFixture {
     bytes memory wrongSignature = abi.encodePacked(r, s, v);
     assertEq(executor.validateQuote(t, f, wrongSignature, vm.addr(99)), digest);
     vm.prank(trader);
-    vm.expectRevert(HarborBook.InvalidSignature.selector);
+    vm.expectRevert(BookState.InvalidSignature.selector);
     executor.execute(t, f, wrongSignature, order);
     assertEq(book.getPosition(0).shares, 0);
   }
@@ -139,7 +139,7 @@ contract PermitTradingTest is TradingFixture {
     // Permit storage is not consumption; Book's persistent nonce prevents reuse.
     assertTrue(receiver.isApproved(digest));
     vm.prank(trader);
-    vm.expectRevert(HarborBook.InvalidQuote.selector);
+    vm.expectRevert(BookState.InvalidQuote.selector);
     executor.execute(t, f, sig, order);
     vault.checkpointValuation();
   }

@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
-import {HarborBook} from "src/book/HarborBook.sol";
+import {BookState} from "src/book/base/BookState.sol";
 import {HarborExecutor} from "src/execution/HarborExecutor.sol";
 import {Trade, FillTerms, Side, AmountMode} from "src/types/HarborTypes.sol";
 import {TradingFixture} from "test/helpers/TradingFixture.sol";
@@ -32,7 +32,7 @@ contract FourModeTradingTest is TradingFixture {
     _buy(0, 16 ether);
     (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
       _quote(1, Side.BUY_BASE, AmountMode.EXACT_IN, 16 ether);
-    vm.expectRevert(HarborBook.CapacityExceeded.selector);
+    vm.expectRevert(BookState.CapacityExceeded.selector);
     vm.prank(trader);
     executor.execute(t, f, sig, order);
     assertEq(book.getPosition(1).shares, 0);
@@ -44,7 +44,7 @@ contract FourModeTradingTest is TradingFixture {
     vault.requestRedeem(1 ether * 1e6, alice, alice);
     (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
       _quote(1, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
-    vm.expectRevert(HarborBook.CapacityExceeded.selector);
+    vm.expectRevert(BookState.CapacityExceeded.selector);
     vm.prank(trader);
     executor.execute(t, f, sig, order);
     _assertTrade(Side.SELL_BASE, AmountMode.EXACT_OUT);
@@ -68,12 +68,12 @@ contract FourModeTradingTest is TradingFixture {
     (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
       _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     _setApproval(executor.fillDigest(t, f), false);
-    vm.expectRevert(HarborBook.PolicyNotApproved.selector);
+    vm.expectRevert(BookState.PolicyNotApproved.selector);
     vm.prank(trader);
     executor.execute(t, f, sig, order);
     _setApproval(executor.fillDigest(t, f), true);
     sig[0] = bytes1(uint8(sig[0]) ^ 1);
-    vm.expectRevert(HarborBook.InvalidSignature.selector);
+    vm.expectRevert(BookState.InvalidSignature.selector);
     vm.prank(trader);
     executor.execute(t, f, sig, order);
   }
@@ -112,7 +112,7 @@ contract FourModeTradingTest is TradingFixture {
     (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
       _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     _buy(1, 1 ether);
-    vm.expectRevert(HarborBook.InvalidQuote.selector);
+    vm.expectRevert(BookState.InvalidQuote.selector);
     vm.prank(trader);
     executor.execute(t, f, sig, order);
   }

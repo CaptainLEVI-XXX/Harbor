@@ -5,14 +5,13 @@ import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {TokenMock} from "@1inch/solidity-utils/contracts/mocks/TokenMock.sol";
 import {Aqua} from "@1inch/aqua/src/Aqua.sol";
-import {AquaSwapVMRouter} from "@1inch/swap-vm/src/routers/AquaSwapVMRouter.sol";
+import {HarborSwapVMRouter} from "src/swapvm/HarborSwapVMRouter.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {IMakerHooks} from "@1inch/swap-vm/src/interfaces/IMakerHooks.sol";
-import {IExtruction} from "@1inch/swap-vm/src/instructions/Extruction.sol";
-import {SwapQuery, SwapRegisters} from "@1inch/swap-vm/src/libs/VM.sol";
+import {IHarborFill} from "src/interfaces/IHarborFill.sol";
+import {SwapQuery} from "@1inch/swap-vm/src/libs/VM.sol";
 import {TakerTraitsLib} from "@1inch/swap-vm/src/libs/TakerTraits.sol";
 import {HarborProgram} from "src/swapvm/HarborProgram.sol";
-import {HarborExtruction} from "src/swapvm/HarborExtruction.sol";
 
 /// @notice Test-only contract maker. No LP shares or production treasury API.
 contract ContractMakerFixture {
@@ -32,7 +31,7 @@ contract ContractMakerFixture {
 
 /// @notice Synthetic exact-pair Book for upstream integration tests only.
 /// @dev Quotes are deliberately test-configured, not signed financial approvals.
-contract BookHookFixture is IExtruction, IMakerHooks {
+contract BookHookFixture is IHarborFill, IMakerHooks {
   address public immutable router;
   address public immutable maker;
   address public immutable taker;
@@ -60,21 +59,17 @@ contract BookHookFixture is IExtruction, IMakerHooks {
     rejectPayout = reject_;
   }
 
-  function extruction(
+  function authorizeFill(
     bool isStaticContext,
-    uint256 nextPC,
     SwapQuery calldata query,
-    SwapRegisters calldata registers,
-    bytes calldata args,
+    uint256 route,
+    uint256 version,
     bytes calldata payload
-  ) external returns (uint256, uint256, SwapRegisters memory) {
+  ) external returns (uint256, uint256) {
     require(
       msg.sender == router && query.maker == maker && query.taker == taker && query.orderHash == orderHash, "identity"
     );
-    (uint256 route, uint256 version) = HarborExtruction.decode(args);
     require(route == 0 && version == 1 && payload.length == 0, "payload");
-    SwapRegisters memory result = HarborExtruction.complete(registers, query.isExactIn, amountIn, amountOut);
-    require(amountOut <= registers.balanceOut, "allocation");
     if (!isStaticContext) {
       require(phase == 0, "busy");
       phase = 1;
@@ -83,7 +78,7 @@ contract BookHookFixture is IExtruction, IMakerHooks {
       beforeIn = IERC20(query.tokenIn).balanceOf(maker);
       beforeOut = IERC20(query.tokenOut).balanceOf(maker);
     }
-    return (nextPC, 0, result);
+    return (amountIn, amountOut);
   }
 
   function preTransferIn(address, address, address, address, uint256, uint256, bytes32, bytes calldata, bytes calldata)
@@ -163,10 +158,10 @@ contract BookHookFixture is IExtruction, IMakerHooks {
   }
 }
 
-/// @notice Official Aqua/router with synthetic ERC-20s and a contract maker.
+/// @notice Official Aqua and Harbor's derived router with synthetic tokens and maker.
 abstract contract HarborAquaFixture is Test {
   Aqua internal aqua;
-  AquaSwapVMRouter internal router;
+  HarborSwapVMRouter internal router;
   ContractMakerFixture internal maker;
   BookHookFixture internal book;
   TokenMock internal weth;
@@ -177,7 +172,7 @@ abstract contract HarborAquaFixture is Test {
     aqua = new Aqua();
     weth = new TokenMock("Wrapped Ether fixture", "WETH");
     base = new TokenMock("Wrapped stake fixture", "BASE");
-    router = new AquaSwapVMRouter(address(aqua), address(weth), address(this), "Harbor", "1");
+    router = new HarborSwapVMRouter(address(aqua), address(weth), address(this), "Harbor", "1");
     maker = new ContractMakerFixture();
     book = new BookHookFixture(address(router), address(maker), address(this));
     order = HarborProgram.build(address(maker), address(book), address(weth), address(base), 0, 1, 1);

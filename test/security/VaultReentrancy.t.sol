@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
+import {VaultState} from "src/vault/base/VaultState.sol";
+
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {ERC20} from "solady/tokens/ERC20.sol";
@@ -48,7 +50,7 @@ contract CallbackAsset is ERC20 {
     attacks[7] = abi.encodeWithSignature("setOperator(address,bool)", address(1), true);
     for (uint256 i; i < attacks.length; ++i) {
       (bool success, bytes memory result) = address(target).call(attacks[i]);
-      require(!success && bytes4(result) == HarborVault.Busy.selector, "reentry not blocked");
+      require(!success && bytes4(result) == VaultState.Busy.selector, "reentry not blocked");
       ++rejected;
     }
     require(target.totalAssets() == expectedNAV && target.totalSupply() == expectedSupply, "incoherent snapshot");
@@ -88,9 +90,9 @@ contract VaultReentrancyTest is Test {
   function test_ExplicitContextSurvivesBeginReturnAndRejectsWrongFinish() public {
     vm.prank(address(book));
     vault.beginBookOperation(bytes32(uint256(1)), Operation.TRADE);
-    vm.expectRevert(HarborVault.Busy.selector);
+    vm.expectRevert(VaultState.Busy.selector);
     vault.deposit(1 ether, address(this));
-    vm.expectRevert(HarborVault.InvalidContext.selector);
+    vm.expectRevert(VaultState.InvalidContext.selector);
     vm.prank(address(book));
     vault.finishBookOperation(bytes32(uint256(2)));
     vm.prank(address(book));
@@ -99,9 +101,9 @@ contract VaultReentrancyTest is Test {
   }
 
   function test_OnlyImmutableBookCanAcquireOrRelease() public {
-    vm.expectRevert(HarborVault.Unauthorized.selector);
+    vm.expectRevert(VaultState.Unauthorized.selector);
     vault.beginBookOperation(bytes32(uint256(1)), Operation.TRADE);
-    vm.expectRevert(HarborVault.Unauthorized.selector);
+    vm.expectRevert(VaultState.Unauthorized.selector);
     vault.finishBookOperation(bytes32(uint256(1)));
   }
 

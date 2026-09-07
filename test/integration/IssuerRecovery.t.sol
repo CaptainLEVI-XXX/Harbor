@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
+import {VaultState} from "src/vault/base/VaultState.sol";
+
 import {IssuerFixture} from "test/helpers/IssuerFixture.sol";
 import {BookAccounting} from "src/libraries/BookAccounting.sol";
 import {ClaimAccounting} from "src/libraries/ClaimAccounting.sol";
 import {RedemptionAccounting} from "src/libraries/RedemptionAccounting.sol";
-import {HarborBook} from "src/book/HarborBook.sol";
+import {BookState} from "src/book/base/BookState.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {RedeemIntent} from "src/types/HarborTypes.sol";
 
@@ -95,7 +97,7 @@ contract IssuerRecoveryTest is IssuerFixture {
     amounts[0] = 1 ether;
     RedeemIntent memory intent = _intent(amounts);
     vm.prank(alice);
-    vm.expectRevert(HarborBook.Unauthorized.selector);
+    vm.expectRevert(BookState.Unauthorized.selector);
     book.requestRedemption(intent, amounts);
     intent.chainId += 1;
     vm.expectRevert(RedemptionAccounting.InvalidIntent.selector);
@@ -142,12 +144,12 @@ contract IssuerRecoveryTest is IssuerFixture {
   }
 
   function test_TypedGatewayCannotBeUsedOutsideExactBookOperation() public {
-    vm.expectRevert(HarborVault.Unauthorized.selector);
+    vm.expectRevert(VaultState.Unauthorized.selector);
     vault.transferForRedemption(bytes32(uint256(1)));
     vm.prank(address(book));
-    vm.expectRevert(HarborVault.InvalidContext.selector);
+    vm.expectRevert(VaultState.InvalidContext.selector);
     vault.transferForRedemption(bytes32(uint256(1)));
-    vm.expectRevert(HarborBook.Unauthorized.selector);
+    vm.expectRevert(BookState.Unauthorized.selector);
     book.redemptionTransfer(bytes32(uint256(1)));
   }
 }

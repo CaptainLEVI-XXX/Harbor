@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
+import {VaultState} from "src/vault/base/VaultState.sol";
+
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {VaultFixture} from "test/helpers/VaultFixture.sol";
 
@@ -45,9 +47,9 @@ contract ERC7540RedeemTest is VaultFixture {
     vm.expectRevert();
     vm.prank(alice);
     vault.redeem(shares, alice, alice);
-    vm.expectRevert(HarborVault.AsyncPreview.selector);
+    vm.expectRevert(VaultState.AsyncPreview.selector);
     vault.previewRedeem(1);
-    vm.expectRevert(HarborVault.AsyncPreview.selector);
+    vm.expectRevert(VaultState.AsyncPreview.selector);
     vault.previewWithdraw(1);
   }
 
@@ -79,7 +81,7 @@ contract ERC7540RedeemTest is VaultFixture {
     vault.fulfillWithdrawals(1);
     vm.prank(alice);
     vault.setOperator(operator, false);
-    vm.expectRevert(HarborVault.Unauthorized.selector);
+    vm.expectRevert(VaultState.Unauthorized.selector);
     vm.prank(operator);
     vault.redeem(shares, operator, alice);
     assertEq(vault.maxRedeem(alice), shares);
@@ -95,7 +97,7 @@ contract ERC7540RedeemTest is VaultFixture {
     vault.requestRedeem(shares, alice, alice);
     assertEq(vault.allowance(alice, operator), 0);
     vault.fulfillWithdrawals(1);
-    vm.expectRevert(HarborVault.Unauthorized.selector);
+    vm.expectRevert(VaultState.Unauthorized.selector);
     vm.prank(operator);
     vault.withdraw(10 ether, operator, alice);
   }
@@ -105,7 +107,7 @@ contract ERC7540RedeemTest is VaultFixture {
     uint256 bobShares = _deposit(bob, 10 ether);
     _request(alice, shares);
     _request(bob, bobShares);
-    vm.expectRevert(HarborVault.InvalidAmount.selector);
+    vm.expectRevert(VaultState.InvalidAmount.selector);
     vault.fulfillWithdrawals(9);
     vault.fulfillWithdrawals(1);
     assertEq(vault.maxRedeem(alice), shares);

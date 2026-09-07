@@ -130,6 +130,7 @@ contract ExecutionGasTest is IssuerFixture {
 
   function test_DeployedRuntimeSizes() public {
     vm.snapshotValue("HarborRuntimeBytes", "book", address(book).code.length);
+    vm.snapshotValue("HarborRuntimeBytes", "router", address(router).code.length);
     vm.snapshotValue("HarborRuntimeBytes", "vault", address(vault).code.length);
     vm.snapshotValue("HarborRuntimeBytes", "executor", address(executor).code.length);
     vm.snapshotValue("HarborRuntimeBytes", "lido-adapter", address(adapter).code.length);

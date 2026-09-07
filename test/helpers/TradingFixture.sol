@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 import {Test} from "forge-std/Test.sol";
 import {TokenMock} from "@1inch/solidity-utils/contracts/mocks/TokenMock.sol";
 import {Aqua} from "@1inch/aqua/src/Aqua.sol";
-import {AquaSwapVMRouter} from "@1inch/swap-vm/src/routers/AquaSwapVMRouter.sol";
+import {HarborSwapVMRouter} from "src/swapvm/HarborSwapVMRouter.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {HarborBook} from "src/book/HarborBook.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
@@ -58,7 +58,7 @@ abstract contract TradingFixture is Test {
   TokenMock internal weth;
   TokenMock[2] internal bases;
   Aqua internal aqua;
-  AquaSwapVMRouter internal router;
+  HarborSwapVMRouter internal router;
   HarborBook internal book;
   HarborVault internal vault;
   HarborExecutor internal executor;
@@ -73,7 +73,7 @@ abstract contract TradingFixture is Test {
     bases[0] = _deployBase(0);
     bases[1] = _deployBase(1);
     aqua = new Aqua();
-    router = new AquaSwapVMRouter(address(aqua), address(weth), address(this), "Harbor", "1");
+    router = new HarborSwapVMRouter(address(aqua), address(weth), address(this), "Harbor", "1");
     valuation = new MockTradingValuation(1000);
     policy = _deployPolicy();
     uint64 nonce = vm.getNonce(address(this));

@@ -10,6 +10,8 @@ import {RouteConfig} from "src/types/HarborTypes.sol";
 /// @title DeployHarbor
 /// @notice Local-only immutable deployment with reproducible CREATE bindings.
 /// @dev Use a configured Foundry account/sender; no private key is read or logged.
+/// Deploy HarborSwapVMRouter first and pass it as config.router. Unmodified
+/// routers cannot execute the native Harbor program and are rejected by Book.
 /// Live deployment stays gated pending issuer, valuation and independent review.
 contract DeployHarbor is Script {
   error LiveDeploymentGated();
@@ -36,6 +38,7 @@ contract DeployHarbor is Script {
         || address(vault.BOOK()) != address(book) || address(executor.BOOK()) != address(book)
         || executor.VAULT() != address(vault) || address(book).code.length > 24_576
         || address(vault).code.length > 24_576 || address(executor).code.length > 24_576
+        || config.router.code.length > 24_576
     ) revert DeploymentMismatch();
   }
 }

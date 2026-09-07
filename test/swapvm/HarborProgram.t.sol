@@ -9,7 +9,7 @@ import {MakerTraitsLib} from "@1inch/swap-vm/src/libs/MakerTraits.sol";
 import {Extruction} from "@1inch/swap-vm/src/instructions/Extruction.sol";
 import {InstructionBuilder} from "@1inch/swap-vm/src/libs/InstructionBuilder.sol";
 import {HarborProgram} from "src/swapvm/HarborProgram.sol";
-import {HarborExtruction} from "src/swapvm/HarborExtruction.sol";
+import {HarborExactFill} from "src/swapvm/instructions/HarborExactFill.sol";
 
 contract ProgramHarness {
   function build(address weth, address base, uint64 salt) external pure returns (ISwapVM.Order memory) {
@@ -25,11 +25,13 @@ contract ProgramHarness {
     pure
     returns (SwapRegisters memory)
   {
-    return HarborExtruction.complete(r, exactIn, ai, ao);
+    SwapRegisters memory result = r;
+    HarborExactFill.complete(result, exactIn, ai, ao);
+    return result;
   }
 
-  function decode(bytes calldata data) external pure returns (uint256, uint256) {
-    return HarborExtruction.decode(data);
+  function decode(bytes calldata data) external pure returns (address, uint256, uint256) {
+    return HarborExactFill.parse(data);
   }
 
   function extension(uint256 size) external pure returns (bytes memory) {
@@ -44,9 +46,8 @@ contract HarborProgramTest is Test {
 
   function testFuzz_ProgramMatchesReadableWireReference(uint64 salt, bool reversed) public view {
     ISwapVM.Order memory order = h.build(reversed ? address(4) : address(3), reversed ? address(3) : address(4), salt);
-    bytes memory expected = abi.encodePacked(
-      uint8(Opcode.Salt), uint8(8), salt, uint8(Opcode.Extruction), uint8(84), address(2), uint256(7), uint256(9)
-    );
+    bytes memory expected =
+      abi.encodePacked(uint8(Opcode.Salt), uint8(8), salt, uint8(0x55), uint8(84), address(2), uint256(7), uint256(9));
     assertEq(h.program(order), expected);
     assertEq(order.maker, address(1));
   }
@@ -68,20 +69,21 @@ contract HarborProgramTest is Test {
 
   function test_RejectsChangedSpecifiedRegister() public {
     SwapRegisters memory r = SwapRegisters(10, 20, 1, 2);
-    vm.expectRevert(HarborExtruction.InvalidAmounts.selector);
+    vm.expectRevert(HarborExactFill.InvalidAmounts.selector);
     h.complete(r, true, 2, 2);
-    vm.expectRevert(HarborExtruction.InvalidAmounts.selector);
+    vm.expectRevert(HarborExactFill.InvalidAmounts.selector);
     h.complete(r, false, 1, 3);
   }
 
   function test_ExactMetadataLength() public {
-    (uint256 route, uint256 version) = h.decode(abi.encode(uint256(7), uint256(9)));
+    (address authority, uint256 route, uint256 version) = h.decode(abi.encodePacked(address(2), uint256(7), uint256(9)));
+    assertEq(authority, address(2));
     assertEq(route, 7);
     assertEq(version, 9);
-    vm.expectRevert(abi.encodeWithSelector(HarborExtruction.InvalidMetadataLength.selector, 65));
-    h.decode(new bytes(65));
-    vm.expectRevert(abi.encodeWithSelector(HarborExtruction.InvalidMetadataLength.selector, 63));
-    h.decode(new bytes(63));
+    vm.expectRevert(abi.encodeWithSelector(HarborExactFill.InvalidArgumentsLength.selector, 85));
+    h.decode(new bytes(85));
+    vm.expectRevert(abi.encodeWithSelector(HarborExactFill.InvalidArgumentsLength.selector, 83));
+    h.decode(new bytes(83));
   }
 
   function test_UpstreamInstructionLengthBoundary() public {

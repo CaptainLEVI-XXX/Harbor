@@ -1,245 +1,63 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {ERC4626} from "solady/tokens/ERC4626.sol";
 import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
 import {SafeTransferLib as SafeTransfer} from "solady/utils/SafeTransferLib.sol";
-import {IHarborBook} from "src/interfaces/IHarborBook.sol";
 import {VaultAccounting as Accounting} from "src/libraries/VaultAccounting.sol";
 import {WithdrawalQueue as Queue} from "src/libraries/WithdrawalQueue.sol";
-import {Operation} from "src/types/HarborTypes.sol";
-import {IAqua} from "@1inch/aqua/src/interfaces/IAqua.sol";
-import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
+import {VaultState} from "src/vault/base/VaultState.sol";
+import {VaultSettlement} from "src/vault/base/VaultSettlement.sol";
 
 /// @title HarborVault
-/// @notice WETH share custody with synchronous issuance and asynchronous exits.
-/// @dev Immutable Book coordinates all share-moving calls. Real deposits require
-/// a verified public mark; a mock Book proves mechanics, not production valuation.
-contract HarborVault is ERC4626 {
+/// @notice Synchronous LP issuance, asynchronous exits and coherent public share views.
+/// @dev Treasury callbacks live in VaultSettlement; all modules share VaultState.
+/// Pending issuer claims are not spendable cash and cannot directly fund exits.
+contract HarborVault is VaultSettlement {
   using Accounting for Accounting.State;
   using Queue for Queue.State;
 
-  address public immutable WETH;
-  IHarborBook public immutable BOOK;
-  uint256 public immutable MAX_MARK_AGE;
-  uint256 public immutable DEPOSIT_CAP;
-  uint256 public immutable MIN_INITIAL_ASSETS;
-  uint256 public immutable MIN_REQUEST_SHARES;
-  uint256 private constant VIRTUAL_SHARES = 1e6;
+  /// @notice Deploy synchronous issuance and asynchronous LP redemption.
+  /// @param weth Approved cash asset.
+  /// @param book Immutable accounting and settlement coordinator.
+  /// @param maxAge Maximum public mark age, seconds.
+  /// @param cap Maximum deposit NAV, WETH wei.
+  /// @param minSeed Minimum first deposit, WETH wei.
+  /// @param minRequest Minimum exit request, LP share raw units; full exits are exempt.
+  constructor(address weth, address book, uint256 maxAge, uint256 cap, uint256 minSeed, uint256 minRequest)
+    VaultState(weth, book, maxAge, cap, minSeed, minRequest)
+  {}
 
-  Accounting.State private _state;
-  mapping(address => mapping(address => bool)) public isOperator;
+  /*//////////////////////////////////////////////////////////////
+                         SHARE & VALUATION VIEWS
+  //////////////////////////////////////////////////////////////*/
 
-  /// @dev Compiler-assigned transient slots. Held across Book begin/finish calls,
-  /// not a function-scoped modifier on beginBookOperation. No inherited guard slots.
-  bytes32 private transient _context;
-  bool private transient _shareMutation;
-  Operation private transient _operation;
-  bool private transient _redemptionTransferred;
-  uint256 private transient _cashAtBegin;
-
-  error Unauthorized();
-  error Busy();
-  error InvalidContext();
-  error InvalidConfiguration();
-  error InvalidReceiver();
-  error InvalidAmount();
-  error ValuationUnavailable();
-  error AsyncPreview();
-  error AssetDeltaMismatch();
-  error OrphanedPortfolio();
-
-  event OperatorSet(address indexed controller, address indexed operator, bool approved);
-  event RedeemRequest(
-    address indexed controller, address indexed owner, uint256 indexed requestId, address sender, uint256 shares
-  );
-  event WithdrawalFulfilled(
-    uint256 indexed ticket,
-    address indexed controller,
-    uint256 shares,
-    uint256 assets,
-    uint256 valuationVersion,
-    uint256 remaining
-  );
-  event ValuationCheckpoint(
-    uint256 nav, uint256 supply, uint256 cash, uint256 reserved, uint256 policyVersion, uint256 observedAt
-  );
-  event VaultUpdate(address indexed asset, address vault);
-
-  /// @notice Bind immutable custody, coordinator and deployment-specific limits.
-  /// @dev Limits are configuration, not calibrated recommendations. Book may be
-  /// under construction; deployment must bind it atomically without an initializer.
-  constructor(address weth, address book, uint256 maxAge, uint256 cap, uint256 minSeed, uint256 minRequest) {
-    if (
-      weth.code.length == 0 || book == address(0) || book == address(this) || maxAge == 0 || minSeed == 0
-        || cap < minSeed || cap > type(uint128).max || minRequest == 0
-    ) revert InvalidConfiguration();
-    WETH = weth;
-    BOOK = IHarborBook(book);
-    MAX_MARK_AGE = maxAge;
-    DEPOSIT_CAP = cap;
-    MIN_INITIAL_ASSETS = minSeed;
-    MIN_REQUEST_SHARES = minRequest;
-    emit VaultUpdate(weth, address(this));
-  }
-
-  modifier coordinated() {
-    if (_context != 0) revert Busy();
-    if (msg.sender == address(BOOK)) revert Unauthorized();
-    bytes32 context = keccak256(abi.encode(address(this), msg.sender, msg.data));
-    BOOK.beginVaultOperation(context);
-    if (_context != context || _operation != Operation.VAULT) revert InvalidContext();
-    _;
-    // Stale portfolio marks must not be recombined with changed trade cash.
-    // Requests/transfers/funded claims preserve the previous committed NAV.
-    if (_state.valid && _state.markedVersion == _state.portfolioVersion) _state.commit(super.totalSupply());
-    BOOK.finishVaultOperation(context);
-    if (_context != 0) revert InvalidContext();
-  }
-
-  /// @notice Book-only callback; context remains locked after this method returns.
-  function beginBookOperation(bytes32 context, Operation operation) external {
-    if (msg.sender != address(BOOK)) revert Unauthorized();
-    if (_context != 0) revert Busy();
-    if (context == 0 || operation == Operation.NONE) revert InvalidContext();
-    _context = context;
-    _operation = operation;
-    _cashAtBegin = SafeTransfer.balanceOf(WETH, address(this));
-  }
-
-  /// @notice Book-only matching release; no external calls between lock releases.
-  function finishBookOperation(bytes32 context) external {
-    if (msg.sender != address(BOOK)) revert Unauthorized();
-    if (_context == 0 || _context != context) revert InvalidContext();
-    _context = 0;
-    _operation = Operation.NONE;
-    _cashAtBegin = 0;
-    _redemptionTransferred = false;
-  }
-
-  /// @notice Exact approved inventory handoff; no general Book allowance exists.
-  function transferForRedemption(bytes32 context) external {
-    if (msg.sender != address(BOOK)) revert Unauthorized();
-    if (_context != context || _operation != Operation.REDEMPTION || _redemptionTransferred) revert InvalidContext();
-    (address base, address adapter, uint256 amount, uint256 managed) = BOOK.redemptionTransfer(context);
-    uint256 beforeVault = SafeTransfer.balanceOf(base, address(this));
-    uint256 beforeAdapter = SafeTransfer.balanceOf(base, adapter);
-    if (amount == 0 || amount > managed || beforeVault < managed) revert InvalidAmount();
-    _redemptionTransferred = true;
-    SafeTransfer.safeTransfer(base, adapter, amount);
-    if (
-      SafeTransfer.balanceOf(base, address(this)) != beforeVault - amount
-        || SafeTransfer.balanceOf(base, adapter) != beforeAdapter + amount
-    ) revert AssetDeltaMismatch();
-  }
-
-  /// @notice Record verified issuer cash without requiring a functioning mark service.
-  function settleIssuer(bytes32 context, uint256 cash) external {
-    if (msg.sender != address(BOOK)) revert Unauthorized();
-    if (
-      _context != context
-        || (_operation != Operation.RECOVERY
-          && !(_operation == Operation.REDEMPTION && _redemptionTransferred && cash == 0))
-    ) revert InvalidContext();
-    if (SafeTransfer.balanceOf(WETH, address(this)) != _cashAtBegin + cash) revert AssetDeltaMismatch();
-    if (cash != 0) _state.receiveCash(cash);
-    else _state.invalidate();
-    _operation = Operation.NONE;
-  }
-
-  /// @notice Commit only the verified WETH leg of a fully paid trade.
-  /// @dev Only Book may call, while holding this exact trade context. Inventory
-  /// belongs to Book; the prior NAV remains visible but invalid until checkpoint.
-  function settleTrade(bytes32 context, bool buyBase, uint256 cashAmount) external {
-    if (msg.sender != address(BOOK)) revert Unauthorized();
-    if (_context != context || _operation != Operation.TRADE) revert InvalidContext();
-    uint256 expected = buyBase ? _cashAtBegin - cashAmount : _cashAtBegin + cashAmount;
-    if (SafeTransfer.balanceOf(WETH, address(this)) != expected) revert AssetDeltaMismatch();
-    if (buyBase) _state.spendCash(cashAmount, 0);
-    else _state.receiveCash(cashAmount);
-    // Prevent duplicate cash recording in the same operation.
-    _operation = Operation.NONE;
-  }
-
-  /// @notice Book can close the issuance gate without changing NAV or LP credit.
-  function invalidateValuation() external {
-    if (msg.sender != address(BOOK)) revert Unauthorized();
-    if (_context != 0) revert Busy();
-    _state.invalidate();
-  }
-
-  /// @notice Current physically backed cash and withdrawal-priority capacity.
-  function tradingCash(uint256 buffer) external view returns (uint256) {
-    if (_state.withdrawals.totalPending != 0 || SafeTransfer.balanceOf(WETH, address(this)) < _state.cash) return 0;
-    return _state.available(buffer);
-  }
-
-  /// @notice Identity of committed public marks, independent of the operation lock.
-  function valuationIdentity() external view returns (uint256 policy, uint256 version, bool fresh) {
-    return (_state.policyVersion, _state.markedVersion, _state.fresh(MAX_MARK_AGE));
-  }
-
-  /// @notice Book uses this to invalidate quotes on material LP accounting changes.
-  function portfolioHash() external view returns (bytes32) {
-    return keccak256(
-      abi.encode(
-        _state.cash,
-        _state.nav,
-        _state.supply,
-        _state.withdrawals.reserved,
-        _state.withdrawals.totalPending,
-        _state.observedAt,
-        _state.policyVersion
-      )
-    );
-  }
-
-  /// @notice Publish/replace a canonical strategy from this vault's own address.
-  /// @dev Book authenticates the original requester and keeps all route ledgers.
-  function refreshStrategy(uint256 route) external coordinated returns (bytes32 hash) {
-    (ISwapVM.Order memory order, bytes32 previous, address base, uint256 managed) =
-      BOOK.prepareStrategyFromVault(route, msg.sender);
-    if (order.maker != address(this)) revert InvalidConfiguration();
-    address aqua = BOOK.AQUA();
-    address router = BOOK.ROUTER();
-    address[] memory tokens = new address[](2);
-    tokens[0] = WETH;
-    tokens[1] = base;
-    uint256[] memory allocations = new uint256[](2);
-    _state.requireBacked(SafeTransfer.balanceOf(WETH, address(this)));
-    if (SafeTransfer.balanceOf(base, address(this)) < managed) revert AssetDeltaMismatch();
-    allocations[0] = _state.available(0);
-    allocations[1] = managed;
-    if (previous != 0) IAqua(aqua).dock(router, previous, tokens);
-    // Aqua allowance is not the risk budget: its per-order counters and Book's
-    // live managed-cash/inventory checks are. A bid must be able to sell newly
-    // received inventory without a permission-changing refresh between fills.
-    SafeTransfer.safeApprove(WETH, aqua, type(uint256).max);
-    SafeTransfer.safeApprove(base, aqua, type(uint256).max);
-    hash = IAqua(aqua).ship(router, abi.encode(order), tokens, allocations);
-    if (hash != keccak256(abi.encode(order))) revert InvalidContext();
-  }
-
+  /// @notice LP share name; independent of the underlying token's metadata.
   function name() public pure override returns (string memory) {
     return "Harbor WETH";
   }
 
+  /// @notice LP share ticker; not a promise of a fixed asset/share exchange rate.
   function symbol() public pure override returns (string memory) {
     return "hWETH";
   }
 
+  /// @notice Approved WETH cash asset for issuance and funded claims.
   function asset() public view override returns (address) {
     return WETH;
   }
 
+  /// @notice ERC-7575 share token is this same vault.
   function share() external view returns (address) {
     return address(this);
   }
 
+  /// @notice ERC-7575 discovery; returns zero for unsupported assets.
+  /// @param token Asset to resolve.
   function vault(address token) external view returns (address) {
     return token == WETH ? address(this) : address(0);
   }
 
+  /// @dev Six extra share decimals implement the virtual-share inflation defense.
   function _decimalsOffset() internal pure override returns (uint8) {
     return 6;
   }
@@ -254,30 +72,40 @@ contract HarborVault is ERC4626 {
     return _state.nav;
   }
 
+  /// @notice Committed LP supply, coherent with the cached NAV during callbacks.
   function totalSupply() public view override returns (uint256) {
     return _state.supply;
   }
 
+  /// @notice Convert WETH wei to LP share raw units, rounding down.
+  /// @dev Uses committed NAV/supply plus one virtual wei and 1e6 virtual shares.
   function convertToShares(uint256 assets) public view override returns (uint256) {
     return Math.fullMulDiv(assets, _state.supply + VIRTUAL_SHARES, _state.nav + 1);
   }
 
+  /// @notice Convert LP share raw units to WETH wei, rounding down.
+  /// @dev This is a valuation conversion, not a synchronous withdrawal entitlement.
   function convertToAssets(uint256 shares) public view override returns (uint256) {
     return Math.fullMulDiv(shares, _state.nav + 1, _state.supply + VIRTUAL_SHARES);
   }
 
+  /// @notice WETH wei required for exact LP shares, rounding up.
   function previewMint(uint256 shares) public view override returns (uint256) {
     return Math.fullMulDivUp(shares, _state.nav + 1, _state.supply + VIRTUAL_SHARES);
   }
 
+  /// @notice Revert: asynchronous exits have no synchronous asset-input preview.
   function previewWithdraw(uint256) public pure override returns (uint256) {
     revert AsyncPreview();
   }
 
+  /// @notice Revert: asynchronous exits have no synchronous share-input preview.
   function previewRedeem(uint256) public pure override returns (uint256) {
     revert AsyncPreview();
   }
 
+  /// @notice ERC165, ERC7540 operator/async-redeem and ERC7575 discovery.
+  /// @dev Does not advertise asynchronous deposits or full synchronous ERC4626 exits.
   function supportsInterface(bytes4 id) external pure returns (bool) {
     return id == 0x01ffc9a7 || id == 0x2f0a18c5 || id == 0xf815c03d || id == 0xe3bc4e65 || id == 0x620ee8e4;
   }
@@ -298,6 +126,7 @@ contract HarborVault is ERC4626 {
     );
   }
 
+  /// @notice Available deposit capacity in WETH wei; zero while gated or stale.
   function maxDeposit(address receiver) public view override returns (uint256) {
     if (
       _context != 0 || !_receiverValid(receiver) || !_state.fresh(MAX_MARK_AGE)
@@ -306,43 +135,78 @@ contract HarborVault is ERC4626 {
     return DEPOSIT_CAP - _state.nav;
   }
 
+  /// @notice LP shares issuable within deposit capacity, rounded down.
   function maxMint(address receiver) public view override returns (uint256) {
     return convertToShares(maxDeposit(receiver));
   }
 
+  /// @notice Funded claim cash in WETH wei, not the controller's unfunded NAV.
   function maxWithdraw(address controller) public view override returns (uint256) {
     if (_context != 0 || SafeTransfer.balanceOf(WETH, address(this)) < _state.withdrawals.reserved) return 0;
     return _state.withdrawals.credits[controller].assets;
   }
 
+  /// @notice Funded claim units, not the controller's transferable LP balance.
   function maxRedeem(address controller) public view override returns (uint256) {
     if (_context != 0 || SafeTransfer.balanceOf(WETH, address(this)) < _state.withdrawals.reserved) return 0;
     return _state.withdrawals.credits[controller].units;
   }
 
+  /*//////////////////////////////////////////////////////////////
+                         SYNCHRONOUS ISSUANCE
+  //////////////////////////////////////////////////////////////*/
+
+  /// @notice Deposit exact WETH wei and mint LP shares rounded down.
+  /// @param assets Exact WETH wei collected from the caller.
+  /// @param receiver Beneficiary of newly minted LP shares.
+  /// @return shares LP share raw units minted.
   function deposit(uint256 assets, address receiver) public override coordinated returns (uint256 shares) {
     shares = previewDeposit(assets);
     _issue(assets, shares, receiver, msg.sender);
   }
 
+  /// @notice Mint exact LP share units and collect WETH wei rounded up.
+  /// @param shares Exact LP share raw units to mint.
+  /// @param receiver Beneficiary of newly minted LP shares.
+  /// @return assets WETH wei collected.
   function mint(uint256 shares, address receiver) public override coordinated returns (uint256 assets) {
     assets = previewMint(shares);
     _issue(assets, shares, receiver, msg.sender);
   }
 
+  /// @notice Deposit exact WETH wei and mint LP shares rounded down.
+  /// @param assets Exact WETH wei collected from the caller.
+  /// @param receiver Beneficiary of newly minted LP shares.
+  /// @param controller Caller or its delegating ERC7540 controller; caller supplies funds.
+  /// @return shares LP share raw units minted.
   function deposit(uint256 assets, address receiver, address controller) external coordinated returns (uint256 shares) {
     _authorize(controller);
     shares = previewDeposit(assets);
     _issue(assets, shares, receiver, controller);
   }
 
+  /// @notice Mint exact LP share units and collect WETH wei rounded up.
+  /// @param shares Exact LP share raw units to mint.
+  /// @param receiver Beneficiary of newly minted LP shares.
+  /// @param controller Caller or its delegating ERC7540 controller; caller supplies funds.
+  /// @return assets WETH wei collected.
   function mint(uint256 shares, address receiver, address controller) external coordinated returns (uint256 assets) {
     _authorize(controller);
     assets = previewMint(shares);
     _issue(assets, shares, receiver, controller);
   }
 
+  /*//////////////////////////////////////////////////////////////
+                         ASYNCHRONOUS REDEMPTION
+  //////////////////////////////////////////////////////////////*/
+
   /// @notice Request ID is always zero; internal FIFO tickets remain distinct.
+  /// @dev Escrow without burning. Owner/operator or explicit share allowance may
+  /// request; share allowance alone cannot claim a controller's later credit.
+  /// @param shares LP share raw units to escrow.
+  /// @param controller Beneficiary of pending and funded claim credits.
+  /// @param owner Account whose LP shares are escrowed.
+  /// @return Public request ID zero, aggregating this controller's internal tickets.
   function requestRedeem(uint256 shares, address controller, address owner) external coordinated returns (uint256) {
     if (!_receiverValid(controller) || owner == address(this)) revert InvalidReceiver();
     if (shares == 0 || (shares < MIN_REQUEST_SHARES && shares != balanceOf(owner))) revert InvalidAmount();
@@ -355,14 +219,20 @@ contract HarborVault is ERC4626 {
     return 0;
   }
 
+  /// @notice Unfunded LP share units for requestId zero; other IDs return zero.
   function pendingRedeemRequest(uint256 requestId, address controller) external view returns (uint256) {
     return requestId == 0 ? _state.withdrawals.credits[controller].pending : 0;
   }
 
+  /// @notice Funded claim units for requestId zero; other IDs return zero.
   function claimableRedeemRequest(uint256 requestId, address controller) external view returns (uint256) {
     return requestId == 0 ? _state.withdrawals.credits[controller].units : 0;
   }
 
+  /// @notice Grant or revoke ERC7540 operator authority for the caller.
+  /// @param operator Account allowed to act for this controller.
+  /// @param approved New operator permission.
+  /// @return True when the permission is recorded.
   function setOperator(address operator, bool approved) external coordinated returns (bool) {
     isOperator[msg.sender][operator] = approved;
     emit OperatorSet(msg.sender, operator, approved);
@@ -370,6 +240,10 @@ contract HarborVault is ERC4626 {
   }
 
   /// @notice Fund up to eight oldest tickets at the same fresh pre-operation mark.
+  /// @dev Permissionless FIFO funding: burn escrow shares and reserve actual cash.
+  /// Remaining issuer rights contribute no spendable cash. Partial head funding
+  /// stops the batch; no later ticket may jump the queue.
+  /// @param maxTickets Maximum tickets processed, between one and eight.
   function fulfillWithdrawals(uint256 maxTickets) external coordinated {
     if (maxTickets == 0 || maxTickets > Queue.MAX_PROCESS) revert InvalidAmount();
     _requireFresh();
@@ -391,6 +265,12 @@ contract HarborVault is ERC4626 {
     }
   }
 
+  /// @notice Claim WETH using exact funded claim units; not another LP share burn.
+  /// @dev Credit conversion rounds assets down; the queue prevents stranded final cash.
+  /// @param shares Funded claim units to consume.
+  /// @param receiver WETH beneficiary chosen by controller/operator.
+  /// @param controller Owner of the funded credit.
+  /// @return assets WETH wei paid from reserved cash.
   function redeem(uint256 shares, address receiver, address controller)
     public
     override
@@ -402,6 +282,12 @@ contract HarborVault is ERC4626 {
     _payClaim(assets, shares, receiver, controller);
   }
 
+  /// @notice Claim exact WETH wei from a controller's funded credit.
+  /// @dev Required claim units round up; unrelated LP balances are not burned.
+  /// @param assets Exact WETH wei requested.
+  /// @param receiver WETH beneficiary chosen by controller/operator.
+  /// @param controller Owner of the funded credit.
+  /// @return shares Funded claim units consumed, rounded up.
   function withdraw(uint256 assets, address receiver, address controller)
     public
     override
@@ -413,6 +299,11 @@ contract HarborVault is ERC4626 {
     _payClaim(assets, shares, receiver, controller);
   }
 
+  /*//////////////////////////////////////////////////////////////
+                         SHARE TRANSFERS & CHECKPOINT
+  //////////////////////////////////////////////////////////////*/
+
+  /// @notice Transfer LP share raw units under the shared operation lock.
   function transfer(address receiver, uint256 shares) public override coordinated returns (bool) {
     if (!_receiverValid(receiver)) revert InvalidReceiver();
     _shareMutation = true;
@@ -421,6 +312,7 @@ contract HarborVault is ERC4626 {
     return true;
   }
 
+  /// @notice Allowance-authorized LP share transfer under the shared operation lock.
   function transferFrom(address owner, address receiver, uint256 shares) public override coordinated returns (bool) {
     if (!_receiverValid(receiver) || owner == address(this)) revert InvalidReceiver();
     _spendAllowance(owner, msg.sender, shares);
@@ -431,6 +323,7 @@ contract HarborVault is ERC4626 {
   }
 
   /// @notice Anyone may checkpoint authenticated public observations from the Book.
+  /// @dev A fresh public mark is required, not a signer-supplied private NAV.
   function checkpointValuation() external coordinated {
     _state.requireBacked(SafeTransfer.balanceOf(WETH, address(this)));
     (uint256 inventory, uint256 claims, uint256 observedAt, uint256 policy, bool valid) = BOOK.valuation();
@@ -439,6 +332,13 @@ contract HarborVault is ERC4626 {
     emit ValuationCheckpoint(_state.nav, _state.supply, _state.cash, _state.withdrawals.reserved, policy, observedAt);
   }
 
+  /*//////////////////////////////////////////////////////////////
+                         INTERNAL LP ACCOUNTING
+  //////////////////////////////////////////////////////////////*/
+
+  /// @dev Collect exact WETH wei from msg.sender, then mint shares to receiver.
+  /// Controller affects authorization/event identity, not who funds the deposit.
+  /// Caller supplies amounts computed with the public deposit/mint rounding rules.
   function _issue(uint256 assets, uint256 shares, address receiver, address controller) private {
     _requireFresh();
     if (!_receiverValid(receiver)) revert InvalidReceiver();
@@ -458,6 +358,7 @@ contract HarborVault is ERC4626 {
     emit Deposit(controller, receiver, assets, shares);
   }
 
+  /// @dev Require controller authority and backed reserves; fresh NAV is not required.
   function _claimChecks(address receiver, address controller) private view {
     _authorize(controller);
     if (!_receiverValid(receiver)) revert InvalidReceiver();
@@ -465,6 +366,8 @@ contract HarborVault is ERC4626 {
     if (actual < _state.withdrawals.reserved) revert Accounting.CashDeficit(actual, _state.withdrawals.reserved);
   }
 
+  /// @dev Debit tracked cash and pay exactly the funded WETH amount.
+  /// Check both vault and receiver deltas; donated balances are not claim revenue.
   function _payClaim(uint256 assets, uint256 shares, address receiver, address controller) private {
     _state.cash -= assets;
     uint256 beforeVault = SafeTransfer.balanceOf(WETH, address(this));
@@ -475,31 +378,5 @@ contract HarborVault is ERC4626 {
         || SafeTransfer.balanceOf(WETH, receiver) != beforeReceiver + assets
     ) revert AssetDeltaMismatch();
     emit Withdraw(msg.sender, receiver, controller, assets, shares);
-  }
-
-  function _authorize(address controller) private view {
-    if (msg.sender != controller && !isOperator[controller][msg.sender]) revert Unauthorized();
-  }
-
-  function _requireFresh() private view {
-    if (!_state.fresh(MAX_MARK_AGE)) revert ValuationUnavailable();
-  }
-
-  function _receiverValid(address receiver) private view returns (bool) {
-    return receiver != address(0) && receiver != address(this) && receiver != address(BOOK);
-  }
-
-  function _orphaned() private view returns (bool) {
-    return
-      (_state.supply == 0 && (_state.nav != 0 || BOOK.hasManagedPositions())) || (_state.supply != 0 && _state.nav == 0);
-  }
-
-  function _beforeTokenTransfer(address, address, uint256) internal view override {
-    if (_context == 0 || !_shareMutation) revert InvalidContext();
-  }
-
-  /// @dev Retire inherited synchronous internal exit path as defense in depth.
-  function _withdraw(address, address, address, uint256, uint256) internal pure override {
-    revert AsyncPreview();
   }
 }

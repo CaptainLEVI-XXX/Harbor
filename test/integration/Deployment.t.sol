@@ -6,6 +6,7 @@ import {HarborBook} from "src/book/HarborBook.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {HarborExecutor} from "src/execution/HarborExecutor.sol";
 import {RouteConfig} from "src/types/HarborTypes.sol";
+import {AquaSwapVMRouter} from "@1inch/swap-vm/src/routers/AquaSwapVMRouter.sol";
 import {TradingFixture} from "test/helpers/TradingFixture.sol";
 
 /// @title DeploymentTest
@@ -16,6 +17,7 @@ contract DeploymentTest is TradingFixture {
     assertLe(address(book).code.length, 24_576);
     assertLe(address(vault).code.length, 24_576);
     assertLe(address(executor).code.length, 24_576);
+    assertLe(address(router).code.length, 24_576);
   }
 
   function test_ScriptBindsAllContractsWithoutInitialization() public {
@@ -39,5 +41,15 @@ contract DeploymentTest is TradingFixture {
     vm.chainId(1);
     vm.expectRevert(DeployHarbor.LiveDeploymentGated.selector);
     deployment.run(deploymentConfig, routes, 1e12, 1e6);
+  }
+
+  function test_RejectsRouterWithoutCustomInstruction() public {
+    AquaSwapVMRouter upstream = new AquaSwapVMRouter(address(aqua), address(weth), address(this), "Harbor", "1");
+    HarborBook.Config memory config = deploymentConfig;
+    config.router = address(upstream);
+    RouteConfig[] memory routes = new RouteConfig[](1);
+    routes[0] = book.route(0);
+    vm.expectRevert(); // The unmodified router has no Harbor instruction capability selector.
+    new HarborBook(config, routes);
   }
 }
