@@ -14,18 +14,17 @@ acceptable.
 
 1. Fork the repository and create a branch from the latest `main`.
 2. Install Foundry. The development toolchain is Foundry v1.8.1.
-3. Install Node 22 or a compatible newer release, then bootstrap dependencies:
+3. Install the pinned Solidity dependencies with Forge:
 
 ```sh
-bash tools/bootstrap-deps.sh
+forge install
 ```
 
-The bootstrap verifies tracked submodule revisions and checksummed official
-Aqua/SwapVM archives. Existing modified dependencies are not overwritten.
-Their revisions remain Aqua `9c5c42e5840e8741fba3597c48456c9510212b66`
-and SwapVM `f09a41e689240adc645934f965c8061749397cd2`.
-Solidity utility packages are isolated in `dependencies/`; installing them
-does not install or change a client application.
+All Solidity dependencies are Git submodules under `lib/`, pinned by Git links
+and `foundry.lock`. No npm installation is required for contracts. The selected
+releases are 1inch solidity-utils 6.9.10 and OpenZeppelin 5.4.0; Aqua remains
+`9c5c42e5840e8741fba3597c48456c9510212b66` and SwapVM remains
+`f09a41e689240adc645934f965c8061749397cd2`.
 
 Build, test, and check formatting:
 
@@ -33,15 +32,13 @@ Build, test, and check formatting:
 forge build --sizes
 forge test
 forge fmt --check
-node --test tools/check-test-discovery.test.mjs
-node tools/check-test-discovery.mjs default
 ```
 
 Run `forge fmt` on the files you changed before submitting. Avoid unrelated
 formatting churn. Use only profiles and test paths that exist in the checkout;
 an empty or filtered test run is not evidence that an integration works.
-Register new test files and required tests in `tools/test-suites.json`.
-Profiles without implemented, registered suites deliberately fail discovery.
+Use `forge test --list` with the intended profile and filters to confirm the
+expected suites are discovered before relying on a test run.
 
 Fork tests must identify the network, block, deployed contracts, and required
 RPC configuration. Missing RPC access is a skipped check, not a passing test.

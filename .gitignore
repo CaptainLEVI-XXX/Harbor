@@ -7,10 +7,6 @@ out/
 .ignore/
 node_modules/
 
-# Locally installed upstream sources; revisions are specified in CONTRIBUTING.md.
-/lib/aqua/
-/lib/swap-vm/
-
 # Ignores development broadcast logs
 !/broadcast
 /broadcast/*/31337/
@@ -40,3 +36,5 @@ node_modules/
 .env
 .env.*
 !.env.example
+
+tools/

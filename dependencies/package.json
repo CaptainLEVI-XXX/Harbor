@@ -1,9 +1,0 @@
-{
-  "name": "harbor-contracts",
-  "private": true,
-  "description": "Pinned Solidity dependencies for Harbor contracts",
-  "devDependencies": {
-    "@1inch/solidity-utils": "6.9.10",
-    "@openzeppelin/contracts": "5.4.0"
-  }
-}

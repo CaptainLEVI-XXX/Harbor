@@ -8,6 +8,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for toolchain requirements, pinned
 dependencies, setup commands, coding conventions, and testing requirements.
 
 ```sh
+forge install
 forge build --sizes
 forge test
 forge fmt --check
@@ -19,6 +20,6 @@ development examples, not a Harbor vault or trading implementation.
 ## Dependencies
 
 The repository uses Foundry, forge-std, Solady, and pinned 1inch Solidity
-dependencies. Aqua and SwapVM sources are installed using the exact revisions
-documented in the contribution guide. No live deployment addresses are published
+dependencies. All Solidity dependencies are pinned Forge-managed Git submodules;
+contracts do not require npm installation. No live deployment addresses are published
 in this repository.
