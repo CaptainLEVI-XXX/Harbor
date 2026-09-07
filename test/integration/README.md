@@ -1,8 +1,9 @@
 # Pooled settlement tests
 
 `forge test --match-path 'test/integration/*.t.sol'` runs the real Harbor Vault,
-Book and Executor against the pinned official Aqua/SwapVM contracts. Two
-synthetic wrapped assets share one WETH-denominated pool. Token movements are
+Book and Executor against official Aqua and Harbor's router derived from the
+pinned official SwapVM implementation. Two synthetic wrapped assets share one
+WETH-denominated pool. Token movements are
 real local-EVM calls; assets, valuation and policy permits are test fixtures.
 They are not live issuer, mainnet, oracle or confidential-workflow evidence.
 
@@ -12,9 +13,10 @@ They are not live issuer, mainnet, oracle or confidential-workflow evidence.
 2. Book validates the quote signature, independent permit, current versions,
    public price bounds, inventory, shared cash and funded LP reserves.
 3. Executor acquires Book then Vault context and collects only actual input.
-4. Official SwapVM executes Salt/Extruction. Book authenticates the router,
-   executor, vault, order, metadata and complete payload, then consumes both
-   the quote nonce and trader nonce.
+4. The inherited VM loop executes upstream Salt and custom HarborExactFill.
+   Book authenticates the router, executor, vault, order, route/version and
+   complete payload, then consumes both the quote nonce and trader nonce.
+   The instruction validates the specified register and sets its complement.
 5. Input-first hooks verify vault token deltas and commit inventory basis.
 6. Executor checks returned amounts, removes router approval, pays the fee and
    trader, and verifies its original donated balances remain unchanged.
@@ -29,14 +31,16 @@ writes and is not a substitute for simulating the complete transaction.
 Vault and Executor creation code is not embedded into Book. A deterministic
 CREATE sequence binds the three addresses in constructors, with no mutable
 initializer or runtime factory. `script/DeployHarbor.s.sol` verifies those
-bindings and is restricted to local chain ID 31337. Do not publish partially
-deployed addresses or insert unrelated transactions into that nonce sequence.
+bindings and is restricted to local chain ID 31337. Deploy the Harbor router
+first and supply it in configuration; the unmodified router is rejected. Do not
+publish partially deployed addresses or insert unrelated transactions into that
+nonce sequence.
 
 The vault approves only official Aqua for its supported route tokens. Approval
 is unbounded so both directions can reuse newly received inventory; it is not
 the spending budget. Aqua allocation counters, canonical order identity and
 Book's live managed-inventory/cash/reserve checks bound each actual transfer.
-Executor approvals to the official router are exact-size and cleared after use.
+Executor approvals to the Harbor router are exact-size and cleared after use.
 LPs approve the vault, never Aqua, Book or a redemption adapter.
 
 The Book's route universe, caps, fee recipient, fee rate and observation provider
@@ -61,5 +65,6 @@ read-only verifier directly grants no settlement authority.
 
 This division keeps Book within EIP-170 without a larger code-size limit, proxy,
 delegatecall module, or separately linked state library. `Deployment.t.sol`
-explicitly checks each deployed runtime against 24,576 bytes; Solidity test
-deployment alone is insufficient evidence of deployability.
+explicitly checks the Book, Vault, Executor and custom router runtimes against
+24,576 bytes; Solidity test deployment alone is insufficient evidence of
+deployability.

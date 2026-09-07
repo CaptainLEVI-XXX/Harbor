@@ -1,7 +1,8 @@
 # Harbor
 
 Pooled WETH liquidity for two-way, exact-input/exact-output inventory trading
-through official 1inch Aqua and SwapVM, with asynchronous LP redemption.
+through official 1inch Aqua and a custom router derived from official SwapVM,
+with asynchronous LP redemption.
 
 ## Contracts
 
@@ -9,7 +10,9 @@ through official 1inch Aqua and SwapVM, with asynchronous LP redemption.
   ERC-7540 asynchronous redemption with FIFO funding and reserved cash.
 - `HarborBook`: immutable route mandates, shared cash/exposure checks, authenticated
   SwapVM callbacks, inventory basis and issuer claim accounting.
-- `HarborExecutor`: exact trader amounts, quote verification, official-router
+- `HarborSwapVMRouter`: upstream Aqua settlement plus the native `HarborExactFill`
+  instruction; no upstream dependency files are modified.
+- `HarborExecutor`: exact trader amounts, quote verification, custom-router
   execution, fee settlement and residue checks.
 - `LidoAdapter`: bounded wstETH requests, adapter-owned withdrawal rights and
   attributable ETH recovery wrapped directly to the fixed vault.
@@ -22,7 +25,9 @@ Executor and adapters use transient function guards.
 
 ## Development
 
-Start with the [contract demo](DEMO.md) for reproducible trading, recovery and LP-exit traces.
+Start with the [SwapVM strategy guide](src/swapvm/README.md) for opcode encoding,
+register invariants, authority boundaries and focused tests. The
+[contract demo](DEMO.md) provides reproducible trading, recovery and LP-exit traces.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for toolchain requirements, pinned
 dependencies, setup commands, coding conventions, and testing requirements.
@@ -41,8 +46,9 @@ See [settlement tests](test/integration/README.md),
 ## Status
 
 This is unaudited contract development, not a mainnet-ready yield product.
-Local tests exercise real token-transfer calls through official Aqua/SwapVM,
-using synthetic tokens, public marks, permit approval and issuer finalization.
+Local tests exercise real token-transfer calls through official Aqua and Harbor's
+SwapVM-derived router, using synthetic tokens, public marks, permit approval
+and issuer finalization.
 Two [pinned Lido fork checks](test/fork/README.md) also cover a new real request
 and a separate mature historical recovery; their distinct setup is documented.
 The [receiver tests](test/chainlink/README.md) use simulated forwarder delivery.

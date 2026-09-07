@@ -10,7 +10,8 @@ handler reverts. Default `forge test` also runs shorter campaigns. Target select
 are explicit; setup and test-only keeper relays cannot be selected by the fuzzer.
 
 `PortfolioInvariantTest` uses three LPs, two synthetic routes, the actual Harbor
-Book/Vault/Executor, official Aqua/SwapVM, and LidoAdapter with a synthetic queue.
+Book/Vault/Executor, official Aqua, Harbor's SwapVM-derived router, and LidoAdapter
+with a synthetic queue.
 It independently tracks accounted cash, quarantined donations, LP share balances
 and supply, pending FIFO tickets, funded reserves/credits, warehouse basis,
 issuer basis, rights and realized gains/losses. FIFO funding uses a binary-search

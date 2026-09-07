@@ -14,8 +14,9 @@ forge test
 forge test --match-contract PermitTradingTest --match-test test_AuthenticatedPermitSettlesAllFourModes -vvvv
 ```
 
-The trace shows the pooled vault as the maker, official Aqua/SwapVM transfers,
-the real Harbor permit receiver, exact user limits, WETH fees, and consumed
+The trace shows the pooled vault as the maker, official Aqua transfers through
+Harbor's SwapVM-derived router, the real Harbor permit receiver, exact user
+limits, WETH fees, and consumed
 quote/trader nonces. Workflow report delivery and asset/valuation inputs are
 synthetic; this is not a live CRE or confidential-computing demonstration.
 

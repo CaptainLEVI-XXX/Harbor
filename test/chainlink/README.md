@@ -33,7 +33,8 @@ Distinct out-of-order reports remain independent. Cancelled digests cannot be
 revived; clients must obtain a genuinely fresh quote and approval.
 
 The tests use `MockCREForwarder`, which does **not** verify DON signatures. They
-exercise actual receiver authentication checks and official Aqua/SwapVM settlement,
+exercise actual receiver authentication checks and official Aqua settlement
+through Harbor's SwapVM-derived router,
 but are not CRE CLI simulation, testnet delivery or confidential execution evidence.
 Do not deploy the mock forwarder as a real-funds authority. Missing secrets or
 service access must not enable signature-only trading.
