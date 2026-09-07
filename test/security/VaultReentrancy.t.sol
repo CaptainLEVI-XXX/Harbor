@@ -6,6 +6,7 @@ import {Vm} from "forge-std/Vm.sol";
 import {ERC20} from "solady/tokens/ERC20.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {MockVaultBook} from "test/helpers/VaultFixture.sol";
+import {Operation} from "src/types/HarborTypes.sol";
 
 /// @notice Deliberately adversarial token; not an approved production WETH.
 contract CallbackAsset is ERC20 {
@@ -86,7 +87,7 @@ contract VaultReentrancyTest is Test {
 
   function test_ExplicitContextSurvivesBeginReturnAndRejectsWrongFinish() public {
     vm.prank(address(book));
-    vault.beginBookOperation(bytes32(uint256(1)));
+    vault.beginBookOperation(bytes32(uint256(1)), Operation.TRADE);
     vm.expectRevert(HarborVault.Busy.selector);
     vault.deposit(1 ether, address(this));
     vm.expectRevert(HarborVault.InvalidContext.selector);
@@ -99,7 +100,7 @@ contract VaultReentrancyTest is Test {
 
   function test_OnlyImmutableBookCanAcquireOrRelease() public {
     vm.expectRevert(HarborVault.Unauthorized.selector);
-    vault.beginBookOperation(bytes32(uint256(1)));
+    vault.beginBookOperation(bytes32(uint256(1)), Operation.TRADE);
     vm.expectRevert(HarborVault.Unauthorized.selector);
     vault.finishBookOperation(bytes32(uint256(1)));
   }

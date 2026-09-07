@@ -7,6 +7,9 @@ import {SafeTransferLib as SafeTransfer} from "solady/utils/SafeTransferLib.sol"
 import {IHarborBook} from "src/interfaces/IHarborBook.sol";
 import {VaultAccounting as Accounting} from "src/libraries/VaultAccounting.sol";
 import {WithdrawalQueue as Queue} from "src/libraries/WithdrawalQueue.sol";
+import {Operation} from "src/types/HarborTypes.sol";
+import {IAqua} from "@1inch/aqua/src/interfaces/IAqua.sol";
+import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 
 /// @title HarborVault
 /// @notice WETH share custody with synchronous issuance and asynchronous exits.
@@ -31,6 +34,8 @@ contract HarborVault is ERC4626 {
   /// not a function-scoped modifier on beginBookOperation. No inherited guard slots.
   bytes32 private transient _context;
   bool private transient _shareMutation;
+  Operation private transient _operation;
+  uint256 private transient _cashAtBegin;
 
   error Unauthorized();
   error Busy();
@@ -82,19 +87,23 @@ contract HarborVault is ERC4626 {
     if (msg.sender == address(BOOK)) revert Unauthorized();
     bytes32 context = keccak256(abi.encode(address(this), msg.sender, msg.data));
     BOOK.beginVaultOperation(context);
-    if (_context != context) revert InvalidContext();
+    if (_context != context || _operation != Operation.VAULT) revert InvalidContext();
     _;
-    _state.commit(super.totalSupply());
+    // Stale portfolio marks must not be recombined with changed trade cash.
+    // Requests/transfers/funded claims preserve the previous committed NAV.
+    if (_state.valid && _state.markedVersion == _state.portfolioVersion) _state.commit(super.totalSupply());
     BOOK.finishVaultOperation(context);
     if (_context != 0) revert InvalidContext();
   }
 
   /// @notice Book-only callback; context remains locked after this method returns.
-  function beginBookOperation(bytes32 context) external {
+  function beginBookOperation(bytes32 context, Operation operation) external {
     if (msg.sender != address(BOOK)) revert Unauthorized();
     if (_context != 0) revert Busy();
-    if (context == 0) revert InvalidContext();
+    if (context == 0 || operation == Operation.NONE) revert InvalidContext();
     _context = context;
+    _operation = operation;
+    _cashAtBegin = SafeTransfer.balanceOf(WETH, address(this));
   }
 
   /// @notice Book-only matching release; no external calls between lock releases.
@@ -102,6 +111,81 @@ contract HarborVault is ERC4626 {
     if (msg.sender != address(BOOK)) revert Unauthorized();
     if (_context == 0 || _context != context) revert InvalidContext();
     _context = 0;
+    _operation = Operation.NONE;
+    _cashAtBegin = 0;
+  }
+
+  /// @notice Commit only the verified WETH leg of a fully paid trade.
+  /// @dev Only Book may call, while holding this exact trade context. Inventory
+  /// belongs to Book; the prior NAV remains visible but invalid until checkpoint.
+  function settleTrade(bytes32 context, bool buyBase, uint256 cashAmount) external {
+    if (msg.sender != address(BOOK)) revert Unauthorized();
+    if (_context != context || _operation != Operation.TRADE) revert InvalidContext();
+    uint256 expected = buyBase ? _cashAtBegin - cashAmount : _cashAtBegin + cashAmount;
+    if (SafeTransfer.balanceOf(WETH, address(this)) != expected) revert AssetDeltaMismatch();
+    if (buyBase) _state.spendCash(cashAmount, 0);
+    else _state.receiveCash(cashAmount);
+    // Prevent duplicate cash recording in the same operation.
+    _operation = Operation.NONE;
+  }
+
+  /// @notice Book can close the issuance gate without changing NAV or LP credit.
+  function invalidateValuation() external {
+    if (msg.sender != address(BOOK)) revert Unauthorized();
+    if (_context != 0) revert Busy();
+    _state.invalidate();
+  }
+
+  /// @notice Current physically backed cash and withdrawal-priority capacity.
+  function tradingCash(uint256 buffer) external view returns (uint256) {
+    if (_state.withdrawals.totalPending != 0 || SafeTransfer.balanceOf(WETH, address(this)) < _state.cash) return 0;
+    return _state.available(buffer);
+  }
+
+  /// @notice Identity of committed public marks, independent of the operation lock.
+  function valuationIdentity() external view returns (uint256 policy, uint256 version, bool fresh) {
+    return (_state.policyVersion, _state.markedVersion, _state.fresh(MAX_MARK_AGE));
+  }
+
+  /// @notice Book uses this to invalidate quotes on material LP accounting changes.
+  function portfolioHash() external view returns (bytes32) {
+    return keccak256(
+      abi.encode(
+        _state.cash,
+        _state.nav,
+        _state.supply,
+        _state.withdrawals.reserved,
+        _state.withdrawals.totalPending,
+        _state.observedAt,
+        _state.policyVersion
+      )
+    );
+  }
+
+  /// @notice Publish/replace a canonical strategy from this vault's own address.
+  /// @dev Book authenticates the original requester and keeps all route ledgers.
+  function refreshStrategy(uint256 route) external coordinated returns (bytes32 hash) {
+    (ISwapVM.Order memory order, bytes32 previous, address base, uint256 managed) =
+      BOOK.prepareStrategyFromVault(route, msg.sender);
+    if (order.maker != address(this)) revert InvalidConfiguration();
+    address aqua = BOOK.AQUA();
+    address router = BOOK.ROUTER();
+    address[] memory tokens = new address[](2);
+    tokens[0] = WETH;
+    tokens[1] = base;
+    uint256[] memory allocations = new uint256[](2);
+    _state.requireBacked(SafeTransfer.balanceOf(WETH, address(this)));
+    if (SafeTransfer.balanceOf(base, address(this)) < managed) revert AssetDeltaMismatch();
+    allocations[0] = _state.available(0);
+    allocations[1] = managed;
+    if (previous != 0) IAqua(aqua).dock(router, previous, tokens);
+    // Aqua allowance is not the risk budget: its per-order counters and Book's
+    // live managed-cash/inventory checks are. A bid must be able to sell newly
+    // received inventory without a permission-changing refresh between fills.
+    SafeTransfer.safeApprove(WETH, aqua, type(uint256).max);
+    SafeTransfer.safeApprove(base, aqua, type(uint256).max);
+    hash = IAqua(aqua).ship(router, abi.encode(order), tokens, allocations);
+    if (hash != keccak256(abi.encode(order))) revert InvalidContext();
   }
 
   function name() public pure override returns (string memory) {
@@ -177,7 +261,7 @@ contract HarborVault is ERC4626 {
       _state.cash,
       _state.withdrawals.reserved,
       _state.withdrawals.totalPending,
-      _state.fresh(MAX_MARK_AGE) && !cashDeficit,
+      _state.fresh(MAX_MARK_AGE) && !cashDeficit && _context == 0,
       _state.insolvent || cashDeficit
     );
   }
@@ -374,7 +458,8 @@ contract HarborVault is ERC4626 {
   }
 
   function _orphaned() private view returns (bool) {
-    return (_state.supply == 0 && _state.nav != 0) || (_state.supply != 0 && _state.nav == 0);
+    return
+      (_state.supply == 0 && (_state.nav != 0 || BOOK.hasManagedPositions())) || (_state.supply != 0 && _state.nav == 0);
   }
 
   function _beforeTokenTransfer(address, address, uint256) internal view override {

@@ -1,9 +1,24 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
+import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
+import {Trade, FillTerms} from "src/types/HarborTypes.sol";
+
 /// @title IHarborBook
 /// @notice Vault-facing authority and public-valuation boundary.
 interface IHarborBook {
+  function AQUA() external view returns (address);
+  function ROUTER() external view returns (address);
+  function hasManagedPositions() external view returns (bool);
+  function beginTrade(bytes32 tradeHash) external;
+  function finishTrade(bytes32 fillDigest) external;
+  function validate(Trade calldata trade, FillTerms calldata terms, bytes calldata signature)
+    external
+    view
+    returns (bytes32);
+  function prepareStrategyFromVault(uint256 route, address requester)
+    external
+    returns (ISwapVM.Order memory order, bytes32 previous, address base, uint256 managed);
   /// @notice Acquire Book then Vault context for a vault-originated operation.
   function beginVaultOperation(bytes32 context) external;
   /// @notice Release Vault then Book context after the vault commits accounting.

@@ -3,11 +3,14 @@ pragma solidity 0.8.30;
 
 import {Test} from "forge-std/Test.sol";
 import {TokenMock} from "@1inch/solidity-utils/contracts/mocks/TokenMock.sol";
-import {IHarborBook} from "src/interfaces/IHarborBook.sol";
+import {Operation} from "src/types/HarborTypes.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 
 /// @notice Test-only coordinator and synthetic mark provider; not a production Book.
-contract MockVaultBook is IHarborBook {
+contract MockVaultBook {
+  function hasManagedPositions() external pure returns (bool) {
+    return false;
+  }
   HarborVault public immutable VAULT;
   uint256 public inventory;
   uint256 public claims;
@@ -38,7 +41,7 @@ contract MockVaultBook is IHarborBook {
   function beginVaultOperation(bytes32 c) external {
     require(msg.sender == address(VAULT) && context == 0, "book lock");
     context = c;
-    VAULT.beginBookOperation(c);
+    VAULT.beginBookOperation(c, Operation.VAULT);
   }
 
   function finishVaultOperation(bytes32 c) external {
