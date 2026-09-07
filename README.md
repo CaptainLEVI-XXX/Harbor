@@ -13,6 +13,8 @@ through official 1inch Aqua and SwapVM, with asynchronous LP redemption.
   execution, fee settlement and residue checks.
 - `LidoAdapter`: bounded wstETH requests, adapter-owned withdrawal rights and
   attributable ETH recovery wrapped directly to the fixed vault.
+- `HarborPolicyReceiver`: authenticated, expiring exact-fill permits through
+  Chainlink's receiver interface, with no treasury authority.
 
 Pending issuer claims are not spendable cash. Unsolicited token transfers are
 excluded from managed NAV. Book/Vault use shared transient operation contexts;
@@ -41,7 +43,8 @@ Local tests exercise real token-transfer calls through official Aqua/SwapVM,
 using synthetic tokens, public marks, permit approval and issuer finalization.
 Two [pinned Lido fork checks](test/fork/README.md) also cover a new real request
 and a separate mature historical recovery; their distinct setup is documented.
-The authenticated CRE receiver/workflow, production valuation calibration,
+The [receiver tests](test/chainlink/README.md) use simulated forwarder delivery;
+the CRE workflow/live delivery, production valuation calibration,
 stateful portfolio tests and independent review remain
 release requirements. The deployment script rejects non-local chains.
 

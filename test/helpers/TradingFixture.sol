@@ -12,6 +12,7 @@ import {HarborExecutor} from "src/execution/HarborExecutor.sol";
 import {Trade, FillTerms, FillAmounts, RouteConfig, Side, AmountMode} from "src/types/HarborTypes.sol";
 import {Amounts} from "src/libraries/Amounts.sol";
 import {Fees} from "src/libraries/Fees.sol";
+import {IHarborPolicyReceiver} from "src/interfaces/IHarborPolicyReceiver.sol";
 
 /// @notice Synthetic public observations; does not prove a production NAV policy.
 contract MockTradingValuation {
@@ -62,7 +63,7 @@ abstract contract TradingFixture is Test {
   HarborVault internal vault;
   HarborExecutor internal executor;
   MockTradingValuation internal valuation;
-  MockTradingPolicy internal policy;
+  IHarborPolicyReceiver internal policy;
   HarborBook.Config internal deploymentConfig;
   uint256 private nextNonce;
 
@@ -74,7 +75,7 @@ abstract contract TradingFixture is Test {
     aqua = new Aqua();
     router = new AquaSwapVMRouter(address(aqua), address(weth), address(this), "Harbor", "1");
     valuation = new MockTradingValuation(1000);
-    policy = new MockTradingPolicy();
+    policy = _deployPolicy();
     uint64 nonce = vm.getNonce(address(this));
     address expectedBook = vm.computeCreateAddress(address(this), nonce);
     address expectedVault = vm.computeCreateAddress(address(this), nonce + 1);
@@ -183,7 +184,7 @@ abstract contract TradingFixture is Test {
   function _sign(Trade memory t, FillTerms memory f) internal returns (bytes memory signature) {
     bytes32 digest = executor.fillDigest(t, f);
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(QUOTE_TEST_KEY, digest);
-    policy.approve(digest, true);
+    _approveFill(t, f, digest);
     return abi.encodePacked(r, s, v);
   }
 
@@ -197,6 +198,18 @@ abstract contract TradingFixture is Test {
 
   function _deployWeth() internal virtual returns (TokenMock) {
     return new TokenMock("Synthetic WETH", "WETH");
+  }
+
+  function _deployPolicy() internal virtual returns (IHarborPolicyReceiver) {
+    return IHarborPolicyReceiver(address(new MockTradingPolicy()));
+  }
+
+  function _approveFill(Trade memory, FillTerms memory, bytes32 digest) internal virtual {
+    _setApproval(digest, true);
+  }
+
+  function _setApproval(bytes32 digest, bool allowed) internal {
+    MockTradingPolicy(address(policy)).approve(digest, allowed);
   }
 
   function _deployBase(uint256 i) internal virtual returns (TokenMock) {
