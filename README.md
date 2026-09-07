@@ -22,6 +22,8 @@ Executor and adapters use transient function guards.
 
 ## Development
 
+Start with the [contract demo](DEMO.md) for reproducible trading, recovery and LP-exit traces.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for toolchain requirements, pinned
 dependencies, setup commands, coding conventions, and testing requirements.
 
