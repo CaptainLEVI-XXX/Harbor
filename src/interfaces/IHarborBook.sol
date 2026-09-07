@@ -2,14 +2,24 @@
 pragma solidity 0.8.30;
 
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
-import {Trade, FillTerms} from "src/types/HarborTypes.sol";
+import {Trade, FillTerms, RouteConfig} from "src/types/HarborTypes.sol";
+import {IHarborPolicyReceiver} from "src/interfaces/IHarborPolicyReceiver.sol";
+import {IHarborValuation} from "src/interfaces/IHarborValuation.sol";
 
 /// @title IHarborBook
 /// @notice Vault-facing authority and public-valuation boundary.
 interface IHarborBook {
+  function RECEIVER() external view returns (IHarborPolicyReceiver);
+  function VALUATION() external view returns (IHarborValuation);
+  function MAX_MARK_AGE() external view returns (uint256);
+  function route(uint256 id) external view returns (RouteConfig memory);
   function AQUA() external view returns (address);
   function ROUTER() external view returns (address);
   function hasManagedPositions() external view returns (bool);
+  function redemptionTransfer(bytes32 context)
+    external
+    view
+    returns (address base, address adapter, uint256 amount, uint256 managed);
   function beginTrade(bytes32 tradeHash) external;
   function finishTrade(bytes32 fillDigest) external;
   function validate(Trade calldata trade, FillTerms calldata terms, bytes calldata signature)

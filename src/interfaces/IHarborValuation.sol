@@ -5,6 +5,11 @@ pragma solidity 0.8.30;
 /// @notice Public observation provider, fixed at deployment and independent of quotes.
 /// @dev Implementations must prove provenance, issuer conversion and executable marks.
 interface IHarborValuation {
+  /// @notice Public value of a tracked residual right; never a spendable balance.
+  function claim(address adapter, uint256 id, uint256 remaining)
+    external
+    view
+    returns (uint256 mark, uint256 observedAt, uint256 policyVersion, bool valid);
   /// @notice Values the exact non-rebasing token quantity in WETH wei.
   /// @return entitlement Verified issuer conversion, not a cash guarantee.
   /// @return mark Public-policy LP inventory mark for these units.

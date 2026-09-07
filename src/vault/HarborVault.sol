@@ -35,6 +35,7 @@ contract HarborVault is ERC4626 {
   bytes32 private transient _context;
   bool private transient _shareMutation;
   Operation private transient _operation;
+  bool private transient _redemptionTransferred;
   uint256 private transient _cashAtBegin;
 
   error Unauthorized();
@@ -113,6 +114,37 @@ contract HarborVault is ERC4626 {
     _context = 0;
     _operation = Operation.NONE;
     _cashAtBegin = 0;
+    _redemptionTransferred = false;
+  }
+
+  /// @notice Exact approved inventory handoff; no general Book allowance exists.
+  function transferForRedemption(bytes32 context) external {
+    if (msg.sender != address(BOOK)) revert Unauthorized();
+    if (_context != context || _operation != Operation.REDEMPTION || _redemptionTransferred) revert InvalidContext();
+    (address base, address adapter, uint256 amount, uint256 managed) = BOOK.redemptionTransfer(context);
+    uint256 beforeVault = SafeTransfer.balanceOf(base, address(this));
+    uint256 beforeAdapter = SafeTransfer.balanceOf(base, adapter);
+    if (amount == 0 || amount > managed || beforeVault < managed) revert InvalidAmount();
+    _redemptionTransferred = true;
+    SafeTransfer.safeTransfer(base, adapter, amount);
+    if (
+      SafeTransfer.balanceOf(base, address(this)) != beforeVault - amount
+        || SafeTransfer.balanceOf(base, adapter) != beforeAdapter + amount
+    ) revert AssetDeltaMismatch();
+  }
+
+  /// @notice Record verified issuer cash without requiring a functioning mark service.
+  function settleIssuer(bytes32 context, uint256 cash) external {
+    if (msg.sender != address(BOOK)) revert Unauthorized();
+    if (
+      _context != context
+        || (_operation != Operation.RECOVERY
+          && !(_operation == Operation.REDEMPTION && _redemptionTransferred && cash == 0))
+    ) revert InvalidContext();
+    if (SafeTransfer.balanceOf(WETH, address(this)) != _cashAtBegin + cash) revert AssetDeltaMismatch();
+    if (cash != 0) _state.receiveCash(cash);
+    else _state.invalidate();
+    _operation = Operation.NONE;
   }
 
   /// @notice Commit only the verified WETH leg of a fully paid trade.

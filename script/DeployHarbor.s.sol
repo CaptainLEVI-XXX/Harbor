@@ -34,7 +34,8 @@ contract DeployHarbor is Script {
       address(book) != expectedBook || address(vault) != config.vault || address(executor) != config.executor
         || address(book.VAULT()) != address(vault) || address(book.EXECUTOR()) != address(executor)
         || address(vault.BOOK()) != address(book) || address(executor.BOOK()) != address(book)
-        || executor.VAULT() != address(vault)
+        || executor.VAULT() != address(vault) || address(book).code.length > 24_576
+        || address(vault).code.length > 24_576 || address(executor).code.length > 24_576
     ) revert DeploymentMismatch();
   }
 }

@@ -26,6 +26,10 @@ contract MockTradingValuation {
     valid = v;
   }
 
+  function claim(address, uint256, uint256 remaining) external view returns (uint256, uint256, uint256, bool) {
+    return (remaining, observedAt, 1, valid);
+  }
+
   function inventory(address base, uint256 shares)
     external
     view
@@ -65,8 +69,8 @@ abstract contract TradingFixture is Test {
   function setUp() public virtual {
     vm.warp(1000);
     weth = _deployWeth();
-    bases[0] = new TokenMock("Synthetic route A", "BASEA");
-    bases[1] = new TokenMock("Synthetic route B", "BASEB");
+    bases[0] = _deployBase(0);
+    bases[1] = _deployBase(1);
     aqua = new Aqua();
     router = new AquaSwapVMRouter(address(aqua), address(weth), address(this), "Harbor", "1");
     valuation = new MockTradingValuation(1000);
@@ -84,6 +88,7 @@ abstract contract TradingFixture is Test {
     c.signer = vm.addr(QUOTE_TEST_KEY);
     c.governor = address(this);
     c.guardian = address(this);
+    c.keeper = address(this);
     c.receiver = address(policy);
     c.valuation = address(valuation);
     c.feeRecipient = feeRecipient;
@@ -96,7 +101,7 @@ abstract contract TradingFixture is Test {
     RouteConfig[] memory routes = new RouteConfig[](2);
     for (uint256 i; i < 2; ++i) {
       routes[i] = RouteConfig(
-        address(bases[i]), address(uint160(100 + i)), 0.99e18, 1.01e18, 0, 0, 1000 ether, 1000 ether, 10 ether
+        address(bases[i]), _routeAdapter(i, nonce), 0.99e18, 1.01e18, 0, 0, 1000 ether, 1000 ether, 10 ether, 100 ether
       );
     }
     book = new HarborBook(c, routes);
@@ -105,6 +110,7 @@ abstract contract TradingFixture is Test {
     assertEq(address(book), expectedBook);
     assertEq(address(vault), expectedVault);
     assertEq(address(executor), expectedExecutor);
+    _afterDeploy();
     vault.checkpointValuation();
     weth.mint(alice, 10 ether);
     weth.mint(bob, 10 ether);
@@ -151,7 +157,7 @@ abstract contract TradingFixture is Test {
     FillAmounts memory a = Amounts.normalize(t, input, output, 10);
     order = book.currentOrder(route);
     f.vault = address(vault);
-    f.adapter = address(uint160(100 + route));
+    f.adapter = book.route(route).adapter;
     f.feeRecipient = feeRecipient;
     f.strategyVersion = book.strategyVersion(route);
     f.adapterVersion = 1;
@@ -175,7 +181,7 @@ abstract contract TradingFixture is Test {
   }
 
   function _sign(Trade memory t, FillTerms memory f) internal returns (bytes memory signature) {
-    bytes32 digest = book.fillDigest(t, f);
+    bytes32 digest = executor.fillDigest(t, f);
     (uint8 v, bytes32 r, bytes32 s) = vm.sign(QUOTE_TEST_KEY, digest);
     policy.approve(digest, true);
     return abi.encodePacked(r, s, v);
@@ -192,4 +198,13 @@ abstract contract TradingFixture is Test {
   function _deployWeth() internal virtual returns (TokenMock) {
     return new TokenMock("Synthetic WETH", "WETH");
   }
+
+  function _deployBase(uint256 i) internal virtual returns (TokenMock) {
+    return new TokenMock(i == 0 ? "Synthetic route A" : "Synthetic route B", i == 0 ? "BASEA" : "BASEB");
+  }
+
+  function _routeAdapter(uint256 i, uint64) internal virtual returns (address) {
+    return address(uint160(100 + i));
+  }
+  function _afterDeploy() internal virtual {}
 }

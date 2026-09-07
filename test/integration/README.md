@@ -45,3 +45,21 @@ Signer changes and resumption require the configured governance delay; neither
 operation can sweep tokens, replace an adapter, increase a cap or price an LP exit.
 Test settings (including 10 bps fees and 60-second freshness) are synthetic,
 not calibrated production recommendations.
+## Issuer settlement
+
+`IssuerRecovery.t.sol` connects the real Harbor Book, Vault and LidoAdapter to a
+synthetic issuer queue. It covers purchases becoming non-cash claims, basis
+conservation, fixed-vault receipts, queued LP funding, losses, keeper revocation
+and recovery during a valuation outage. Synthetic finalization is not mainnet
+finalization evidence.
+
+`HarborExecutor.fillDigest` is the canonical digest view. The immutable Executor
+also provides read-only normalization, observation, price, allocation and
+signature checks. Book calls those checks and separately enforces immutable
+mandates, replay, inventory, shared cash/exposure and policy approval. Calling a
+read-only verifier directly grants no settlement authority.
+
+This division keeps Book within EIP-170 without a larger code-size limit, proxy,
+delegatecall module, or separately linked state library. `Deployment.t.sol`
+explicitly checks each deployed runtime against 24,576 bytes; Solidity test
+deployment alone is insufficient evidence of deployability.

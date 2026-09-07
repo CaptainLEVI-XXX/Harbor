@@ -67,11 +67,11 @@ contract FourModeTradingTest is TradingFixture {
   function test_SignerAndPolicyAreIndependentlyRequired() public {
     (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
       _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
-    policy.approve(book.fillDigest(t, f), false);
+    policy.approve(executor.fillDigest(t, f), false);
     vm.expectRevert(HarborBook.PolicyNotApproved.selector);
     vm.prank(trader);
     executor.execute(t, f, sig, order);
-    policy.approve(book.fillDigest(t, f), true);
+    policy.approve(executor.fillDigest(t, f), true);
     sig[0] = bytes1(uint8(sig[0]) ^ 1);
     vm.expectRevert(HarborBook.InvalidSignature.selector);
     vm.prank(trader);

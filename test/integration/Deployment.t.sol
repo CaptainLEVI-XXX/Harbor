@@ -11,6 +11,13 @@ import {TradingFixture} from "test/helpers/TradingFixture.sol";
 /// @title DeploymentTest
 /// @notice Scripted CREATE ordering and immutable cross-contract bindings.
 contract DeploymentTest is TradingFixture {
+  function test_DeployedCodeRespectsEthereumSizeLimit() public view {
+    // Solidity test deployments may bypass EIP-170; never infer deployability from new alone.
+    assertLe(address(book).code.length, 24_576);
+    assertLe(address(vault).code.length, 24_576);
+    assertLe(address(executor).code.length, 24_576);
+  }
+
   function test_ScriptBindsAllContractsWithoutInitialization() public {
     vm.chainId(31337);
     DeployHarbor deployment = new DeployHarbor();

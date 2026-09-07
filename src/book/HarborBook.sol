@@ -2,10 +2,7 @@
 pragma solidity 0.8.30;
 
 import {SafeTransferLib as SafeTransfer} from "solady/utils/SafeTransferLib.sol";
-import {SignatureCheckerLib} from "solady/utils/SignatureCheckerLib.sol";
 import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IAqua} from "@1inch/aqua/src/interfaces/IAqua.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {IMakerHooks} from "@1inch/swap-vm/src/interfaces/IMakerHooks.sol";
 import {IExtruction} from "@1inch/swap-vm/src/instructions/Extruction.sol";
@@ -14,14 +11,16 @@ import {SwapVM} from "@1inch/swap-vm/src/SwapVM.sol";
 import {IHarborBook} from "src/interfaces/IHarborBook.sol";
 import {IHarborValuation} from "src/interfaces/IHarborValuation.sol";
 import {IHarborPolicyReceiver} from "src/interfaces/IHarborPolicyReceiver.sol";
+import {IHarborAdapter} from "src/interfaces/IHarborAdapter.sol";
+import {ClaimAccounting} from "src/libraries/ClaimAccounting.sol";
+import {RedemptionAccounting} from "src/libraries/RedemptionAccounting.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {HarborExecutor} from "src/execution/HarborExecutor.sol";
 import {BookAccounting as Accounting} from "src/libraries/BookAccounting.sol";
 import {QuoteHash} from "src/libraries/QuoteHash.sol";
-import {QuoteValidation} from "src/libraries/QuoteValidation.sol";
 import {HarborProgram} from "src/swapvm/HarborProgram.sol";
 import {HarborExtruction} from "src/swapvm/HarborExtruction.sol";
-import {Trade, FillTerms, RouteConfig, Side, AmountMode, Operation} from "src/types/HarborTypes.sol";
+import {Trade, FillTerms, RouteConfig, Side, AmountMode, Operation, RedeemIntent} from "src/types/HarborTypes.sol";
 
 /// @title HarborBook
 /// @notice One vault's immutable route mandate and authenticated four-mode settlement.
@@ -29,6 +28,7 @@ import {Trade, FillTerms, RouteConfig, Side, AmountMode, Operation} from "src/ty
 /// permits are required; neither the signer nor receiver may choose NAV or custody.
 contract HarborBook is IHarborBook, IExtruction, IMakerHooks {
   using Accounting for Accounting.State;
+  using RedemptionAccounting for RedemptionAccounting.State;
 
   struct Config {
     address vault;
@@ -39,6 +39,7 @@ contract HarborBook is IHarborBook, IExtruction, IMakerHooks {
     address signer;
     address governor;
     address guardian;
+    address keeper;
     address receiver;
     address valuation;
     address feeRecipient;
@@ -55,6 +56,7 @@ contract HarborBook is IHarborBook, IExtruction, IMakerHooks {
   address public immutable ROUTER;
   address public immutable GOVERNOR;
   address public immutable GUARDIAN;
+  address public immutable KEEPER;
   IHarborPolicyReceiver public immutable RECEIVER;
   IHarborValuation public immutable VALUATION;
   address public immutable FEE_RECIPIENT;
@@ -74,6 +76,8 @@ contract HarborBook is IHarborBook, IExtruction, IMakerHooks {
   uint256 public signerReadyAt;
   uint256 public resumeReadyAt;
   Accounting.State private _state;
+  RedemptionAccounting.State private _redemptions;
+  mapping(bytes32 => uint256) private _protocolIds;
   RouteConfig[] private _routes;
   mapping(uint256 => uint256) public strategyVersion;
   mapping(uint256 => bytes32) public strategyHash;
@@ -118,6 +122,16 @@ contract HarborBook is IHarborBook, IExtruction, IMakerHooks {
   event SignerChanged(address indexed signer, uint256 epoch);
   event ResumeScheduled(uint256 readyAt);
   event TradingResumed(uint256 epoch);
+  event RedemptionRequested(
+    bytes32 indexed intent,
+    uint256 indexed route,
+    uint256 indexed id,
+    uint256 shares,
+    uint256 basis,
+    uint256 entitlement
+  );
+  event RedemptionRecovered(uint256 indexed route, uint256 indexed id, uint256 cash, uint256 remaining);
+  event KeeperRevoked(uint256 epoch);
 
   /// @notice Bind deterministic deployment addresses without mutable initialization.
   /// @dev Vault/Executor may be deployed next by the same scripted deployer. Their
@@ -131,7 +145,7 @@ contract HarborBook is IHarborBook, IExtruction, IMakerHooks {
         || c.receiver.code.length == 0 || c.valuation.code.length == 0 || c.feeRecipient == address(0)
         || c.feeRecipient == address(this) || c.feeRecipient == c.router || c.feeRecipient == c.aqua || c.feeBps > 100
         || c.maxQuoteAge == 0 || routes.length == 0 || routes.length > 2 || c.governanceDelay < 1 days
-        || c.governanceDelay > 30 days
+        || c.governanceDelay > 30 days || c.keeper == address(0)
     ) revert InvalidConfiguration();
     if (address(SwapVM(payable(c.router)).AQUA()) != c.aqua || address(SwapVM(payable(c.router)).WETH()) != c.weth) {
       revert InvalidConfiguration();
@@ -141,6 +155,7 @@ contract HarborBook is IHarborBook, IExtruction, IMakerHooks {
     ROUTER = c.router;
     GOVERNOR = c.governor;
     GUARDIAN = c.guardian;
+    KEEPER = c.keeper;
     RECEIVER = IHarborPolicyReceiver(c.receiver);
     VALUATION = IHarborValuation(c.valuation);
     quoteSigner = c.signer;
@@ -156,7 +171,7 @@ contract HarborBook is IHarborBook, IExtruction, IMakerHooks {
       if (
         r.base.code.length == 0 || r.base == c.weth || r.adapter == address(0) || r.bid == 0 || r.bid > 1e18
           || r.ask < r.bid || r.ask > 2e18 || r.maxExposure == 0 || r.maxExposure > c.depositCap || r.maxPurchases == 0
-          || r.lossBudget == 0
+          || r.lossBudget == 0 || r.maxDailyRedemption == 0
       ) revert InvalidConfiguration();
       if (i != 0 && (routes[0].base == r.base || routes[0].adapter == r.adapter)) revert InvalidConfiguration();
       _routes.push(r);
@@ -178,6 +193,98 @@ contract HarborBook is IHarborBook, IExtruction, IMakerHooks {
     return _state.version;
   }
 
+  function redemptionEpoch() external view returns (uint256) {
+    return _redemptions.epoch;
+  }
+
+  function usedRedemptionNonce(uint256 epoch, uint256 nonce) external view returns (bool) {
+    return _redemptions.usedNonce[epoch][nonce];
+  }
+
+  function getClaim(address adapter, uint256 id) external view returns (ClaimAccounting.Claim memory) {
+    return _state.claims.claims[ClaimAccounting.key(adapter, id)];
+  }
+
+  /// @notice Irreversibly revoke new keeper requests; existing recovery stays open.
+  function revokeKeeper() external {
+    if (msg.sender != GOVERNOR && msg.sender != GUARDIAN) revert Unauthorized();
+    if (_operation != Operation.NONE) revert Busy();
+    _redemptions.revoked = true;
+    emit KeeperRevoked(++_redemptions.epoch);
+  }
+
+  function requestRedemption(RedeemIntent calldata intent, uint256[] calldata amounts)
+    external
+    returns (IHarborAdapter.Request[] memory requests)
+  {
+    if (msg.sender != KEEPER || stopped) revert Unauthorized();
+    RouteConfig storage r = _routes[intent.route];
+    bytes32 context =
+      _redemptions.consume(intent, amounts, address(VAULT), r.adapter, _state.positions[intent.route].version);
+    if (intent.shares > _state.positions[intent.route].shares || _state.claims.active.length + amounts.length > 64) {
+      revert CapacityExceeded();
+    }
+    _open(context, Operation.REDEMPTION);
+    _route = intent.route;
+    _cash = intent.shares;
+    IHarborAdapter adapter = IHarborAdapter(r.adapter);
+    if (
+      adapter.BOOK() != address(this) || adapter.VAULT() != address(VAULT) || adapter.BASE() != r.base
+        || adapter.WETH() != WETH
+    ) revert InvalidConfiguration();
+    uint256 previousBalance = SafeTransfer.balanceOf(r.base, r.adapter);
+    VAULT.transferForRedemption(context);
+    requests = adapter.request(amounts, previousBalance);
+    if (requests.length != amounts.length) revert SettlementMismatch();
+    uint256 underlying;
+    for (uint256 i; i < requests.length; ++i) {
+      IHarborAdapter.Request memory request = requests[i];
+      if (request.shares != amounts[i] || request.id == 0) revert SettlementMismatch();
+      bytes32 key = ClaimAccounting.key(r.adapter, request.id);
+      uint256 basis = _state.request(intent.route, request.shares, key, request.entitlement);
+      _protocolIds[key] = request.id;
+      underlying += request.entitlement;
+      emit RedemptionRequested(context, intent.route, request.id, request.shares, basis, request.entitlement);
+    }
+    _redemptions.record(intent.route, underlying, intent.minUnderlying, r.maxDailyRedemption);
+    VAULT.settleIssuer(context, 0);
+    _release();
+  }
+
+  function redemptionTransfer(bytes32 context)
+    external
+    view
+    returns (address base, address adapter, uint256 amount, uint256 managed)
+  {
+    if (msg.sender != address(VAULT) || _operation != Operation.REDEMPTION || context != _context) {
+      revert Unauthorized();
+    }
+    return (_routes[_route].base, _routes[_route].adapter, _cash, _state.positions[_route].shares);
+  }
+
+  /// @notice Permissionless recovery independent of signer, keeper, CRE and NAV.
+  function claimRedemptions(uint256 routeId, uint256[] calldata ids, uint256[] calldata hints) external {
+    if (ids.length == 0 || ids.length > 8 || ids.length != hints.length) revert InvalidConfiguration();
+    address adapter = _routes[routeId].adapter;
+    _open(keccak256(abi.encode(msg.sender, routeId, ids, hints)), Operation.RECOVERY);
+    uint256 total;
+    for (uint256 i; i < ids.length; ++i) {
+      // Strict ordering rejects duplicates before any issuer interaction for that ID.
+      if (i != 0 && ids[i] <= ids[i - 1]) revert InvalidConfiguration();
+      bytes32 key = ClaimAccounting.key(adapter, ids[i]);
+      ClaimAccounting.Claim storage c = _state.claims.claims[key];
+      if (!c.exists || c.closed || c.route != routeId) revert InvalidConfiguration();
+      uint256 beforeBalance = SafeTransfer.balanceOf(WETH, address(VAULT));
+      (uint256 cash, uint256 remaining) = IHarborAdapter(adapter).claim(ids[i], hints[i]);
+      if (SafeTransfer.balanceOf(WETH, address(VAULT)) != beforeBalance + cash) revert SettlementMismatch();
+      _state.recover(key, cash, remaining);
+      total += cash;
+      emit RedemptionRecovered(routeId, ids[i], cash, remaining);
+    }
+    VAULT.settleIssuer(_context, total);
+    _release();
+  }
+
   function hasManagedPositions() external view returns (bool) {
     if (_state.claims.active.length != 0) return true;
     for (uint256 i; i < _routes.length; ++i) {
@@ -188,14 +295,6 @@ contract HarborBook is IHarborBook, IExtruction, IMakerHooks {
 
   function currentOrder(uint256 id) public view returns (ISwapVM.Order memory) {
     return _order(id, strategyVersion[id]);
-  }
-
-  function fillDigest(Trade calldata trade, FillTerms calldata terms) public view returns (bytes32) {
-    return QuoteHash.digest(
-      QuoteHash.Domain(block.chainid, address(this), address(VAULT), address(EXECUTOR), ROUTER, address(RECEIVER)),
-      trade,
-      terms
-    );
   }
 
   function beginVaultOperation(bytes32 context) external {
@@ -300,10 +399,15 @@ contract HarborBook is IHarborBook, IExtruction, IMakerHooks {
       if (i == 0) policyVersion = policy;
       valid = valid && ok && policy == policyVersion && mark <= entitlement;
     }
-    // No issuer requests are exposed until adapter integration provides verified
-    // residual-right valuation. Do not silently value an unknown live right at zero.
-    if (_state.claims.active.length != 0) valid = false;
-    claims = 0;
+    for (uint256 i; i < _state.claims.active.length; ++i) {
+      bytes32 key = _state.claims.active[i];
+      ClaimAccounting.Claim storage c = _state.claims.claims[key];
+      (uint256 mark, uint256 time, uint256 policy, bool ok) =
+        VALUATION.claim(_routes[c.route].adapter, _protocolIds[key], c.remaining);
+      claims += mark;
+      if (time < observedAt) observedAt = time;
+      valid = valid && ok && policy == policyVersion && mark <= c.remaining;
+    }
   }
 
   function validate(Trade calldata trade, FillTerms calldata terms, bytes calldata signature)
@@ -442,17 +546,8 @@ contract HarborBook is IHarborBook, IExtruction, IMakerHooks {
     ) revert InvalidQuote();
     bool buy = t.side == Side.BUY_BASE;
     if (t.tokenIn != (buy ? r.base : WETH) || t.tokenOut != (buy ? WETH : r.base)) revert InvalidQuote();
-    QuoteValidation.amounts(t, f);
     uint256 quantity = buy ? f.routerIn : f.routerOut;
     uint256 cash = buy ? f.routerOut : f.routerIn;
-    (uint256 entitlement,, uint256 time, uint256 policy, bytes32 observation, bool valid) =
-      VALUATION.inventory(r.base, quantity);
-    (uint256 vaultPolicy, uint256 markedVersion, bool fresh) = VAULT.valuationIdentity();
-    if (
-      !valid || !fresh || time != f.observedAt || policy != vaultPolicy || markedVersion != f.valuationVersion
-        || block.timestamp - time > MAX_MARK_AGE || observation != f.observationHash
-    ) revert InvalidQuote();
-    QuoteValidation.price(t.side, cash, entitlement, buy ? r.bid : r.ask, buy ? r.buyBuffer : r.sellBuffer);
     if (buy) {
       uint256 totalExposure;
       for (uint256 i; i < _routes.length; ++i) {
@@ -470,14 +565,7 @@ contract HarborBook is IHarborBook, IExtruction, IMakerHooks {
         revert CapacityExceeded();
       }
     }
-    address spent = buy ? WETH : r.base;
-    uint256 debit = buy ? cash : quantity;
-    (uint256 allocation,) = IAqua(AQUA).safeBalances(address(VAULT), ROUTER, f.orderHash, spent, buy ? r.base : WETH);
-    if (debit > allocation || debit > IERC20(spent).allowance(address(VAULT), AQUA)) revert CapacityExceeded();
-    digest = QuoteHash.digest(
-      QuoteHash.Domain(block.chainid, address(this), address(VAULT), address(EXECUTOR), ROUTER, address(RECEIVER)), t, f
-    );
-    if (!SignatureCheckerLib.isValidSignatureNow(quoteSigner, digest, signature)) revert InvalidSignature();
+    digest = EXECUTOR.validateQuote(t, f, signature, quoteSigner);
     if (!RECEIVER.isApproved(digest)) revert PolicyNotApproved();
   }
 

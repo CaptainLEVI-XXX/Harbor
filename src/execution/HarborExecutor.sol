@@ -2,11 +2,15 @@
 pragma solidity 0.8.30;
 
 import {SafeTransferLib as SafeTransfer} from "solady/utils/SafeTransferLib.sol";
+import {SignatureCheckerLib} from "solady/utils/SignatureCheckerLib.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IAqua} from "@1inch/aqua/src/interfaces/IAqua.sol";
+import {HarborVault} from "src/vault/HarborVault.sol";
 import {ReentrancyGuardTransient} from "solady/utils/ReentrancyGuardTransient.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {TakerTraitsLib} from "@1inch/swap-vm/src/libs/TakerTraits.sol";
 import {IHarborBook} from "src/interfaces/IHarborBook.sol";
-import {Trade, FillTerms, FillAmounts, AmountMode} from "src/types/HarborTypes.sol";
+import {Trade, FillTerms, FillAmounts, AmountMode, Side, RouteConfig} from "src/types/HarborTypes.sol";
 import {QuoteHash} from "src/libraries/QuoteHash.sol";
 import {QuoteValidation} from "src/libraries/QuoteValidation.sol";
 
@@ -18,10 +22,14 @@ contract HarborExecutor is ReentrancyGuardTransient {
   address public immutable VAULT;
   ISwapVM public immutable ROUTER;
   address public immutable WETH;
+  address public immutable RECEIVER;
 
   error UnauthorizedTrader();
   error InvalidReceiver();
   error SettlementMismatch();
+  error InvalidQuote();
+  error InvalidSignature();
+  error CapacityExceeded();
 
   event TradeExecuted(
     bytes32 indexed fillDigest,
@@ -38,6 +46,47 @@ contract HarborExecutor is ReentrancyGuardTransient {
     VAULT = vault;
     ROUTER = ISwapVM(router);
     WETH = weth;
+    RECEIVER = address(BOOK.RECEIVER());
+  }
+
+  /// @notice Read-only quote verification used by Book before authorization.
+  /// @dev Book still enforces mandate identity, replay, inventory and portfolio budgets.
+  /// No result from this method alone authorizes treasury movement.
+  function validateQuote(Trade calldata t, FillTerms calldata f, bytes calldata signature, address signer)
+    external
+    view
+    returns (bytes32 digest)
+  {
+    QuoteValidation.amounts(t, f);
+    bool buy = t.side == Side.BUY_BASE;
+    uint256 quantity = buy ? f.routerIn : f.routerOut;
+    uint256 cash = buy ? f.routerOut : f.routerIn;
+    RouteConfig memory r = BOOK.route(t.route);
+    (uint256 entitlement,, uint256 time, uint256 policy, bytes32 observation, bool valid) =
+      BOOK.VALUATION().inventory(r.base, quantity);
+    (uint256 vaultPolicy, uint256 markedVersion, bool fresh) = HarborVault(VAULT).valuationIdentity();
+    if (
+      !valid || !fresh || time != f.observedAt || policy != vaultPolicy || markedVersion != f.valuationVersion
+        || time > block.timestamp || block.timestamp - time > BOOK.MAX_MARK_AGE() || observation != f.observationHash
+    ) revert InvalidQuote();
+    QuoteValidation.price(t.side, cash, entitlement, buy ? r.bid : r.ask, buy ? r.buyBuffer : r.sellBuffer);
+    address spent = buy ? WETH : r.base;
+    uint256 debit = buy ? cash : quantity;
+    address aqua = BOOK.AQUA();
+    (uint256 allocation,) = IAqua(aqua).safeBalances(VAULT, address(ROUTER), f.orderHash, spent, buy ? r.base : WETH);
+    if (debit > allocation || debit > IERC20(spent).allowance(VAULT, aqua)) revert CapacityExceeded();
+    digest = _fillDigest(t, f);
+    if (!SignatureCheckerLib.isValidSignatureNow(signer, digest, signature)) revert InvalidSignature();
+  }
+
+  function fillDigest(Trade calldata trade, FillTerms calldata terms) external view returns (bytes32) {
+    return _fillDigest(trade, terms);
+  }
+
+  function _fillDigest(Trade calldata trade, FillTerms calldata terms) private view returns (bytes32) {
+    return QuoteHash.digest(
+      QuoteHash.Domain(block.chainid, address(BOOK), VAULT, address(this), address(ROUTER), RECEIVER), trade, terms
+    );
   }
 
   function execute(

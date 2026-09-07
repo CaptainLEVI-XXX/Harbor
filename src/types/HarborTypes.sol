@@ -33,6 +33,25 @@ struct RouteConfig {
   uint256 maxExposure;
   uint256 maxPurchases;
   uint256 lossBudget;
+  uint256 maxDailyRedemption; // Requested underlying ETH wei per UTC day.
+}
+
+/// @notice Keeper mandate bound to one exact inventory transition, not a quote.
+struct RedeemIntent {
+  uint256 chainId;
+  address vault;
+  address book;
+  uint256 route;
+  address adapter;
+  uint256 adapterVersion;
+  uint256 shares;
+  uint256 minUnderlying;
+  uint256 maxIds;
+  uint256 positionVersion;
+  uint256 epoch;
+  uint256 nonce;
+  uint256 deadline;
+  bytes32 splitsHash;
 }
 
 /// @notice One indivisible trader instruction; amounts use raw token units.
