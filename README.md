@@ -43,9 +43,10 @@ Local tests exercise real token-transfer calls through official Aqua/SwapVM,
 using synthetic tokens, public marks, permit approval and issuer finalization.
 Two [pinned Lido fork checks](test/fork/README.md) also cover a new real request
 and a separate mature historical recovery; their distinct setup is documented.
-The [receiver tests](test/chainlink/README.md) use simulated forwarder delivery;
-the CRE workflow/live delivery, production valuation calibration,
-stateful portfolio tests and independent review remain
+The [receiver tests](test/chainlink/README.md) use simulated forwarder delivery.
+[Stateful campaigns](test/invariant/README.md) compare operations against independent
+accounting ledgers. The CRE workflow/live delivery, production valuation calibration
+and independent review remain
 release requirements. The deployment script rejects non-local chains.
 
 The Foundry Counter examples are development-only and have no Harbor authority.

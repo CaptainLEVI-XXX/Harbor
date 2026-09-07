@@ -21,7 +21,7 @@ seed = "0x484152424f52"
 [profile.default.invariant]
 runs = 64
 depth = 32
-fail_on_revert = false
+fail_on_revert = true
 
 [profile.unit]
 no_match_path = "test/fork/**"
@@ -35,7 +35,7 @@ match_path = "test/invariant/**/*.t.sol"
 [profile.invariant.invariant]
 runs = 256
 depth = 64
-fail_on_revert = false
+fail_on_revert = true
 
 [profile.fork]
 match_path = "test/fork/**/*.t.sol"

@@ -38,3 +38,8 @@ jobs:
 
       - name: Run Forge tests
         run: forge test -vvv
+
+      - name: Run stateful accounting campaigns
+        env:
+          FOUNDRY_PROFILE: invariant
+        run: forge test -vvv
