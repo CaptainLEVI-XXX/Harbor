@@ -12,6 +12,9 @@ via_ir = true
 isolate = false
 # Required by opcode-trace assertions; successful tests remain concise.
 verbosity = 3
+# Ordinary tests verify committed measurements rather than silently replacing them.
+gas_snapshot_check = true
+gas_snapshot_emit = false
 no_match_path = "test/fork/**"
 
 [profile.default.fuzz]

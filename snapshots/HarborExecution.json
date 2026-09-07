@@ -1,0 +1,14 @@
+{
+  "buy-exact-input-cold": "628377",
+  "buy-exact-input-preflight-warm": "536294",
+  "buy-exact-output-cold": "628485",
+  "checkpoint-sixty-four-claims-cold": "769967",
+  "deposit-cold": "91993",
+  "fund-eight-tickets-cold": "262301",
+  "funded-lp-claim-cold": "91902",
+  "recover-eight-issuer-rights-cold": "1231064",
+  "request-eight-issuer-rights-cold": "2456999",
+  "sell-exact-input-cold": "459499",
+  "sell-exact-output-cold": "460411",
+  "strategy-refresh-cold": "182731"
+}
