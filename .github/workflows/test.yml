@@ -10,7 +10,7 @@ on:
 jobs:
   check:
     name: Foundry project
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -20,9 +20,23 @@ jobs:
           submodules: recursive
 
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1
         with:
           version: v1.8.1
+
+      - name: Install Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Bootstrap contract dependencies
+        run: bash tools/bootstrap-deps.sh
+
+      - name: Check test discovery
+        run: |
+          node --test tools/check-test-discovery.test.mjs
+          node tools/check-test-discovery.mjs default
+          node tools/check-test-discovery.mjs unit
 
       - name: Show Forge version
         run: forge --version

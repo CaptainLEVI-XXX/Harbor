@@ -7,9 +7,37 @@ evm_version = "cancun"
 optimizer = true
 optimizer_runs = 700
 via_ir = true
+no_match_path = "test/fork/**"
+
+[profile.default.fuzz]
+runs = 256
+seed = "0x484152424f52"
+
+[profile.default.invariant]
+runs = 64
+depth = 32
+fail_on_revert = false
+
+[profile.unit]
+no_match_path = "test/fork/**"
 
 [profile.compatibility]
-match_path = "test/compatibility/*.t.sol"
+match_path = "test/compatibility/**/*.t.sol"
+
+[profile.invariant]
+match_path = "test/invariant/**/*.t.sol"
+
+[profile.invariant.invariant]
+runs = 256
+depth = 64
+fail_on_revert = false
+
+[profile.fork]
+match_path = "test/fork/**/*.t.sol"
+no_match_path = ""
+
+[profile.gas]
+match_path = "test/gas/**/*.t.sol"
 
 [fmt]
 tab_width = 2

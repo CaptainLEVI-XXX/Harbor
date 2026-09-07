@@ -14,20 +14,18 @@ acceptable.
 
 1. Fork the repository and create a branch from the latest `main`.
 2. Install Foundry. The development toolchain is Foundry v1.8.1.
-3. Initialize the pinned Git submodules and install JavaScript dependencies:
+3. Install Node 22 or a compatible newer release, then bootstrap dependencies:
 
 ```sh
-git submodule update --init --recursive
-npm ci --ignore-scripts
+bash tools/bootstrap-deps.sh
 ```
 
-The upstream Aqua and SwapVM sources are installed separately without Git
-submodules. Use these exact revisions with the checked-in remappings:
-
-```sh
-forge install --no-git aqua=1inch/aqua@9c5c42e5840e8741fba3597c48456c9510212b66
-forge install --no-git swap-vm=1inch/swap-vm@f09a41e689240adc645934f965c8061749397cd2
-```
+The bootstrap verifies tracked submodule revisions and checksummed official
+Aqua/SwapVM archives. Existing modified dependencies are not overwritten.
+Their revisions remain Aqua `9c5c42e5840e8741fba3597c48456c9510212b66`
+and SwapVM `f09a41e689240adc645934f965c8061749397cd2`.
+Solidity utility packages are isolated in `dependencies/`; installing them
+does not install or change a client application.
 
 Build, test, and check formatting:
 
@@ -35,11 +33,15 @@ Build, test, and check formatting:
 forge build --sizes
 forge test
 forge fmt --check
+node --test tools/check-test-discovery.test.mjs
+node tools/check-test-discovery.mjs default
 ```
 
 Run `forge fmt` on the files you changed before submitting. Avoid unrelated
 formatting churn. Use only profiles and test paths that exist in the checkout;
 an empty or filtered test run is not evidence that an integration works.
+Register new test files and required tests in `tools/test-suites.json`.
+Profiles without implemented, registered suites deliberately fail discovery.
 
 Fork tests must identify the network, block, deployed contracts, and required
 RPC configuration. Missing RPC access is a skipped check, not a passing test.
@@ -136,6 +138,17 @@ correct it in a reviewable change. This repository does not currently install
 local Git hooks; do not assume these message rules are mechanically enforced.
 
 ## Coding Conventions
+
+### Engineering references
+
+Use [3F Labs](https://github.com/3FLabs/grunt) as a reference for readable
+contract boundaries, domain libraries and differential tests, and
+[Solady](https://github.com/Vectorized/solady) for precise primitive semantics
+and measured optimization. Follow the practical discipline of
+[Andrej Karpathy's coding observations](https://x.com/karpathy/status/2015883857489522876):
+surface assumptions, keep changes surgical, and define verifiable outcomes.
+These are references, not mandates to reproduce inheritance trees, assembly,
+storage layouts or decorative comment styles. Dependency licenses still apply.
 
 ### Style and documentation
 
