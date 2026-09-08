@@ -5,12 +5,19 @@ pragma solidity 0.8.30;
 /// @notice Common observation and recovery boundary for one indivisible right.
 /// @dev Amounts use the recovery token's raw units, never receipt units or NAV.
 interface IHarborClaim {
-  enum Status { UNINITIALIZED, PENDING, FINALIZED, CASH_READY, CLOSED }
+  enum Status {
+    UNINITIALIZED,
+    PENDING,
+    FINALIZED,
+    CASH_READY,
+    CLOSED
+  }
 
   function FACTORY() external view returns (address);
   function ISSUER() external view returns (address);
   function WETH() external view returns (address);
   function REQUEST_ID() external view returns (uint256);
+  function CHAIN_ID() external view returns (uint256);
   function status() external view returns (Status);
   function entitlement() external view returns (uint256);
   function recovered() external view returns (uint256);
@@ -19,6 +26,12 @@ interface IHarborClaim {
   function recover(uint256 hint) external returns (uint256 cash);
   /// @notice Burn the caller's entire receipt and pay its recorded recovery.
   function redeem(address recipient) external returns (uint256 cash);
+}
+
+/// @notice Optional export boundary for an adapter's already accepted native right.
+interface IHarborClaimExporter {
+  function ISSUER() external view returns (address);
+  function exportClaim(uint256 id, address factory) external returns (address receipt);
 }
 
 /// @title IHarborClaimFactory

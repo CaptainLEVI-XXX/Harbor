@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {TokenMock} from "@1inch/solidity-utils/contracts/mocks/TokenMock.sol";
 import {ILidoWithdrawalQueue as Queue} from "src/interfaces/ILidoWithdrawalQueue.sol";
 import {LidoAdapter} from "src/adapters/LidoAdapter.sol";
+import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 contract MockWrappedEther is TokenMock {
   constructor() TokenMock("Synthetic WETH", "WETH") {}
@@ -34,6 +35,7 @@ contract MockLidoQueue is Queue {
   uint256 public fault;
   address public callback;
   bool public callbackSucceeded;
+  mapping(uint256 => address) public getApproved;
 
   constructor(address base) {
     WSTETH = base;
@@ -54,6 +56,23 @@ contract MockLidoQueue is Queue {
 
   function setOwner(uint256 id, address owner) external {
     _statuses[id].owner = owner;
+  }
+
+  function approve(address spender, uint256 id) external {
+    require(_statuses[id].owner == msg.sender);
+    getApproved[id] = spender;
+  }
+
+  function safeTransferFrom(address from, address to, uint256 id) external {
+    require(!_statuses[id].isClaimed && from == _statuses[id].owner && to != address(0));
+    require(msg.sender == from || getApproved[id] == msg.sender);
+    _statuses[id].owner = to;
+    delete getApproved[id];
+    if (to.code.length != 0) {
+      require(
+        IERC721Receiver(to).onERC721Received(msg.sender, from, id, "") == IERC721Receiver.onERC721Received.selector
+      );
+    }
   }
 
   function ownerOf(uint256 id) external view returns (address) {

@@ -10,7 +10,10 @@ import {LidoClaimFactory} from "src/claims/LidoClaimFactory.sol";
 
 contract WethMock is TokenMock {
   constructor() TokenMock("WETH", "WETH") {}
-  function deposit() external payable { _mint(msg.sender, msg.value); }
+
+  function deposit() external payable {
+    _mint(msg.sender, msg.value);
+  }
 }
 
 contract ClaimQueueMock is ERC721 {
@@ -20,21 +23,42 @@ contract ClaimQueueMock is ERC721 {
   uint256 public constant MAX_STETH_WITHDRAWAL_AMOUNT = 1000 ether;
   address public immutable WSTETH_TOKEN;
 
-  constructor(address base) ERC721("mock", "MOCK") { WSTETH_TOKEN = base; }
+  constructor(address base) ERC721("mock", "MOCK") {
+    WSTETH_TOKEN = base;
+  }
+
   function setRequest(uint256 id, address owner, uint256 amount) external {
     _mint(owner, id);
     _status[id] = Queue.WithdrawalRequestStatus(amount, amount, owner, block.timestamp, false, false);
   }
-  function finalize(uint256 id, uint256 payout) external { _status[id].isFinalized = true; _payout[id] = payout; }
-  function WSTETH() external view returns (address) { return WSTETH_TOKEN; }
-  function getWithdrawalStatus(uint256[] calldata ids) external view returns (Queue.WithdrawalRequestStatus[] memory out) {
-    out = new Queue.WithdrawalRequestStatus[](ids.length);
-    for (uint256 i; i < ids.length; ++i) out[i] = _status[ids[i]];
+
+  function finalize(uint256 id, uint256 payout) external {
+    _status[id].isFinalized = true;
+    _payout[id] = payout;
   }
+
+  function WSTETH() external view returns (address) {
+    return WSTETH_TOKEN;
+  }
+
+  function getWithdrawalStatus(uint256[] calldata ids)
+    external
+    view
+    returns (Queue.WithdrawalRequestStatus[] memory out)
+  {
+    out = new Queue.WithdrawalRequestStatus[](ids.length);
+    for (uint256 i; i < ids.length; ++i) {
+      out[i] = _status[ids[i]];
+    }
+  }
+
   function getClaimableEther(uint256[] calldata ids, uint256[] calldata) external view returns (uint256[] memory out) {
     out = new uint256[](ids.length);
-    for (uint256 i; i < ids.length; ++i) out[i] = _payout[ids[i]];
+    for (uint256 i; i < ids.length; ++i) {
+      out[i] = _payout[ids[i]];
+    }
   }
+
   function claimWithdrawals(uint256[] calldata ids, uint256[] calldata) external {
     for (uint256 i; i < ids.length; ++i) {
       require(ownerOf(ids[i]) == msg.sender && _status[ids[i]].isFinalized);
@@ -44,6 +68,7 @@ contract ClaimQueueMock is ERC721 {
       require(ok);
     }
   }
+
   function _update(address to, uint256 id, address auth) internal override returns (address previous) {
     previous = super._update(to, id, auth);
     if (to != address(0)) _status[id].owner = to;

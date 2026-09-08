@@ -16,15 +16,16 @@ contract LidoClaimReceipt is ERC20, ReentrancyGuardTransient, IERC721Receiver, I
   address public immutable FACTORY;
   address public immutable ISSUER;
   address public immutable WETH;
-  uint256 public immutable REQUEST_ID;
+  /// @notice Issuer identity written once by the factory before NFT custody begins.
+  uint256 public REQUEST_ID;
   uint256 public immutable CHAIN_ID;
-  address private immutable _importer;
+  address private _importer;
 
   /// @notice Requested ETH wei; an upper bound, not a recovery guarantee.
   uint256 public entitlement;
   /// @notice Attributable WETH wei held until the holder burns its receipt.
   uint256 public recovered;
-  Status private _state;
+  Status internal _state;
   bool private _acceptedNFT;
   bool private transient _receiving;
   uint256 private transient _received;
@@ -39,25 +40,45 @@ contract LidoClaimReceipt is ERC20, ReentrancyGuardTransient, IERC721Receiver, I
   event RecoveryCollected(uint256 indexed requestId, uint256 cash);
   event Redeemed(address indexed holder, address indexed recipient, uint256 cash);
 
-  constructor(address issuer, address weth, uint256 id, address importer) {
+  /// @notice Shared immutable logic for the deploying factory's fixed issuer and WETH.
+  /// @dev Factory creates non-upgradeable clones; each clone has its own receipt storage.
+  constructor(address issuer, address weth) {
+    if (issuer.code.length == 0 || weth.code.length == 0 || issuer == weth) {
+      revert InvalidCustody();
+    }
     FACTORY = msg.sender;
     ISSUER = issuer;
     WETH = weth;
-    REQUEST_ID = id;
     CHAIN_ID = block.chainid;
+  }
+
+  /// @notice Initialize a freshly created clone before the factory transfers the NFT.
+  /// @dev Only the immutable factory can call, once. This does not mint or accept custody.
+  function initialize(uint256 id, address importer) external {
+    if (msg.sender != FACTORY) revert Unauthorized();
+    if (REQUEST_ID != 0 || id == 0 || importer == address(0)) revert InvalidState();
+    REQUEST_ID = id;
     _importer = importer;
   }
 
-  function name() public pure override returns (string memory) { return "Harbor Lido Withdrawal"; }
-  function symbol() public pure override returns (string memory) { return "hLIDO-CLAIM"; }
-  function decimals() public pure override returns (uint8) { return 0; }
+  function name() public pure override returns (string memory) {
+    return "Harbor Lido Withdrawal";
+  }
+
+  function symbol() public pure override returns (string memory) {
+    return "hLIDO-CLAIM";
+  }
+
+  function decimals() public pure override returns (uint8) {
+    return 0;
+  }
 
   /// @notice Accept only the factory's exact authenticated NFT handoff.
-  function onERC721Received(address operator, address from, uint256 id, bytes calldata data)
-    external returns (bytes4)
-  {
-    if (msg.sender != ISSUER || operator != FACTORY || from != _importer || id != REQUEST_ID
-      || data.length != 0 || _acceptedNFT || _state != Status.UNINITIALIZED) revert InvalidCustody();
+  function onERC721Received(address operator, address from, uint256 id, bytes calldata data) external returns (bytes4) {
+    if (
+      msg.sender != ISSUER || operator != FACTORY || from != _importer || id != REQUEST_ID || data.length != 0
+        || _acceptedNFT || _state != Status.UNINITIALIZED
+    ) revert InvalidCustody();
     _acceptedNFT = true;
     return IERC721Receiver.onERC721Received.selector;
   }
@@ -139,10 +160,25 @@ contract LidoClaimReceipt is ERC20, ReentrancyGuardTransient, IERC721Receiver, I
     if (owner != address(this) || Queue(ISSUER).ownerOf(REQUEST_ID) != address(this)) revert InvalidCustody();
   }
 
-  /// @dev Do not let issuer callbacks move ownership while recovery is being measured.
-  function _beforeTokenTransfer(address, address, uint256) internal view override {
-    if (_receiving) revert InvalidState();
+  /// @dev Every external transfer is blocked throughout recovery and redemption.
+  /// Only the final redemption may burn; transferring to the escrow would strand rights.
+  function _beforeTokenTransfer(address from, address to, uint256) internal view override {
+    if (to == address(this)) revert InvalidRecipient();
+    if (to == address(0)) {
+      if (_state != Status.CLOSED) revert InvalidState();
+    } else if (from != address(0)) {
+      _requireIdleTransfer();
+    }
   }
 
-  function _useTransientReentrancyGuardOnlyOnMainnet() internal pure override returns (bool) { return false; }
+  function _requireIdleTransfer() private view nonReadReentrant {}
+
+  function _useTransientReentrancyGuardOnlyOnMainnet() internal pure override returns (bool) {
+    return false;
+  }
+
+  /// @dev Every spender, including Permit2, requires explicit holder approval.
+  function _givePermit2InfiniteAllowance() internal pure override returns (bool) {
+    return false;
+  }
 }
