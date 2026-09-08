@@ -1,0 +1,11 @@
+{
+  "annual_funding_rate": "0.08",
+  "operating_costs_weth": "0.0005",
+  "risk_buffer_weth": "0.005",
+  "capacity_charge_weth": "0.001",
+  "minimum_profit_weth": "0.002",
+  "scenarios": [
+    {"probability": "0.8", "recovery_weth": "1", "remaining_days": "7"},
+    {"probability": "0.2", "recovery_weth": "0.98", "remaining_days": "30"}
+  ]
+}
