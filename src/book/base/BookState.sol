@@ -4,6 +4,7 @@ pragma solidity 0.8.30;
 import {SwapVM} from "@1inch/swap-vm/src/SwapVM.sol";
 import {HarborSwapVMRouter} from "src/swapvm/HarborSwapVMRouter.sol";
 import {HarborExactFill} from "src/swapvm/instructions/HarborExactFill.sol";
+import {HarborClaimGuard} from "src/swapvm/instructions/HarborClaimGuard.sol";
 import {IHarborBook} from "src/interfaces/IHarborBook.sol";
 import {IHarborValuation} from "src/interfaces/IHarborValuation.sol";
 import {IHarborPolicyReceiver} from "src/interfaces/IHarborPolicyReceiver.sol";
@@ -12,11 +13,13 @@ import {HarborVault} from "src/vault/HarborVault.sol";
 import {HarborExecutor} from "src/execution/HarborExecutor.sol";
 import {BookAccounting as Accounting} from "src/libraries/BookAccounting.sol";
 import {RouteConfig, Operation} from "src/types/HarborTypes.sol";
+import {ClaimMarkets} from "src/libraries/ClaimMarkets.sol";
 
 /// @title BookState
 /// @notice Shared immutable mandate, persistent ledgers and transaction-local locks.
-/// @dev Every Book module inherits this one state owner. No delegatecall or manual slots.
-/// Typed persistent declaration order is retained; context lasts until explicit release.
+/// @dev Every Book module inherits this one state owner. Domain libraries use fixed
+/// compiler links and explicit storage references; no mutable dispatch or manual slots.
+/// Context lasts until explicit release. New deployments require fresh bindings.
 abstract contract BookState is IHarborBook {
   /*//////////////////////////////////////////////////////////////
                                 TYPES
@@ -43,7 +46,7 @@ abstract contract BookState is IHarborBook {
     address weth;
     /// @notice Official Aqua balance-management deployment.
     address aqua;
-    /// @notice Harbor router deployment with the exact-fill instruction.
+    /// @notice Harbor router deployment with exact-fill and claim-guard instructions.
     address router;
     /// @notice Initial quote signer; replacement is governance-delayed.
     address signer;
@@ -111,6 +114,8 @@ abstract contract BookState is IHarborBook {
   HarborVault public immutable VAULT;
   /// @dev Only caller permitted to open and finish a trade.
   HarborExecutor public immutable EXECUTOR;
+  /// @notice Number of original inventory routes; receipt history is never iterated.
+  uint256 public immutable INVENTORY_ROUTES;
 
   /*//////////////////////////////////////////////////////////////
                          PERSISTENT STATE
@@ -134,7 +139,7 @@ abstract contract BookState is IHarborBook {
   RedemptionAccounting.State internal _redemptions;
   /// @dev Issuer-native IDs indexed by the adapter-domain claim key.
   mapping(bytes32 => uint256) internal _protocolIds;
-  /// @dev Immutable approved token/adapter universe, bounded to two routes.
+  /// @dev One or two fixed inventory routes followed by individually admitted receipt routes.
   RouteConfig[] internal _routes;
   /// @dev Per-route publication version; each refresh requires a fresh Aqua hash.
   mapping(uint256 => uint256) public strategyVersion;
@@ -144,6 +149,10 @@ abstract contract BookState is IHarborBook {
   mapping(uint256 => mapping(uint256 => bool)) public usedQuoteNonce;
   /// @dev Consumed trader nonces; durable across signer/strategy changes.
   mapping(address => mapping(uint256 => bool)) public usedTraderNonce;
+  /// @dev Admission and receipt risk metadata share the Book's authority and lock.
+  ClaimMarkets.State internal _claimMarkets;
+  /// @notice Factory version fixed at strategy publication, invalidated on retirement.
+  mapping(uint256 => uint256) public strategyFactoryVersion;
 
   /*//////////////////////////////////////////////////////////////
                          TRANSIENT CONTEXT
@@ -257,7 +266,10 @@ abstract contract BookState is IHarborBook {
     if (address(SwapVM(payable(c.router)).AQUA()) != c.aqua || address(SwapVM(payable(c.router)).WETH()) != c.weth) {
       revert InvalidConfiguration();
     }
-    if (HarborSwapVMRouter(payable(c.router)).HARBOR_EXACT_FILL_OPCODE() != HarborExactFill.OPCODE) {
+    if (
+      HarborSwapVMRouter(payable(c.router)).HARBOR_EXACT_FILL_OPCODE() != HarborExactFill.OPCODE
+        || HarborSwapVMRouter(payable(c.router)).HARBOR_CLAIM_GUARD_OPCODE() != HarborClaimGuard.OPCODE
+    ) {
       revert InvalidConfiguration();
     }
     WETH = c.weth;
@@ -276,6 +288,7 @@ abstract contract BookState is IHarborBook {
     MAX_MARK_AGE = c.maxMarkAge;
     MAX_EXPOSURE = c.depositCap;
     GOVERNANCE_DELAY = c.governanceDelay;
+    INVENTORY_ROUTES = routes.length;
     for (uint256 i; i < routes.length; ++i) {
       RouteConfig memory r = routes[i];
       if (

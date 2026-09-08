@@ -63,7 +63,7 @@ contract HarborExecutor is ReentrancyGuardTransient {
     uint256 cash = buy ? f.routerOut : f.routerIn;
     RouteConfig memory r = BOOK.route(t.route);
     (uint256 entitlement,, uint256 time, uint256 policy, bytes32 observation, bool valid) =
-      BOOK.VALUATION().inventory(r.base, quantity);
+      BOOK.observation(t.route, quantity);
     (uint256 vaultPolicy, uint256 markedVersion, bool fresh) = HarborVault(VAULT).valuationIdentity();
     if (
       !valid || !fresh || time != f.observedAt || policy != vaultPolicy || markedVersion != f.valuationVersion

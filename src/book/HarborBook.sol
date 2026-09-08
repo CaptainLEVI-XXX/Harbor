@@ -10,15 +10,17 @@ import {BookState} from "src/book/base/BookState.sol";
 import {BookGovernance} from "src/book/base/BookGovernance.sol";
 import {BookRedemptions} from "src/book/base/BookRedemptions.sol";
 import {BookSettlement} from "src/book/base/BookSettlement.sol";
+import {BookClaims} from "src/book/base/BookClaims.sol";
+import {BookPortfolio} from "src/libraries/BookPortfolio.sol";
 
 /// @title HarborBook
 /// @notice Immutable pooled-maker Book composed from focused responsibility modules.
 /// @dev Governance, issuer lifecycle and SwapVM settlement share exactly one BookState.
 /// This concrete contract owns deployment and portfolio views; no proxy initialization.
-contract HarborBook is BookGovernance, BookRedemptions, BookSettlement {
+contract HarborBook is BookGovernance, BookRedemptions, BookSettlement, BookClaims {
   using Accounting for Accounting.State;
 
-  /// @notice Bind the immutable mandate and fixed route universe.
+  /// @notice Bind the immutable mandate and original inventory routes.
   /// @param c Settlement dependencies, authorities and bounded risk configuration.
   /// @param routes Approved token/adapter pairs; one or two routes only.
   constructor(Config memory c, RouteConfig[] memory routes) BookState(c, routes) {}
@@ -30,7 +32,7 @@ contract HarborBook is BookGovernance, BookRedemptions, BookSettlement {
 
   /// @notice Read inventory cost accounting for one route, not its current NAV.
   /// @param id Approved route index.
-  /// @return Position containing wrapped shares and WETH-denominated cost/results.
+  /// @return Position containing raw base units (one for a receipt) and WETH cost/results.
   function getPosition(uint256 id) external view returns (Accounting.Position memory) {
     return _state.positions[id];
   }
@@ -51,8 +53,8 @@ contract HarborBook is BookGovernance, BookRedemptions, BookSettlement {
 
   /// @inheritdoc IHarborBook
   function hasManagedPositions() external view returns (bool) {
-    if (_state.claims.active.length != 0) return true;
-    for (uint256 i; i < _routes.length; ++i) {
+    if (_state.claims.active.length != 0 || _claimMarkets.active.length != 0) return true;
+    for (uint256 i; i < INVENTORY_ROUTES; ++i) {
       if (_state.positions[i].shares != 0) return true;
     }
     return false;
@@ -66,24 +68,23 @@ contract HarborBook is BookGovernance, BookRedemptions, BookSettlement {
     view
     returns (uint256 inventory, uint256 claims, uint256 observedAt, uint256 policyVersion, bool valid)
   {
-    observedAt = block.timestamp;
-    valid = !stopped;
-    for (uint256 i; i < _routes.length; ++i) {
-      (uint256 entitlement, uint256 mark, uint256 time, uint256 policy,, bool ok) =
-        VALUATION.inventory(_routes[i].base, _state.positions[i].shares);
-      inventory += mark;
-      if (time < observedAt) observedAt = time;
-      if (i == 0) policyVersion = policy;
-      valid = valid && ok && policy == policyVersion && mark <= entitlement;
-    }
-    for (uint256 i; i < _state.claims.active.length; ++i) {
-      bytes32 key = _state.claims.active[i];
-      ClaimAccounting.Claim storage c = _state.claims.claims[key];
-      (uint256 mark, uint256 time, uint256 policy, bool ok) =
-        VALUATION.claim(_routes[c.route].adapter, _protocolIds[key], c.remaining);
-      claims += mark;
-      if (time < observedAt) observedAt = time;
-      valid = valid && ok && policy == policyVersion && mark <= c.remaining;
-    }
+    BookPortfolio.Value memory v = BookPortfolio.valuation(
+      _state, _claimMarkets, _routes, _protocolIds, VALUATION, INVENTORY_ROUTES, address(VAULT), stopped
+    );
+    return (v.inventory, v.claims, v.observedAt, v.policy, v.valid);
+  }
+
+  /// @inheritdoc IHarborBook
+  function observation(uint256 id, uint256 quantity)
+    external
+    view
+    returns (uint256 entitlement, uint256 mark, uint256 time, uint256 policy, bytes32 hash, bool valid)
+  {
+    return BookPortfolio.observation(_claimMarkets, _routes, VALUATION, id, quantity);
+  }
+
+  /// @inheritdoc IHarborBook
+  function receiptState() external view returns (bytes32) {
+    return BookPortfolio.receiptState(_claimMarkets, _routes, address(VAULT));
   }
 }

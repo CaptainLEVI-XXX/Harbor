@@ -13,6 +13,13 @@ interface IHarborBook {
   function VALUATION() external view returns (IHarborValuation);
   function MAX_MARK_AGE() external view returns (uint256);
   function route(uint256 id) external view returns (RouteConfig memory);
+  /// @notice Public observation for exact inventory units or a whole canonical receipt.
+  function observation(uint256 id, uint256 quantity)
+    external
+    view
+    returns (uint256 entitlement, uint256 mark, uint256 observedAt, uint256 policy, bytes32 hash, bool valid);
+  /// @notice Live receipt lifecycle identity, excluding pricing estimates and native inventory.
+  function receiptState() external view returns (bytes32);
   function AQUA() external view returns (address);
   function ROUTER() external view returns (address);
   function hasManagedPositions() external view returns (bool);

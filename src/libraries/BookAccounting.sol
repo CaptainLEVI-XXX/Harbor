@@ -30,7 +30,7 @@ library BookAccounting {
   error InsufficientInventory(uint256 available, uint256 requested);
 
   /// @notice Record exact received inventory and gross paid WETH including the fee.
-  function buy(State storage self, uint256 route, uint256 shares, uint256 cost) internal {
+  function buy(State storage self, uint256 route, uint256 shares, uint256 cost) public {
     if (shares == 0 || cost == 0) revert InvalidPositionAmount();
     Position storage p = self.positions[route];
     p.shares += shares;
@@ -41,7 +41,7 @@ library BookAccounting {
 
   /// @notice Remove warehouse shares and realize verified net WETH revenue.
   /// @return basis Assigned cost rounded down; final removal takes all remaining cost.
-  function sell(State storage self, uint256 route, uint256 shares, uint256 revenue) internal returns (uint256 basis) {
+  function sell(State storage self, uint256 route, uint256 shares, uint256 revenue) public returns (uint256 basis) {
     Position storage p = self.positions[route];
     basis = _remove(p, shares);
     _realize(p, basis, revenue);
@@ -51,7 +51,7 @@ library BookAccounting {
   /// @notice Move inventory basis to one externally verified issuer right.
   /// @dev Split requests call this for each actual share allocation, final remainder last.
   function request(State storage self, uint256 route, uint256 shares, bytes32 id, uint256 entitlement)
-    internal
+    public
     returns (uint256 basis)
   {
     Position storage p = self.positions[route];
@@ -64,7 +64,7 @@ library BookAccounting {
   /// @notice Record measured WETH without treating residual claims as cash.
   /// @dev Real losses are always recorded, even above configured risk budgets.
   /// The boundary stops new buys instead of reverting recovery to conceal a loss.
-  function recover(State storage self, bytes32 id, uint256 cash, uint256 remaining) internal {
+  function recover(State storage self, bytes32 id, uint256 cash, uint256 remaining) public {
     (bool closed, uint256 basis, uint256 receipts) = self.claims.receiveCash(id, cash, remaining);
     Position storage p = self.positions[self.claims.claims[id].route];
     if (closed) {

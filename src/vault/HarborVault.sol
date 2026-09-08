@@ -121,7 +121,7 @@ contract HarborVault is VaultSettlement {
       _state.cash,
       _state.withdrawals.reserved,
       _state.withdrawals.totalPending,
-      _state.fresh(MAX_MARK_AGE) && !cashDeficit && _context == 0,
+      _fresh() && !cashDeficit && _context == 0,
       _state.insolvent || cashDeficit
     );
   }
@@ -129,7 +129,7 @@ contract HarborVault is VaultSettlement {
   /// @notice Available deposit capacity in WETH wei; zero while gated or stale.
   function maxDeposit(address receiver) public view override returns (uint256) {
     if (
-      _context != 0 || !_receiverValid(receiver) || !_state.fresh(MAX_MARK_AGE)
+      _context != 0 || !_receiverValid(receiver) || !_fresh()
         || SafeTransfer.balanceOf(WETH, address(this)) < _state.cash || _state.nav >= DEPOSIT_CAP || _orphaned()
     ) return 0;
     return DEPOSIT_CAP - _state.nav;
@@ -329,6 +329,7 @@ contract HarborVault is VaultSettlement {
     (uint256 inventory, uint256 claims, uint256 observedAt, uint256 policy, bool valid) = BOOK.valuation();
     if (!valid) revert ValuationUnavailable();
     _state.checkpoint(inventory, claims, super.totalSupply(), observedAt, policy, MAX_MARK_AGE);
+    _receiptState = BOOK.receiptState();
     emit ValuationCheckpoint(_state.nav, _state.supply, _state.cash, _state.withdrawals.reserved, policy, observedAt);
   }
 
@@ -351,6 +352,7 @@ contract HarborVault is VaultSettlement {
     _state.requireBacked(beforeBalance);
     SafeTransfer.safeTransferFrom(WETH, msg.sender, address(this), assets);
     if (SafeTransfer.balanceOf(WETH, address(this)) != beforeBalance + assets) revert AssetDeltaMismatch();
+    _requireFresh();
     _state.cash += assets; // Issuance cash flow is not portfolio profit or a new mark.
     _shareMutation = true;
     _mint(receiver, shares);

@@ -5,6 +5,7 @@ import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {MakerTraitsLib} from "@1inch/swap-vm/src/libs/MakerTraits.sol";
 import {Salt} from "@1inch/swap-vm/src/instructions/Controls.sol";
 import {HarborExactFill} from "src/swapvm/instructions/HarborExactFill.sol";
+import {HarborClaimGuard} from "src/swapvm/instructions/HarborClaimGuard.sol";
 
 /// @title HarborProgram
 /// @notice Canonical bidirectional Aqua order using the Harbor exact-fill opcode.
@@ -24,10 +25,46 @@ library HarborProgram {
   /// @param salt Fresh publication salt; docked hashes cannot be reused.
   /// @return order Canonical order; Aqua identity is keccak256(abi.encode(order)).
   function build(address vault, address book, address weth, address base, uint256 route, uint256 version, uint64 salt)
-    internal
+    public
     pure
     returns (ISwapVM.Order memory order)
   {
+    return _build(vault, book, weth, base, route, version, salt, bytes(""));
+  }
+
+  /// @notice Add a custody/status guard to the existing exact-fill settlement program.
+  function claim(
+    address vault,
+    address book,
+    address weth,
+    address receipt,
+    uint256 route,
+    uint256 version,
+    address factory,
+    uint256 factoryVersion
+  ) public pure returns (ISwapVM.Order memory) {
+    return _build(
+      vault,
+      book,
+      weth,
+      receipt,
+      route,
+      version,
+      uint64(version),
+      HarborClaimGuard.build(receipt, factory, factoryVersion)
+    );
+  }
+
+  function _build(
+    address vault,
+    address book,
+    address weth,
+    address base,
+    uint256 route,
+    uint256 version,
+    uint64 salt,
+    bytes memory tail
+  ) private pure returns (ISwapVM.Order memory order) {
     if (
       vault == address(0) || book == address(0) || vault == book || weth == address(0) || base == address(0)
         || weth == base
@@ -42,7 +79,7 @@ library HarborProgram {
     args.postTransferInTarget = book;
     args.preTransferOutTarget = book;
     args.postTransferOutTarget = book;
-    args.program = bytes.concat(Salt.build(salt), HarborExactFill.build(book, route, version));
+    args.program = bytes.concat(Salt.build(salt), HarborExactFill.build(book, route, version), tail);
     return MakerTraitsLib.build(args);
   }
 }

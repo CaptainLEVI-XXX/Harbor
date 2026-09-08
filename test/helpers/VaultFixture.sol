@@ -8,6 +8,10 @@ import {HarborVault} from "src/vault/HarborVault.sol";
 
 /// @notice Test-only coordinator and synthetic mark provider; not a production Book.
 contract MockVaultBook {
+  function receiptState() external pure returns (bytes32) {
+    return bytes32(0);
+  }
+
   function hasManagedPositions() external pure returns (bool) {
     return false;
   }

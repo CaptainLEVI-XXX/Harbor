@@ -4,7 +4,6 @@ pragma solidity 0.8.30;
 import {IHarborBook} from "src/interfaces/IHarborBook.sol";
 
 import {SafeTransferLib as SafeTransfer} from "solady/utils/SafeTransferLib.sol";
-import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {IMakerHooks} from "@1inch/swap-vm/src/interfaces/IMakerHooks.sol";
 import {IHarborFill} from "src/interfaces/IHarborFill.sol";
@@ -14,6 +13,9 @@ import {QuoteHash} from "src/libraries/QuoteHash.sol";
 import {HarborProgram} from "src/swapvm/HarborProgram.sol";
 import {Trade, FillTerms, RouteConfig, Side, AmountMode, Operation} from "src/types/HarborTypes.sol";
 import {BookState} from "src/book/base/BookState.sol";
+import {ClaimMarkets} from "src/libraries/ClaimMarkets.sol";
+import {BookPortfolio} from "src/libraries/BookPortfolio.sol";
+import {IHarborClaimFactory} from "src/interfaces/IHarborClaim.sol";
 
 /// @title BookSettlement
 /// @notice Aqua strategy publication, exact-fill authorization and transfer hooks.
@@ -51,6 +53,9 @@ abstract contract BookSettlement is BookState, IHarborFill, IMakerHooks {
     ) {
       revert Unauthorized();
     }
+    if (_claimMarkets.markets[_route].factory != address(0)) {
+      BookPortfolio.receiptCheck(_claimMarkets, _routes, _route, _buy, 1, _cash, strategyFactoryVersion[_route], WETH);
+    }
     VAULT.settleTrade(_context, _buy, _cash);
     _release();
   }
@@ -67,6 +72,8 @@ abstract contract BookSettlement is BookState, IHarborFill, IMakerHooks {
     }
     previous = strategyHash[id];
     uint256 version = ++strategyVersion[id];
+    address factory = _claimMarkets.markets[id].factory;
+    if (factory != address(0)) strategyFactoryVersion[id] = IHarborClaimFactory(factory).version();
     order = _order(id, version);
     base = _routes[id].base;
     managed = _state.positions[id].shares;
@@ -233,6 +240,10 @@ abstract contract BookSettlement is BookState, IHarborFill, IMakerHooks {
     if (fee != 0 || SafeTransfer.balanceOf(tokenOut, address(VAULT)) != _beforeOut - amountOut) {
       revert SettlementMismatch();
     }
+    if (_claimMarkets.markets[_route].factory != address(0)) {
+      if (_buy) ClaimMarkets.acquire(_claimMarkets, _state, _route, amountOut, false);
+      else ClaimMarkets.dispose(_claimMarkets, _route, _state.positions[_route].basis, amountIn, false);
+    }
     if (_buy) _state.buy(_route, amountIn, amountOut);
     else _state.sell(_route, amountOut, amountIn);
     _phase = SettlementPhase.OUTPUT_SENT;
@@ -262,7 +273,9 @@ abstract contract BookSettlement is BookState, IHarborFill, IMakerHooks {
     ) revert InvalidQuote();
     Accounting.Position storage p = _state.positions[t.route];
     if (
-      f.vault != address(VAULT) || f.adapter != r.adapter || f.adapterVersion != 1
+      f.vault != address(VAULT) || f.adapter != r.adapter
+        || f.adapterVersion
+          != (_claimMarkets.markets[t.route].factory == address(0) ? 1 : strategyFactoryVersion[t.route])
         || f.strategyVersion != strategyVersion[t.route] || f.orderHash == 0 || f.orderHash != strategyHash[t.route]
         || f.epoch != quoteEpoch || usedQuoteNonce[f.epoch][f.nonce] || usedTraderNonce[t.trader][t.nonce]
         || f.portfolioVersion != _state.version || f.positionVersion != p.version || f.policyVersion != 1
@@ -274,23 +287,22 @@ abstract contract BookSettlement is BookState, IHarborFill, IMakerHooks {
     if (t.tokenIn != (buy ? r.base : WETH) || t.tokenOut != (buy ? WETH : r.base)) revert InvalidQuote();
     uint256 quantity = buy ? f.routerIn : f.routerOut;
     uint256 cash = buy ? f.routerOut : f.routerIn;
-    if (buy) {
-      uint256 totalExposure;
-      for (uint256 i; i < _routes.length; ++i) {
-        totalExposure += Accounting.exposure(_state.positions[i]);
-      }
-      if (
-        cash > VAULT.tradingCash(CASH_BUFFER) || Accounting.exposure(p) + cash > r.maxExposure
-          || totalExposure + cash > MAX_EXPOSURE || p.purchases + cash > r.maxPurchases
-          || p.realizedLosses >= r.lossBudget
-      ) revert CapacityExceeded();
-    } else {
-      if (quantity > p.shares || SafeTransfer.balanceOf(r.base, address(VAULT)) < p.shares) revert CapacityExceeded();
-      uint256 basis = quantity == p.shares ? p.basis : Math.fullMulDiv(p.basis, quantity, p.shares);
-      if (basis > cash && (p.realizedLosses >= r.lossBudget || basis - cash > r.lossBudget - p.realizedLosses)) {
-        revert CapacityExceeded();
-      }
+    if (_claimMarkets.markets[t.route].factory != address(0)) {
+      BookPortfolio.receiptCheck(_claimMarkets, _routes, t.route, buy, quantity, cash, f.adapterVersion, WETH);
     }
+    BookPortfolio.capacity(
+      _state,
+      _claimMarkets,
+      _routes,
+      INVENTORY_ROUTES,
+      t.route,
+      buy,
+      quantity,
+      cash,
+      buy ? VAULT.tradingCash(CASH_BUFFER) : 0,
+      MAX_EXPOSURE,
+      address(VAULT)
+    );
     digest = EXECUTOR.validateQuote(t, f, signature, quoteSigner);
     if (!RECEIVER.isApproved(digest)) revert PolicyNotApproved();
   }
@@ -301,6 +313,12 @@ abstract contract BookSettlement is BookState, IHarborFill, IMakerHooks {
   /// @return Immutable maker order for the Harbor custom router.
   function _order(uint256 id, uint256 version) private view returns (ISwapVM.Order memory) {
     if (version == 0 || version > type(uint64).max) revert InvalidConfiguration();
+    address factory = _claimMarkets.markets[id].factory;
+    if (factory != address(0)) {
+      return HarborProgram.claim(
+        address(VAULT), address(this), WETH, _routes[id].base, id, version, factory, strategyFactoryVersion[id]
+      );
+    }
     return HarborProgram.build(address(VAULT), address(this), WETH, _routes[id].base, id, version, uint64(version));
   }
 

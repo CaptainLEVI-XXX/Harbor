@@ -65,8 +65,8 @@ contract HarborRouterTest is Test {
   }
 
   function test_UnallocatedOpcodeStillUsesUpstreamRejection() public {
-    vm.expectRevert(abi.encodeWithSelector(AquaOpcodes.UnknownOpcode.selector, uint256(0x56)));
-    router.inspect(hex"5600", hex"abcdef", true, false);
+    vm.expectRevert(abi.encodeWithSelector(AquaOpcodes.UnknownOpcode.selector, uint256(0x57)));
+    router.inspect(hex"5700", hex"abcdef", true, false);
   }
 
   function _fill() private view returns (bytes memory) {

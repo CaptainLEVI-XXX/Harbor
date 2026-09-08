@@ -7,6 +7,7 @@ import {IAqua} from "@1inch/aqua/src/interfaces/IAqua.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {VaultAccounting as Accounting} from "src/libraries/VaultAccounting.sol";
 import {VaultState} from "src/vault/base/VaultState.sol";
+import {IHarborClaim} from "src/interfaces/IHarborClaim.sol";
 
 /// @title VaultSettlement
 /// @notice Book-only treasury transitions and vault-owned Aqua strategy publication.
@@ -71,6 +72,23 @@ abstract contract VaultSettlement is VaultState {
     _operation = Operation.NONE;
   }
 
+  /// @notice Collect one managed receipt's recovery to the vault under the Book lock.
+  /// @dev Only the Book chooses the approved receipt. No keeper-selected beneficiary.
+  function recoverReceipt(bytes32 context, address receipt, uint256 hint) external returns (uint256 cash) {
+    if (msg.sender != address(BOOK)) revert Unauthorized();
+    if (_context != context || _operation != Operation.RECOVERY || _redemptionTransferred) revert InvalidContext();
+    if (SafeTransfer.balanceOf(receipt, address(this)) != 1) revert InvalidAmount();
+    _redemptionTransferred = true;
+    IHarborClaim c = IHarborClaim(receipt);
+    if (c.WETH() != WETH) revert InvalidConfiguration();
+    if (c.status() != IHarborClaim.Status.CASH_READY) c.recover(hint);
+    cash = c.redeem(address(this));
+    if (
+      SafeTransfer.balanceOf(receipt, address(this)) != 0
+        || SafeTransfer.balanceOf(WETH, address(this)) != _cashAtBegin + cash
+    ) revert AssetDeltaMismatch();
+  }
+
   /// @notice Commit only the verified WETH leg of a fully paid trade.
   /// @dev Only Book may call, while holding this exact trade context. Inventory
   /// belongs to Book; the prior NAV remains visible but invalid until checkpoint.
@@ -108,7 +126,7 @@ abstract contract VaultSettlement is VaultState {
   /// @return version Portfolio version at the committed mark.
   /// @return fresh Whether the committed mark meets the configured validity window.
   function valuationIdentity() external view returns (uint256 policy, uint256 version, bool fresh) {
-    return (_state.policyVersion, _state.markedVersion, _state.fresh(MAX_MARK_AGE));
+    return (_state.policyVersion, _state.markedVersion, _fresh());
   }
 
   /// @notice Book uses this to invalidate quotes on material LP accounting changes.

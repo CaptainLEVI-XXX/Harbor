@@ -4,6 +4,8 @@ pragma solidity 0.8.30;
 import {SafeTransferLib as SafeTransfer} from "solady/utils/SafeTransferLib.sol";
 import {AdapterBase} from "src/adapters/base/AdapterBase.sol";
 import {ILidoWithdrawalQueue as Queue, IWstETHConversion} from "src/interfaces/ILidoWithdrawalQueue.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {IHarborClaimFactory} from "src/interfaces/IHarborClaim.sol";
 
 /// @notice Bounded wstETH requests and adapter-owned unstETH recovery to one vault.
 /// @dev Reviewed Lido minting does not call onERC721Received. No NFT receiver is
@@ -11,9 +13,12 @@ import {ILidoWithdrawalQueue as Queue, IWstETHConversion} from "src/interfaces/I
 contract LidoAdapter is AdapterBase {
   mapping(uint256 => bool) public accepted;
   mapping(uint256 => bool) public closed;
+  /// @notice A transferred native right can never be recovered by this adapter again.
+  mapping(uint256 => address) public exportedTo;
 
   event Requested(uint256 indexed id, uint256 wrappedAmount, uint256 entitlement);
   event Recovered(uint256 indexed id, uint256 wethAmount);
+  event ClaimExported(uint256 indexed id, address indexed receipt);
 
   constructor(address book, address vault, address wsteth, address weth, address queue)
     AdapterBase(book, vault, wsteth, weth, queue)
@@ -83,5 +88,26 @@ contract LidoAdapter is AdapterBase {
     // Lido burns the entire right on claim; partial receipt support is not implied.
     remaining = 0;
     emit Recovered(id, cash);
+  }
+
+  /// @notice Convert an accepted pending NFT into one receipt delivered to the fixed vault.
+  /// @dev Book approves the integration and moves basis in the same transaction.
+  /// NFT approval is specific to this ID and cleared by the issuer on transfer.
+  function exportClaim(uint256 id, address factory) external onlyBook nonReentrant returns (address receipt) {
+    if (!accepted[id] || closed[id]) revert InvalidRequest();
+    IHarborClaimFactory f = IHarborClaimFactory(factory);
+    if (f.ISSUER() != ISSUER || f.WETH() != WETH) revert InvalidConfiguration();
+    closed[id] = true;
+    IERC721(ISSUER).approve(factory, id);
+    receipt = f.wrap(id);
+    exportedTo[id] = receipt;
+    if (SafeTransfer.balanceOf(receipt, address(this)) != 1 || SafeTransfer.balanceOf(receipt, VAULT) != 0) {
+      revert ReceiptMismatch();
+    }
+    SafeTransfer.safeTransfer(receipt, VAULT, 1);
+    if (SafeTransfer.balanceOf(receipt, address(this)) != 0 || SafeTransfer.balanceOf(receipt, VAULT) != 1) {
+      revert ReceiptMismatch();
+    }
+    emit ClaimExported(id, receipt);
   }
 }

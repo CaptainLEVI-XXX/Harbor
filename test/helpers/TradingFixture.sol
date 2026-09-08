@@ -27,6 +27,10 @@ contract MockTradingValuation {
     valid = v;
   }
 
+  function setObservedAt(uint256 time) external {
+    observedAt = time;
+  }
+
   function claim(address, uint256, uint256 remaining) external view returns (uint256, uint256, uint256, bool) {
     return (remaining, observedAt, 1, valid);
   }

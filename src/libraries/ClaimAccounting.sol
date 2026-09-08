@@ -15,6 +15,7 @@ library ClaimAccounting {
     uint256 received; // Cumulative attributable WETH wei actually recovered.
     bool exists;
     bool closed;
+    bool transferred; // Closed by custody export, not issuer recovery or loss.
   }
 
   struct State {
@@ -38,7 +39,7 @@ library ClaimAccounting {
     if (self.claims[id].exists) revert DuplicateClaim(id);
     if (self.active.length == MAX_ACTIVE) revert ClaimLimit();
     if (entitlement == 0) revert InvalidRemainingRight();
-    self.claims[id] = Claim(route, basis, entitlement, 0, true, false);
+    self.claims[id] = Claim(route, basis, entitlement, 0, true, false, false);
     self.active.push(id);
     self.indexPlusOne[id] = self.active.length;
   }
@@ -59,13 +60,29 @@ library ClaimAccounting {
     c.received += cash;
     c.remaining = remaining;
     if (remaining != 0) return (false, 0, 0);
-    c.closed = true;
+    _close(self, id);
+    return (true, c.basis, c.received);
+  }
+
+  /// @notice Retire native representation after verified export without recording cash.
+  /// @dev Only whole, unrecovered rights are exportable in the initial integration.
+  function transferRight(State storage self, bytes32 id) internal returns (uint256 basis) {
+    Claim storage c = self.claims[id];
+    if (!c.exists || c.closed) revert InactiveClaim(id);
+    if (c.received != 0) revert InvalidRemainingRight();
+    basis = c.basis;
+    c.transferred = true;
+    c.remaining = 0;
+    _close(self, id);
+  }
+
+  function _close(State storage self, bytes32 id) private {
+    self.claims[id].closed = true;
     uint256 index = self.indexPlusOne[id] - 1;
     bytes32 last = self.active[self.active.length - 1];
     self.active[index] = last;
     self.indexPlusOne[last] = index + 1;
     self.active.pop();
     delete self.indexPlusOne[id];
-    return (true, c.basis, c.received);
   }
 }

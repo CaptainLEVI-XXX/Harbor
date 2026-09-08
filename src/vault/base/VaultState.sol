@@ -36,6 +36,8 @@ abstract contract VaultState is ERC4626 {
   Accounting.State internal _state;
   /// @dev ERC-7540 controller authorizations; no automatic token-spending allowance.
   mapping(address => mapping(address => bool)) public isOperator;
+  /// @dev Receipt status/recovery commitment at the last public NAV checkpoint.
+  bytes32 internal _receiptState;
 
   /*//////////////////////////////////////////////////////////////
                          TRANSIENT CONTEXT
@@ -150,7 +152,16 @@ abstract contract VaultState is ERC4626 {
 
   /// @dev New issuance/funding needs a valid non-stale mark; funded claims do not.
   function _requireFresh() internal view {
-    if (!_state.fresh(MAX_MARK_AGE)) revert ValuationUnavailable();
+    if (!_fresh()) revert ValuationUnavailable();
+  }
+
+  function _fresh() internal view returns (bool) {
+    if (!_state.fresh(MAX_MARK_AGE)) return false;
+    try BOOK.receiptState() returns (bytes32 current) {
+      return current == _receiptState;
+    } catch {
+      return false;
+    }
   }
 
   /// @dev Reject destinations that cannot be a normal external LP beneficiary.
