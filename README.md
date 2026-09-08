@@ -8,14 +8,17 @@ with asynchronous LP redemption.
 
 - `HarborVault`: ERC-4626-style synchronous deposits, share accounting and
   ERC-7540 asynchronous redemption with FIFO funding and reserved cash.
-- `HarborBook`: immutable route mandates, shared cash/exposure checks, authenticated
-  SwapVM callbacks, inventory basis and issuer claim accounting.
-- `HarborSwapVMRouter`: upstream Aqua settlement plus the native `HarborExactFill`
-  instruction; no upstream dependency files are modified.
+- `HarborBook`: immutable issuer mandates, individually admitted receipt routes,
+  shared cash/exposure checks, authenticated SwapVM callbacks, inventory basis
+  and issuer claim accounting.
+- `HarborSwapVMRouter`: upstream Aqua settlement plus `HarborExactFill` and
+  `HarborClaimGuard`; no upstream dependency files are modified.
 - `HarborExecutor`: exact trader amounts, quote verification, custom-router
   execution, fee settlement and residue checks.
 - `LidoAdapter`: bounded wstETH requests, adapter-owned withdrawal rights and
   attributable ETH recovery wrapped directly to the fixed vault.
+- `LidoClaimFactory` / `LidoClaimReceipt`: canonical whole-request receipts,
+  pending-right trading, native export and final-holder recovery.
 - `HarborPolicyReceiver`: authenticated, expiring exact-fill permits through
   Chainlink's receiver interface, with no treasury authority.
 
@@ -28,6 +31,8 @@ Executor and adapters use transient function guards.
 Start with the [SwapVM strategy guide](src/swapvm/README.md) for opcode encoding,
 register invariants, authority boundaries and focused tests. The
 [contract demo](DEMO.md) provides reproducible trading, recovery and LP-exit traces.
+The [redemption market guide](src/claims/README.md) covers receipt admission,
+four-mode trading, accounting and `bash script/demo-redemption-market.sh`.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for toolchain requirements, pinned
 dependencies, setup commands, coding conventions, and testing requirements.
@@ -49,8 +54,9 @@ This is unaudited contract development, not a mainnet-ready yield product.
 Local tests exercise real token-transfer calls through official Aqua and Harbor's
 SwapVM-derived router, using synthetic tokens, public marks, permit approval
 and issuer finalization.
-Two [pinned Lido fork checks](test/fork/README.md) also cover a new real request
-and a separate mature historical recovery; their distinct setup is documented.
+[Pinned Lido fork checks](test/fork/README.md) cover native requests, actual
+receipt/WETH trading and separately mature historical recovery; the different
+blocks and test-only historical setup are documented.
 The [receiver tests](test/chainlink/README.md) use simulated forwarder delivery.
 [Stateful campaigns](test/invariant/README.md) compare operations against independent
 accounting ledgers. The CRE workflow/live delivery, production valuation calibration

@@ -33,3 +33,32 @@ The second proof does **not** show the newly created request maturing, a Book
 purchase becoming that historical NFT, or a complete multi-day Harbor lifecycle.
 Local synthetic lifecycle tests provide complementary accounting evidence, not a
 substitute for eventual end-to-end issuer observation.
+
+## Receipt trading and recovery
+
+```sh
+FOUNDRY_PROFILE=fork forge test --match-contract RedemptionMarketForkTest -vv
+```
+
+This separate fixture pins Ethereum block **25,930,239**, asserts the same queue
+implementation and uses real mainnet wstETH, unstETH and WETH. Both tests passed
+against the public fallback during development. Historical RPC availability is
+not guaranteed; use an archive-capable endpoint to reproduce them later. The
+older adapter fixture remains pinned to its original block.
+
+The first test submits ETH through real wstETH, requests withdrawal, wraps the
+new NFT in a production factory receipt, then sells one receipt for **0.99 WETH**.
+Official Aqua and the Harbor SwapVM router are deployed locally on the fork.
+Maker/authorization hooks are compatibility fixtures, not the full pooled Book.
+Assertions cover real token movements and unchanged issuer cash during trading.
+
+The second test transfers historical finalized request **134,829** from its
+impersonated owner into `HistoricalReceiptHarness`. Only the harness can seed
+this already-mature state; canonical factory receipts cannot import finalized
+requests. Inherited production recovery/redeem logic collects real issuer ETH,
+wraps WETH, pays the receipt holder and burns the unit. There is no mocked
+finalization, queue-storage rewrite or injected issuer recovery cash.
+
+The new request and historical recovery are deliberately separate evidence.
+Complete Book/vault ownership, LP reserves, permit checks and rollback are
+covered by the complementary local `RedemptionMarketTest` suite.

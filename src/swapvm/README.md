@@ -1,7 +1,7 @@
 # Harbor's Aqua / SwapVM strategy
 
 Harbor deploys `HarborSwapVMRouter`, a subclass of the pinned official
-`AquaSwapVMRouter`. The subclass adds one instruction; it does not replace
+`AquaSwapVMRouter`. The subclass adds two instructions; it does not replace
 Aqua accounting, the VM loop, quote simulation, taker limits or transfer logic.
 The unmodified official router does **not** support Harbor's program.
 
@@ -11,12 +11,13 @@ The unmodified official router does **not** support Harbor's program.
 | --- | --- |
 | `HarborProgram.sol` | Encode the vault's maker traits, hooks and strategy program. |
 | `instructions/HarborExactFill.sol` | Decode maker arguments, obtain authorization, complete VM amounts. |
+| `instructions/HarborClaimGuard.sol` | Check canonical one-unit pending receipts after amounts are known. |
 | `HarborSwapVMRouter.sol` | Dispatch the custom opcode; delegate other opcodes to upstream. |
 | `../book/base/BookSettlement.sol` | Authenticate fills, consume nonces and verify transfer hooks. |
 | `../book/base/BookState.sol` | Own the shared persistent ledger and transient operation context. |
 | `../interfaces/IHarborFill.sol` | Narrow authorization interface, including its static-call view. |
 
-The Book's other responsibilities live in `BookGovernance` and
+The Book's other responsibilities live in `BookGovernance`, `BookClaims` and
 `BookRedemptions`. These are abstract source modules, not deployed services.
 They inherit one `BookState`; accounting libraries receive explicit storage
 references. The concrete `HarborBook` binds deployment and exposes portfolio
@@ -31,6 +32,9 @@ coordination. All three are one deployed vault; no intermediate custody is added
 ```text
 Salt(version) -> HarborExactFill(book, route, version)
 
+Receipt routes append:
+  -> HarborClaimGuard(receipt, factory, factoryVersion)
+
 Instruction byte offsets (including header):
   [0, 1)   opcode 0x55
   [1, 2)   argument length 84
@@ -40,10 +44,14 @@ Instruction byte offsets (including header):
 
 Remaining taker arguments:
   abi.encode(Trade, FillTerms, signature)
+
+Claim guard: opcode 0x56, argument length 96,
+  abi.encode(receipt, factory, factoryVersion)
+  No taker arguments; no VM register modifications.
 ```
 
-`0x55` is an unused swap-family slot in the pinned upstream opcode table.
-It is a **local Harbor assignment**, not a registered 1inch instruction.
+`0x55` and `0x56` are unused swap-family slots in the pinned upstream table.
+They are **local Harbor assignments**, not registered 1inch instructions.
 The collision test must be revisited whenever the dependency pin changes.
 The router's capability getter catches accidental deployment against an old
 router, but is not a substitute for verifying source, bytecode and dependencies.
@@ -70,11 +78,18 @@ under Harbor's fee rounding. A supplied pair alone is never authority to spend.
 
 The Book cannot return arbitrary registers, a program counter, or a consumed
 byte count. This intentionally narrows the earlier generic `Extruction`
-integration. The custom instruction consumes all remaining taker arguments.
+integration. The exact-fill instruction consumes all remaining taker arguments.
 Instructions requiring their own taker arguments must precede it. Harbor's
 canonical program has no subsequent fee/amount transformations; its hooks bind
 the final pair. Upstream Salt/Deadline composition and late-failure rollback
 are tested separately without changing that canonical program.
+
+The appended claim guard needs no taker payload. It verifies factory canonicality,
+issuer, chain, recovery token, pending custody, one-unit quantity and the published
+factory version. Factory activity is required for purchases, not exits. Its checks
+are read-only in quote and execution modes. Book rechecks claim state at final
+settlement; late failure rolls back prior authorization and transfers. See the
+[receipt guide](../claims/README.md) for admission and accounting boundaries.
 
 ## Authority and lifecycle
 

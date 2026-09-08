@@ -31,3 +31,12 @@ synthetic issuer semantics. They do not assert that Lido supports partial claims
 nor prove another issuer adapter. The full portfolio campaign uses Lido's complete
 closure path. Both campaigns complement, rather than replace, adversarial callback,
 standards and pinned-fork tests.
+
+`ReceiptPortfolioInvariantTest` adds canonical claim imports, both receipt trade
+directions/modes, repeated acquisition, synthetic finalization, loss-bearing
+recovery and replacement requests through the actual Book/Vault/Aqua path.
+An independent ledger checks physical vault cash, carried cost, cumulative issuer
+purchases/losses, receipt supply and acquisition sequence. The prelude guarantees
+three successful trades and a recovery; randomized actions skip unavailable
+states, so handler call counts are not counts of completed fills. Shared-budget
+and 64-position-cap boundaries also have deterministic regression tests.

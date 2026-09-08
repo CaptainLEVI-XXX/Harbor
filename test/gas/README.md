@@ -37,9 +37,9 @@ reference and microbenchmark in `test/swapvm/HarborExactFill.t.sol`. Source modu
 extraction does not by itself imply smaller runtime code. The custom router's
 runtime is measured alongside the Book; no code-size allowance is increased.
 
-## Native exact-fill comparison
+## Historical native exact-fill comparison
 
-Combined module/instruction refactor, against the preceding committed snapshots:
+Earlier module/instruction refactor, before receipt-market support:
 
 | Measurement | Generic extension | Native exact fill |
 | --- | ---: | ---: |
@@ -57,3 +57,30 @@ improve by roughly 1,400 gas; several non-trade regions increase by 131 gas
 Snapshots retain those regressions rather than reporting only improvements.
 Vault and Executor runtime sizes remain unchanged. These are controlled fixture
 measurements, not claims about mainnet transaction fees.
+
+## Receipt market measurements
+
+Current snapshots include linked domain libraries and the receipt-state guard;
+the preceding historical table is not the current runtime or trade cost.
+`HarborRuntimeBytes.json` records Book **23,086**, router **23,017**, vault
+**17,390**, executor **12,121** and Lido adapter **6,516** bytes. Fixed linked
+libraries add separately deployed code; reducing Book size is not a claim of
+lower aggregate deployment cost.
+
+`HarborClaims.json` measures fixture-warm regions with synthetic issuer behavior:
+
+| Region | Gas |
+| --- | ---: |
+| Clone wrapping, excluding request creation | 248,247 |
+| Complete firm-quote receipt purchase | 756,854 |
+| Complete firm-quote receipt sale | 534,819 |
+| Native right export, including clone and registration | 841,510 |
+| Vault recovery and redemption | 180,945 |
+| Direct NFT/WETH two-transfer reference | 11,783 |
+
+The direct reference has no signature verification, vault accounting, policy
+checks, pricing guard or Aqua ledger; it is a lower bound, not a feature-equivalent
+competitor. Wrapping adds real cost. Its benefit is reusable ERC-20 settlement
+and explicit recovery ownership, not cheaper one-off NFT transfers. Receipt
+snapshots do not reset warmth and must not be compared with the cold inventory
+regions as if only the asset changed.
