@@ -1,0 +1,135 @@
+@import "tailwindcss";
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;           /* the page is exactly one viewport. nothing scrolls. */
+  background: #FAF9FE;
+}
+
+.stage {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  isolation: isolate;
+  container-type: inline-size; /* every type size below is cqw/em off this */
+  user-select: none;
+  cursor: default;             /* a plain arrow - no ring cursor */
+}
+
+.layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+canvas.layer {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+
+/* ---------- foreground ---------- */
+.fg {
+  position: relative;
+  z-index: 6;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  font-size: 1.30cqw;          /* 18.4px at 1413px. NEVER 2.55cqw. */
+  font-family: var(--font-body), system-ui, sans-serif;
+  color: #4A2F6B;
+  pointer-events: none;        /* the ground below stays clickable */
+}
+.fg button, .fg a { pointer-events: auto; cursor: pointer; }
+
+.nav { display: flex; align-items: center; padding: 2.2% 3.1% 0; }
+
+.mark {
+  display: flex; align-items: flex-start; gap: 0.40em;
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-weight: 700; font-size: 1.30em;      /* 24px - guidelines wordmark */
+  letter-spacing: -0.03em; line-height: 0.96;
+}
+.mark svg { flex: none; }
+.mark sup { font-size: 0.42em; font-weight: 500; color: #6F6689; margin-top: 0.1em; }
+
+.navlinks {
+  margin: 0 auto;
+  display: flex; align-items: center; gap: 0.08em;
+  padding: 0.34em;
+  /* the lattice radius, not a pill - the nav is a tile like everything else */
+  border-radius: 1.05em;
+  background: linear-gradient(135deg, rgba(255,255,255,.86) 0%, rgba(255,255,255,.62) 55%, rgba(255,255,255,.48) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.9) inset,          /* the light along the top-left */
+    0 8px 22px -14px rgba(74,47,107,.34);        /* the same soft drop the cells have */
+  font-size: 0.815em;                            /* 15px - guidelines UI label */
+  font-weight: 500; color: #6F6689;
+}
+.navlinks a {
+  padding: 0.62em 1.12em;
+  border-radius: 0.72em;                         /* same family, one step tighter */
+  line-height: 1; color: inherit; text-decoration: none;
+  transition: background .18s, color .18s;
+}
+.navlinks a:hover {
+  background: linear-gradient(135deg, rgba(255,255,255,1), rgba(255,255,255,.72));
+  color: #4A2F6B;
+  box-shadow: 0 1px 3px rgba(74,47,107,.10);
+}
+
+.connect {
+  padding: 0.92em 1.55em;
+  border-radius: 1.05em;                         /* matches the nav tile */
+  /* a lit solid: brighter at the top-left, settling to the ink at the bottom-right */
+  background: linear-gradient(135deg, #5C3D82 0%, #4A2F6B 52%, #402659 100%);
+  color: #fff;
+  font-size: 0.815em; font-weight: 600; line-height: 1;   /* 15px - guidelines button */
+  white-space: nowrap; border: 0; font-family: inherit;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.22) inset,
+    0 10px 24px -12px rgba(74,47,107,.62);
+  transition: transform .16s cubic-bezier(.34,1.3,.5,1), box-shadow .16s;
+}
+.connect:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.28) inset,
+    0 14px 30px -12px rgba(74,47,107,.7);
+}
+.connect:active { transform: translateY(0); }
+
+.col {
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center; padding-bottom: 2.4%;
+}
+.colw { width: 28.3%; }
+
+.headline {
+  margin: 0;
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 2.50em; font-weight: 700;       /* 46px - guidelines display */
+  line-height: 0.96; letter-spacing: -0.03em;
+}
+.subcopy {
+  margin: 1.10em 0 0;
+  font-size: 0.924em; line-height: 1.6;      /* 17/1.6 - guidelines body */
+  font-weight: 400; color: #6F6689;
+}
+.availability {
+  margin-top: 2.3em;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.60em; font-weight: 400;       /* 11px - guidelines mono caption */
+  letter-spacing: 0.01em; color: #9086A8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage { cursor: default; }
+}
