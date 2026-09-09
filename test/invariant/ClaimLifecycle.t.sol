@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 import {Test} from "forge-std/Test.sol";
 import {BookAccounting as Ledger} from "src/libraries/BookAccounting.sol";
 import {ClaimAccounting} from "src/libraries/ClaimAccounting.sol";
-import {RealizationLogs} from "test/helpers/RealizationLogs.sol";
+import {RealizationLogs} from "test/base/RealizationLogs.sol";
 
 /// @notice Synthetic partial-right semantics, separate from Lido's all-or-nothing claim.
 contract ClaimLifecycleHandler is Test {

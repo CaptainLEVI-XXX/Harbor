@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {TradingFixture} from "test/helpers/TradingFixture.sol";
-import {MockWrappedEther, MockWstETH, MockLidoQueue} from "test/helpers/LidoFixture.sol";
+import {TradingFixture} from "test/base/TradingFixture.sol";
+import {MockWrappedEther, MockWstETH, MockLidoQueue} from "test/base/LidoFixture.sol";
 import {TokenMock} from "@1inch/solidity-utils/contracts/mocks/TokenMock.sol";
 import {LidoAdapter} from "src/adapters/LidoAdapter.sol";
 import {RedeemIntent} from "src/types/HarborTypes.sol";

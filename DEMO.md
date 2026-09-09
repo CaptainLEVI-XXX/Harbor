@@ -28,7 +28,7 @@ synthetic; this is not a live CRE or confidential-computing demonstration.
 ## Claims, cash and LP exits
 
 ```sh
-forge test --match-contract IssuerRecoveryTest --match-test test_PurchaseBecomesClaimNotCashThenMeasuredRecovery -vvvv
+forge test --match-contract HarborSettlementTest --match-test testFuzz_DepositPurchaseClaimRecoveryAndLpPayout --fuzz-runs 1 -vvvv
 forge test --match-contract IssuerRecoveryTest --match-test test_RecoveryFundsPendingFIFOExitsUsingActualWETH -vvvv
 ```
 
@@ -54,14 +54,15 @@ fixed beneficiary. No time warp or fake oracle finalization links those two test
 ## Failure and consistency checks
 
 ```sh
-forge test --match-path 'test/security/*.t.sol'
+forge test --match-contract '.*ReentrancyTest'
 forge test --match-contract PermitTradingTest
 FOUNDRY_PROFILE=invariant forge test
 FOUNDRY_PROFILE=gas forge test --gas-snapshot-check true --gas-snapshot-emit false
 ```
 
-The invariant profile checks independent accounting through long operation
-sequences. Gas regions and limitations are documented [here](test/gas/README.md).
+The invariant profile checks partial-claim accounting in 32 short sequences of
+16 calls. The gas profile now retains only the deployment-size gate; its scope
+is documented [here](test/gas/README.md).
 The deployment script is local-only. No mainnet readiness, calibrated APY,
 live confidential underwriting, or second-issuer integration is claimed by this
 demo. Those require their own measured evidence and security review.

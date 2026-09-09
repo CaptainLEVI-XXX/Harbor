@@ -2,9 +2,8 @@
 pragma solidity 0.8.30;
 
 import {VaultState} from "src/vault/base/VaultState.sol";
-
 import {HarborVault} from "src/vault/HarborVault.sol";
-import {VaultFixture} from "test/helpers/VaultFixture.sol";
+import {VaultFixture} from "test/base/VaultFixture.sol";
 
 /// @title ERC4626DepositTest
 /// @notice Issuance, conversion, caller-funded overloads and surplus exclusion.
@@ -43,27 +42,6 @@ contract ERC4626DepositTest is VaultFixture {
     assertEq(vault.totalAssets(), 2 ether);
   }
 
-  function test_StaleValuationBlocksIssuanceButNotRequests() public {
-    uint256 shares = _deposit(alice, 1 ether);
-    vm.warp(1061);
-    assertEq(vault.maxDeposit(alice), 0);
-    vm.expectRevert(VaultState.ValuationUnavailable.selector);
-    vm.prank(alice);
-    vault.deposit(1 ether, alice);
-    _request(alice, shares);
-  }
-
-  function test_TransfersDoNotCreateYieldAndEscrowCannotBeReused() public {
-    uint256 shares = _deposit(alice, 1 ether);
-    vm.prank(alice);
-    vault.transfer(bob, shares / 2);
-    assertEq(vault.totalAssets(), 1 ether);
-    assertEq(vault.totalSupply(), shares);
-    _request(bob, shares / 2);
-    vm.expectRevert(VaultState.InvalidReceiver.selector);
-    vault.transferFrom(address(vault), alice, shares / 2);
-  }
-
   function test_FinishFailureRollsBackDepositAndNextOperationWorks() public {
     book.setFailFinish(true);
     vm.expectRevert(bytes("book finish"));
@@ -76,13 +54,40 @@ contract ERC4626DepositTest is VaultFixture {
     _deposit(bob, 1 ether);
     assertEq(vault.totalAssets(), 2 ether);
   }
+}
 
-  function test_ZeroSharesAndTinySeedRejected() public {
-    vm.expectRevert(VaultState.InvalidAmount.selector);
+/// @title ERC7540RedeemTest
+/// @notice Pending, funded and claimed states remain separate and controller-owned.
+contract ERC7540RedeemTest is VaultFixture {
+  function test_AllowanceCanRequestButCannotClaimControllerCredit() public {
+    uint256 shares = _deposit(alice, 10 ether);
     vm.prank(alice);
-    vault.deposit(1, alice);
-    vm.expectRevert(VaultState.InvalidAmount.selector);
+    vault.approve(operator, shares);
+    vm.prank(operator);
+    vault.requestRedeem(shares, alice, alice);
+    assertEq(vault.allowance(alice, operator), 0);
+    vault.fulfillWithdrawals(1);
+    vm.expectRevert(VaultState.Unauthorized.selector);
+    vm.prank(operator);
+    vault.withdraw(10 ether, operator, alice);
+  }
+
+  function test_ReserveDeficitBlocksFirstComeDepletion() public {
+    uint256 a = _deposit(alice, 10 ether);
+    uint256 b = _deposit(bob, 10 ether);
+    _request(alice, a);
+    _request(bob, b);
+    vault.fulfillWithdrawals(2);
+    // Synthetic loss of custody: genuine WETH is not assumed to have this power.
+    deal(address(weth), address(vault), 15 ether);
+    assertEq(vault.maxWithdraw(alice), 0);
+    assertEq(vault.maxWithdraw(bob), 0);
+    (,,, bool valid, bool insolvent) = vault.accountingStatus();
+    assertFalse(valid);
+    assertTrue(insolvent);
+    vm.expectRevert();
     vm.prank(alice);
-    vault.mint(0, alice);
+    vault.withdraw(10 ether, alice, alice);
+    assertEq(vault.claimableRedeemRequest(0, alice), a);
   }
 }

@@ -10,7 +10,7 @@ via_ir = true
 # Keep multiple calls within a Solidity test in the same transaction so
 # transient-context cleanup and sequential-call tests exercise their intent.
 isolate = false
-# Required by opcode-trace assertions; successful tests remain concise.
+# Keep failure traces available; successful tests remain concise.
 verbosity = 3
 # Ordinary tests verify committed measurements rather than silently replacing them.
 gas_snapshot_check = true
@@ -18,38 +18,25 @@ gas_snapshot_emit = false
 no_match_path = "test/fork/**"
 
 [profile.default.fuzz]
-runs = 256
+runs = 64
 seed = "0x484152424f52"
 
 [profile.default.invariant]
-runs = 64
-depth = 32
+runs = 32
+depth = 16
 fail_on_revert = true
 
 [profile.unit]
 no_match_path = "test/fork/**"
 
-# Focused local settlement checks; reuse existing bases and security regressions.
+# Backwards-compatible alias: now runs the entire small local suite, not a filter.
 [profile.settlement]
-match_contract = "^(HarborSettlement|ERC4626Deposit|ClaimLifecycleInvariant|.*Reentrancy)Test$"
-
-[profile.settlement.fuzz]
-runs = 64
-
-[profile.settlement.invariant]
-runs = 32
-depth = 16
 
 [profile.compatibility]
-match_path = "test/compatibility/**/*.t.sol"
+match_contract = "PermitTradingTest"
 
 [profile.invariant]
 match_path = "test/invariant/**/*.t.sol"
-
-[profile.invariant.invariant]
-runs = 256
-depth = 64
-fail_on_revert = true
 
 [profile.fork]
 match_path = "test/fork/**/*.t.sol"

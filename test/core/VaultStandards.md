@@ -4,11 +4,16 @@ Foundation: Solady v0.1.26 (`acd959aa4bd04720d640bf4e6a5c71037510cc4b`).
 Tests use synthetic assets and a mock Book. They do not certify live valuation,
 issuer integration, complete standards conformance, or production readiness.
 
+The retained `Vault.t.sol` contains five selected checks. The matrix below
+describes contract behavior; it does not claim that every row still has a
+dedicated test. Full standards-conformance and operator-mode matrices were cut
+from the hackathon suite.
+
 Deposit/mint fuzz expectations use explicit virtual-share arithmetic, not the
 vault's previews as the reference. A synthetic noncash gain exercises upward
 mint rounding at a nontrivial exchange rate; both previews and real balances
 must agree with the independently computed result. Operator funding and its
-unauthorized-call regression live in `test/integration/HarborSettlement.t.sol`.
+unauthorized-call regression live in `test/core/HarborSettlement.t.sol`.
 
 ## Inherited-path override matrix
 
@@ -51,6 +56,6 @@ but no fresh valuation or quote service. Zero-value loss credits are acknowledge
 through redeem rather than discarded. Partial asset claims cannot consume the
 last receipt unit while leaving cash behind.
 
-Run `forge test --match-path 'test/standards/*.t.sol'` and
-`forge test --match-path 'test/security/*.t.sol'`. Token-callback tests are
+Run `forge test --match-contract 'ERC(4626Deposit|7540Redeem)Test'` and
+`forge test --match-contract '.*ReentrancyTest'`. Token-callback tests are
 adversarial synthetic fixtures, not evidence that arbitrary tokens are supported.

@@ -128,24 +128,25 @@ The address is explicitly shifted to 160 bits. This block does not write memory,
 persistent storage or transient storage. Ordinary typed transient fields own
 the lifecycle; durable accounting has not been converted into manual slots.
 
-`HarborExactFill.t.sol` compares parsing against readable slicing/ABI decoding
-and tests arbitrary route/version/address values, malformed lengths, zero
-authority, register preservation, static-write rejection and nonce rollback.
-Its parser microbenchmark uses separate contracts with the same single external
-selector: 383 versus 452 gas under the pinned compiler settings. This is a
-69-gas parser-call improvement, not a whole-transaction savings claim.
+`HarborExactFill.t.sol` retains readable slicing/ABI decoding as the reference
+for valid packed arguments, register/payload checks and static-write rejection.
+`HarborClaimGuard.t.sol` retains non-unit receipt rejection and late-instruction
+rollback. These five checks are focused regression coverage, not exhaustive
+malformed-program or decoder proof. Earlier parser-call measurements were
+383 versus 452 gas; that microbenchmark is no longer in the active test suite.
 
 ```sh
 forge test --match-path 'test/swapvm/*.t.sol' -vv
-forge test --match-contract VaultAquaSwapVMTest -vvvv
+forge test --match-contract PermitTradingTest -vvvv
 forge test --match-contract FourModeTradingTest -vvvv
 FOUNDRY_PROFILE=invariant forge test
 FOUNDRY_PROFILE=gas forge test
 ```
 
-Tests include rejection by the unmodified official router, unknown-opcode
-fallback, truncated bytecode, all four trading modes, exact Aqua token movements,
-publication ownership, input-first ordering and complete late-failure rollback.
+The retained core flows exercise all four trading modes, exact Aqua token
+movements, signed/independent authorization and late-fee rollback. The earlier
+upstream-router, truncated-bytecode and publication-ownership matrices are not
+part of the 50-test hackathon suite.
 Synthetic assets, marks and permits are not live capital or model-validation
 evidence. See the root demo and integration test documentation for proof limits.
 

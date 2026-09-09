@@ -1,17 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {TokenMock} from "@1inch/solidity-utils/contracts/mocks/TokenMock.sol";
 import {Aqua} from "@1inch/aqua/src/Aqua.sol";
-import {HarborSwapVMRouter} from "src/swapvm/HarborSwapVMRouter.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {IMakerHooks} from "@1inch/swap-vm/src/interfaces/IMakerHooks.sol";
 import {IHarborFill} from "src/interfaces/IHarborFill.sol";
 import {SwapQuery} from "@1inch/swap-vm/src/libs/VM.sol";
-import {TakerTraitsLib} from "@1inch/swap-vm/src/libs/TakerTraits.sol";
-import {HarborProgram} from "src/swapvm/HarborProgram.sol";
 
 /// @notice Test-only contract maker. No LP shares or production treasury API.
 contract ContractMakerFixture {
@@ -155,55 +150,5 @@ contract BookHookFixture is IHarborFill, IMakerHooks {
   ) private view {
     require(msg.sender == router && phase == expected && md.length == 0 && td.length == 0, "hook phase");
     require(keccak256(abi.encode(m, t, ti, to, ai, ao, hash)) == activeHook, "hook identity");
-  }
-}
-
-/// @notice Official Aqua and Harbor's derived router with synthetic tokens and maker.
-abstract contract HarborAquaFixture is Test {
-  Aqua internal aqua;
-  HarborSwapVMRouter internal router;
-  ContractMakerFixture internal maker;
-  BookHookFixture internal book;
-  TokenMock internal weth;
-  TokenMock internal base;
-  ISwapVM.Order internal order;
-
-  function setUp() public virtual {
-    aqua = new Aqua();
-    weth = new TokenMock("Wrapped Ether fixture", "WETH");
-    base = new TokenMock("Wrapped stake fixture", "BASE");
-    router = new HarborSwapVMRouter(address(aqua), address(weth), address(this), "Harbor", "1");
-    maker = new ContractMakerFixture();
-    book = new BookHookFixture(address(router), address(maker), address(this));
-    order = HarborProgram.build(address(maker), address(book), address(weth), address(base), 0, 1, 1);
-    weth.mint(address(maker), 100 ether);
-    base.mint(address(maker), 100 ether);
-    weth.mint(address(this), 100 ether);
-    base.mint(address(this), 100 ether);
-    weth.approve(address(router), type(uint256).max);
-    base.approve(address(router), type(uint256).max);
-    _ship(order, maker);
-  }
-
-  function _ship(ISwapVM.Order memory selected, ContractMakerFixture publisher) internal returns (bytes32) {
-    address[] memory tokens = new address[](2);
-    tokens[0] = address(weth);
-    tokens[1] = address(base);
-    uint256[] memory amounts = new uint256[](2);
-    amounts[0] = 100 ether;
-    amounts[1] = 100 ether;
-    return publisher.ship(aqua, address(router), selected, tokens, amounts);
-  }
-
-  function _traits(bool baseIn, bool exactIn, uint256 threshold, bool inputFirst) internal view returns (bytes memory) {
-    TakerTraitsLib.Args memory args;
-    args.taker = address(this);
-    args.isExactIn = exactIn;
-    args.isAToB = baseIn ? address(base) < address(weth) : address(weth) < address(base);
-    args.isFirstTransferFromTaker = inputFirst;
-    args.useTransferFromAndAquaPush = true;
-    args.isStrictThresholdAmount = true;
-    args.threshold = abi.encode(threshold);
-    return TakerTraitsLib.build(args);
   }
 }

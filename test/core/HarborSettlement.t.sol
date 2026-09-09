@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {RedemptionMarketFixture} from "test/helpers/RedemptionMarketFixture.sol";
+import {RedemptionMarketFixture} from "test/base/RedemptionMarketFixture.sol";
 import {BookState} from "src/book/base/BookState.sol";
 import {VaultState} from "src/vault/base/VaultState.sol";
 import {BookPortfolio} from "src/libraries/BookPortfolio.sol";

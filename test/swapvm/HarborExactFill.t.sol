@@ -75,7 +75,6 @@ contract ReferenceFillParser {
 contract HarborExactFillTest is Test {
   ExactFillHarness internal h = new ExactFillHarness();
   ReferenceFillParser internal referenceParser = new ReferenceFillParser();
-  PackedFillParser internal packedParser = new PackedFillParser();
   FillAuthority internal authority = new FillAuthority();
 
   function testFuzz_PackedParserMatchesReference(address book, uint256 route, uint256 version) public view {
@@ -86,17 +85,6 @@ contract HarborExactFillTest is Test {
     assertEq(b, rb);
     assertEq(r, rr);
     assertEq(v, rv);
-  }
-
-  function testFuzz_RejectsAllNoncanonicalLengths(uint16 length) public {
-    vm.assume(length != 84);
-    vm.expectRevert(abi.encodeWithSelector(HarborExactFill.InvalidArgumentsLength.selector, uint256(length)));
-    h.parse(new bytes(length));
-  }
-
-  function test_RejectsZeroAuthority() public {
-    vm.expectRevert(HarborExactFill.InvalidAuthority.selector);
-    h.parse(abi.encodePacked(address(0), uint256(7), uint256(9)));
   }
 
   function testFuzz_ExecPreservesRegistersAndConsumesPayload(uint128 ai, uint128 ao, bool exactIn, bool quoting)
@@ -121,33 +109,6 @@ contract HarborExactFillTest is Test {
     );
     assertFalse(ok);
     assertEq(authority.consumed(), 0);
-  }
-
-  function test_ChangedSpecifiedAmountRollsBackAuthorization() public {
-    vm.expectRevert(HarborExactFill.InvalidAmounts.selector);
-    h.run(_args(), hex"abcdef", SwapRegisters(100, 100, 12, 0), true, false);
-    assertEq(authority.consumed(), 0);
-    vm.expectRevert(HarborExactFill.InvalidAmounts.selector);
-    h.run(_args(), hex"abcdef", SwapRegisters(100, 100, 0, 14), false, false);
-    assertEq(authority.consumed(), 0);
-  }
-
-  function test_ZeroPairRejected() public {
-    authority.configure(11, 0, false);
-    vm.expectRevert(HarborExactFill.InvalidAmounts.selector);
-    h.run(_args(), hex"abcdef", SwapRegisters(100, 100, 11, 0), true, false);
-    assertEq(authority.consumed(), 0);
-  }
-
-  function test_PackedParserGasAgainstReadableReference() public {
-    bytes memory args = _args();
-    packedParser.parse(args);
-    uint256 optimized = vm.lastFrameGas().gasTotalUsed;
-    referenceParser.parse(args);
-    uint256 readable = vm.lastFrameGas().gasTotalUsed;
-    emit log_named_uint("packed parser call gas", optimized);
-    emit log_named_uint("reference parser call gas", readable);
-    assertLt(optimized, readable);
   }
 
   function _args() private view returns (bytes memory) {

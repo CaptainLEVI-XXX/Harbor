@@ -44,9 +44,11 @@ forge test
 forge fmt --check
 ```
 
-See [settlement tests](test/integration/README.md),
-[vault standards tests](test/standards/README.md), and
-[adapter tests](test/adapters/README.md) for proof scope and commands.
+The [test guide](test/README.md) explains the six folders and 50 retained tests:
+46 local checks plus four separate fork checks. `forge test` runs all local checks.
+See [settlement tests](test/core/README.md),
+[vault standards tests](test/core/VaultStandards.md), and
+[adapter tests](test/core/LidoAdapter.md) for proof scope and commands.
 
 ## Status
 
@@ -57,9 +59,9 @@ and issuer finalization.
 [Pinned Lido fork checks](test/fork/README.md) cover native requests, actual
 receipt/WETH trading and separately mature historical recovery; the different
 blocks and test-only historical setup are documented.
-The [receiver tests](test/chainlink/README.md) use simulated forwarder delivery.
-[Stateful campaigns](test/invariant/README.md) compare operations against independent
-accounting ledgers. The CRE workflow/live delivery, production valuation calibration
+The [receiver tests](test/core/HarborPolicyReceiver.md) use simulated forwarder delivery.
+[One short stateful check](test/invariant/README.md) compares partial claims against
+an independent accounting ledger. The CRE workflow/live delivery, production valuation calibration
 and independent review remain
 release requirements. The deployment script rejects non-local chains.
 

@@ -13,7 +13,7 @@ import {HarborProgram} from "src/swapvm/HarborProgram.sol";
 import {LidoClaimFactory} from "src/claims/LidoClaimFactory.sol";
 import {LidoClaimReceipt} from "src/claims/LidoClaimReceipt.sol";
 import {ILidoWithdrawalQueue as Queue} from "src/interfaces/ILidoWithdrawalQueue.sol";
-import {BookHookFixture, ContractMakerFixture} from "test/helpers/HarborAquaFixture.sol";
+import {BookHookFixture, ContractMakerFixture} from "test/base/ForkMakerFixture.sol";
 import {ILidoQueueHistory} from "test/fork/LidoAdapter.fork.t.sol";
 
 /// @notice TEST ONLY: seed a separately mature historical right to isolate actual recovery.

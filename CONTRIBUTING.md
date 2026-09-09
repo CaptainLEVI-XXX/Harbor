@@ -68,6 +68,12 @@ src/             contract entrypoints and implementations
   libraries/     reusable types, accounting, hashing, and math
   swapvm/        program construction and execution extensions
 test/            unit, differential, integration, and security tests
+  base/          shared fixtures and test-only helpers
+  core/          accounting, vault, adapter, permit, and settlement tests
+  swapvm/        custom instruction parsing, registers, and rollback
+  invariant/     stateful accounting checks and handlers
+  fork/          pinned-block issuer and token evidence
+  gas/           deployed-size gate and snapshot reference
 script/          reproducible setup and operational scripts
 lib/             pinned third-party Solidity sources
 ```
@@ -236,6 +242,10 @@ is proved. Do not replace checked financial arithmetic with Yul for appearance.
 
 Code changes must include proportionate tests. Documentation-only changes need
 accurate commands, working references, and a check for accidental disclosure.
+
+The retained suite has 50 test/invariant entrypoints: 46 local and four fork
+checks. Prefer improving these flow tests to growing a second exhaustive suite.
+Default fuzzing uses 64 cases; the single stateful campaign uses 32 x 16 calls.
 
 - Start with a compact suite covering accounting, authorization, payouts and
   replay protection. Exercise one complete lifecycle with actual balances and

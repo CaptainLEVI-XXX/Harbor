@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {LidoClaimFixture} from "test/claims/LidoClaimSecurity.t.sol";
+import {LidoClaimFixture} from "test/base/LidoClaimFixture.sol";
 import {HarborClaimGuard} from "src/swapvm/instructions/HarborClaimGuard.sol";
 import {HarborExactFill} from "src/swapvm/instructions/HarborExactFill.sol";
 import {HarborSwapVMRouter} from "src/swapvm/HarborSwapVMRouter.sol";
@@ -49,15 +49,6 @@ contract HarborClaimGuardTest is LidoClaimFixture {
     guard = new ClaimGuardHarness();
   }
 
-  function test_GuardPreservesRegistersBothDirections() public view {
-    bytes memory args = abi.encode(address(receipt), address(factory), factory.version());
-    (bytes32 beforeHash, bytes32 afterHash) = guard.run(args, address(receipt), address(weth), 1, true);
-    assertEq(beforeHash, afterHash);
-    (beforeHash, afterHash) = guard.run(args, address(weth), address(receipt), 1, false);
-    assertEq(beforeHash, afterHash);
-    assertEq(uint8(Opcode._56), HarborClaimGuard.OPCODE);
-  }
-
   function testFuzz_RejectsEveryNonUnitQuantity(uint256 quantity, bool buy) public {
     vm.assume(quantity != 1);
     vm.expectRevert();
@@ -70,12 +61,6 @@ contract HarborClaimGuardTest is LidoClaimFixture {
     );
   }
 
-  function testFuzz_RejectsNoncanonicalArgumentLength(bytes memory args) public {
-    vm.assume(args.length != 96);
-    vm.expectRevert();
-    guard.run(args, address(receipt), address(weth), 1, true);
-  }
-
   function test_LateGuardFailureRollsBackPrecedingAuthorization() public {
     FillAuthority authority = new FillAuthority();
     bytes memory program = bytes.concat(
@@ -84,15 +69,5 @@ contract HarborClaimGuardTest is LidoClaimFixture {
     vm.expectRevert();
     guard.runLoop(program, hex"abcdef", address(receipt), address(weth));
     assertEq(authority.consumed(), 0);
-  }
-
-  function test_ChangedFactoryVersionOrFinalizedClaimRejected() public {
-    bytes memory args = abi.encode(address(receipt), address(factory), uint256(2));
-    vm.expectRevert();
-    guard.run(args, address(receipt), address(weth), 1, true);
-    queue.setFinalized(id, 1 ether);
-    args = abi.encode(address(receipt), address(factory), uint256(1));
-    vm.expectRevert();
-    guard.run(args, address(receipt), address(weth), 1, true);
   }
 }

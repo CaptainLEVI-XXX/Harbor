@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {IssuerFixture} from "test/helpers/IssuerFixture.sol";
+import {IssuerFixture} from "test/base/IssuerFixture.sol";
 import {LidoClaimFactory} from "src/claims/LidoClaimFactory.sol";
 import {Trade, FillTerms, FillAmounts, Side, AmountMode} from "src/types/HarborTypes.sol";
 import {Fees} from "src/libraries/Fees.sol";
