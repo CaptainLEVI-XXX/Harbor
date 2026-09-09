@@ -31,6 +31,12 @@ abstract contract BookRedemptions is BookState {
     return _redemptions.usedNonce[epoch][nonce];
   }
 
+  /// @notice Current UTC-day request usage in WETH-denominated entitlement wei.
+  function redemptionUsedToday(uint256 route) external view returns (uint256) {
+    if (route >= INVENTORY_ROUTES) revert InvalidConfiguration();
+    return _redemptions.usedToday(route);
+  }
+
   /// @notice Convert managed wrapped inventory into verified issuer rights.
   /// @dev Keeper only. Basis moves to pending exposure, not available cash.
   /// Every adapter receipt is checked before recording it; failure rolls back
@@ -56,8 +62,7 @@ abstract contract BookRedemptions is BookState {
     _open(context, Operation.REDEMPTION);
     _route = intent.route;
     _cash = intent.shares;
-    requests =
-      IssuerOperations.request(_state, _redemptions, _protocolIds, r, intent, amounts, address(VAULT), WETH, context);
+    requests = IssuerOperations.request(_state, _redemptions, r, intent, amounts, address(VAULT), WETH, context);
     VAULT.settleIssuer(context, 0);
     _release();
   }

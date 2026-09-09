@@ -1,14 +1,14 @@
 {
-  "buy-exact-input-cold": "660427",
-  "buy-exact-input-preflight-warm": "554344",
-  "buy-exact-output-cold": "660527",
-  "checkpoint-sixty-four-claims-cold": "790182",
-  "deposit-cold": "104471",
-  "fund-eight-tickets-cold": "271717",
-  "funded-lp-claim-cold": "92576",
-  "recover-eight-issuer-rights-cold": "1243727",
-  "request-eight-issuer-rights-cold": "2492378",
-  "sell-exact-input-cold": "484299",
-  "sell-exact-output-cold": "485203",
-  "strategy-refresh-cold": "190404"
+  "buy-exact-input-cold": "667185",
+  "buy-exact-input-preflight-warm": "559100",
+  "buy-exact-output-cold": "667285",
+  "checkpoint-sixty-four-claims-cold": "794040",
+  "deposit-cold": "104543",
+  "fund-eight-tickets-cold": "271775",
+  "funded-lp-claim-cold": "92620",
+  "recover-eight-issuer-rights-cold": "1261666",
+  "request-eight-issuer-rights-cold": "2492270",
+  "sell-exact-input-cold": "471814",
+  "sell-exact-output-cold": "472718",
+  "strategy-refresh-cold": "190633"
 }

@@ -30,7 +30,6 @@ library IssuerOperations {
   function request(
     Accounting.State storage state,
     RedemptionAccounting.State storage redemptions,
-    mapping(bytes32 => uint256) storage protocolIds,
     RouteConfig memory r,
     RedeemIntent memory intent,
     uint256[] memory amounts,
@@ -52,7 +51,7 @@ library IssuerOperations {
       if (item.shares != amounts[i] || item.id == 0) revert SettlementMismatch();
       bytes32 key = ClaimAccounting.key(r.adapter, item.id);
       uint256 basis = Accounting.request(state, intent.route, item.shares, key, item.entitlement);
-      protocolIds[key] = item.id;
+      state.protocolIds[key] = item.id;
       underlying += item.entitlement;
       emit RedemptionRequested(context, intent.route, item.id, item.shares, basis, item.entitlement);
     }

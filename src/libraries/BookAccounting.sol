@@ -5,7 +5,7 @@ import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
 import {ClaimAccounting} from "src/libraries/ClaimAccounting.sol";
 
 /// @title BookAccounting
-/// @notice Inventory basis, pending exposure and realized cash results by route.
+/// @notice Inventory basis, pending exposure and enforceable loss budgets by route.
 /// @dev Values are historical cost, not share NAV. No token or issuer calls occur here.
 library BookAccounting {
   using ClaimAccounting for ClaimAccounting.State;
@@ -14,20 +14,37 @@ library BookAccounting {
     uint256 shares; // Managed wrapped token raw units.
     uint256 basis; // Warehouse acquisition cost, WETH wei.
     uint256 pendingBasis; // Cost assigned to live issuer claims, WETH wei.
-    uint256 purchases; // Lifetime gross purchase debits, WETH wei.
-    uint256 realizedGains; // Lifetime positive closed results, WETH wei.
-    uint256 realizedLosses; // Lifetime negative closed results; profits do not reset it.
+    uint256 purchases; // Native lifetime gross purchase debits, WETH wei; zero for receipt routes.
+    uint256 realizedLosses; // Native lifetime losses; receipt losses live only in issuer receipt totals.
     uint256 version; // Advances on every portfolio transition.
   }
 
   struct State {
     mapping(uint256 => Position) positions;
     ClaimAccounting.State claims;
+    mapping(bytes32 => uint256) protocolIds; // Live inverse IDs needed by valuation/discovery; cleared on closure.
     uint256 version;
   }
 
   error InvalidPositionAmount();
   error InsufficientInventory(uint256 available, uint256 requested);
+
+  enum RealizationKind {
+    SALE,
+    ISSUER_RECOVERY
+  }
+
+  /// @notice Final cost and cash result; gains are reconstructed from logs, not stored.
+  /// @dev WETH amounts include purchase fees in basis and exclude sale fees from proceeds.
+  /// claimKey is zero for a sale; join its route/version to the same transaction's fill.
+  event PositionRealized(
+    uint256 indexed route,
+    bytes32 indexed claimKey,
+    RealizationKind kind,
+    uint256 basisWeth,
+    uint256 proceedsWeth,
+    uint256 positionVersion
+  );
 
   /// @notice Record exact received inventory and gross paid WETH including the fee.
   function buy(State storage self, uint256 route, uint256 shares, uint256 cost) public {
@@ -46,6 +63,7 @@ library BookAccounting {
     basis = _remove(p, shares);
     _realize(p, basis, revenue);
     _touch(self, p);
+    emit PositionRealized(route, bytes32(0), RealizationKind.SALE, basis, revenue, p.version);
   }
 
   /// @notice Move inventory basis to one externally verified issuer right.
@@ -65,13 +83,17 @@ library BookAccounting {
   /// @dev Real losses are always recorded, even above configured risk budgets.
   /// The boundary stops new buys instead of reverting recovery to conceal a loss.
   function recover(State storage self, bytes32 id, uint256 cash, uint256 remaining) public {
+    // Closure clears the payload; cache the route before retiring the live right.
+    uint256 route = self.claims.claims[id].route;
     (bool closed, uint256 basis, uint256 receipts) = self.claims.receiveCash(id, cash, remaining);
-    Position storage p = self.positions[self.claims.claims[id].route];
+    Position storage p = self.positions[route];
     if (closed) {
+      delete self.protocolIds[id];
       p.pendingBasis -= basis;
       _realize(p, basis, receipts);
     }
     _touch(self, p);
+    if (closed) emit PositionRealized(route, id, RealizationKind.ISSUER_RECOVERY, basis, receipts, p.version);
   }
 
   function exposure(Position storage p) internal view returns (uint256) {
@@ -87,8 +109,7 @@ library BookAccounting {
   }
 
   function _realize(Position storage p, uint256 basis, uint256 cash) private {
-    if (cash >= basis) p.realizedGains += cash - basis;
-    else p.realizedLosses += basis - cash;
+    if (cash < basis) p.realizedLosses += basis - cash;
   }
 
   function _touch(State storage self, Position storage p) private {

@@ -5,11 +5,17 @@ import {RedeemIntent} from "src/types/HarborTypes.sol";
 
 /// @notice Independent keeper nonce and bounded daily request accounting.
 library RedemptionAccounting {
+  /// @notice Only the current UTC day's usage affects future request authorization.
+  struct DailyUsage {
+    uint256 day; // block.timestamp / 1 days at the last successful request.
+    uint256 used; // WETH-denominated issuer entitlement consumed that day.
+  }
+
   struct State {
     uint256 epoch;
     bool revoked;
     mapping(uint256 => mapping(uint256 => bool)) usedNonce;
-    mapping(uint256 => mapping(uint256 => uint256)) dailyRequested;
+    mapping(uint256 => DailyUsage) dailyUsage;
   }
   error InvalidIntent();
   error DailyLimit();
@@ -42,8 +48,16 @@ library RedemptionAccounting {
   function record(State storage self, uint256 route, uint256 underlying, uint256 minimum, uint256 limit) internal {
     if (underlying < minimum) revert InvalidIntent();
     uint256 day = block.timestamp / 1 days;
-    uint256 total = self.dailyRequested[route][day] + underlying;
+    DailyUsage storage usage = self.dailyUsage[route];
+    uint256 total = (usage.day == day ? usage.used : 0) + underlying;
     if (total > limit) revert DailyLimit();
-    self.dailyRequested[route][day] = total;
+    usage.day = day;
+    usage.used = total;
+  }
+
+  /// @notice Current-day entitlement consumed, in WETH wei; expired days read as zero.
+  function usedToday(State storage self, uint256 route) internal view returns (uint256) {
+    DailyUsage storage usage = self.dailyUsage[route];
+    return usage.day == block.timestamp / 1 days ? usage.used : 0;
   }
 }

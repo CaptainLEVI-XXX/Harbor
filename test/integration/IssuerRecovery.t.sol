@@ -10,6 +10,7 @@ import {RedemptionAccounting} from "src/libraries/RedemptionAccounting.sol";
 import {BookState} from "src/book/base/BookState.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {RedeemIntent} from "src/types/HarborTypes.sol";
+import {RealizationLogs} from "test/helpers/RealizationLogs.sol";
 
 contract IssuerRecoveryTest is IssuerFixture {
   function test_PurchaseBecomesClaimNotCashThenMeasuredRecovery() public {
@@ -31,12 +32,16 @@ contract IssuerRecoveryTest is IssuerFixture {
     vault.checkpointValuation(); // Synthetic public claim mark, not a production mark.
     assertEq(vault.totalAssets(), beforeCash + 1 ether + 1.2 ether);
     queue.setFinalized(id, 1.19 ether);
+    vm.recordLogs();
     _claim(id);
     p = book.getPosition(0);
     c = book.getClaim(address(adapter), id);
     assertEq(p.pendingBasis, 0);
-    assertEq(p.realizedGains, 0.2 ether);
-    assertEq(c.received, 1.19 ether);
+    (uint256 gains,, uint256 count) = RealizationLogs.totals(vm.getRecordedLogs(), address(book), 0);
+    assertEq(gains, 0.2 ether);
+    assertEq(count, 1);
+    assertEq(c.received, 0);
+    assertEq(c.basis, 0);
     assertTrue(c.closed);
     (cash,,,,) = vault.accountingStatus();
     assertEq(cash, beforeCash + 1.19 ether);
@@ -107,11 +112,13 @@ contract IssuerRecoveryTest is IssuerFixture {
     vm.expectRevert(RedemptionAccounting.InvalidIntent.selector);
     book.requestRedemption(intent, amounts);
     assertFalse(book.usedRedemptionNonce(intent.epoch, intent.nonce));
+    assertEq(book.redemptionUsedToday(0), 0);
     assertEq(queue.nextId(), 0);
     assertEq(bases[0].balanceOf(address(vault)), 2 ether);
     intent.minUnderlying -= 1;
     book.requestRedemption(intent, amounts);
     assertTrue(book.usedRedemptionNonce(intent.epoch, intent.nonce));
+    assertEq(book.redemptionUsedToday(0), 1.2 ether);
     intent.positionVersion = book.getPosition(0).version;
     vm.expectRevert(RedemptionAccounting.InvalidIntent.selector);
     book.requestRedemption(intent, amounts);

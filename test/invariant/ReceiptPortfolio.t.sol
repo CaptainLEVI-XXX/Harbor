@@ -18,7 +18,7 @@ contract ReceiptPortfolioInvariantTest is RedemptionMarketFixture {
   uint256 public ghostPurchases;
   uint256 public ghostLosses;
   uint256 public recoveryAmount;
-  uint256 public acquisition;
+  uint256 public positionVersion;
   uint256 public successfulTrades;
   bool public held;
   bool public finalized;
@@ -57,13 +57,13 @@ contract ReceiptPortfolioInvariantTest is RedemptionMarketFixture {
       ghostCash -= f.routerOut;
       ghostBasis = f.routerOut;
       ghostPurchases += f.routerOut;
-      ++acquisition;
     } else {
       ghostCash += f.routerIn;
       if (ghostBasis > f.routerIn) ghostLosses += ghostBasis - f.routerIn;
       ghostBasis = 0;
     }
     held = buy;
+    ++positionVersion;
     ++successfulTrades;
     vault.checkpointValuation();
   }
@@ -79,6 +79,7 @@ contract ReceiptPortfolioInvariantTest is RedemptionMarketFixture {
     if (!finalized || closed) return;
     if (held) {
       book.recoverClaim(currentRoute, 1);
+      ++positionVersion;
       ghostCash += recoveryAmount;
       if (ghostBasis > recoveryAmount) ghostLosses += ghostBasis - recoveryAmount;
     } else {
@@ -98,7 +99,7 @@ contract ReceiptPortfolioInvariantTest is RedemptionMarketFixture {
     (currentRoute, requestId, currentReceipt) = _externalMarket(1 ether);
     finalized = false;
     closed = false;
-    acquisition = 0;
+    positionVersion = 0;
   }
 
   function invariant_CashCostAndIssuerBudgetsMatchIndependentLedger() public view {
@@ -109,7 +110,9 @@ contract ReceiptPortfolioInvariantTest is RedemptionMarketFixture {
     assertEq(book.getPosition(currentRoute).basis, ghostBasis);
     assertEq(book.getPosition(currentRoute).shares, held ? 1 : 0);
     assertEq(book.activeReceiptCount(), held ? 1 : 0);
-    assertEq(book.claimMarket(currentRoute).acquisition, acquisition);
+    assertEq(book.getPosition(currentRoute).version, positionVersion);
+    assertEq(book.getPosition(currentRoute).purchases, 0);
+    assertEq(book.getPosition(currentRoute).realizedLosses, 0);
     assertEq(IERC20(currentReceipt).balanceOf(address(vault)), held ? 1 : 0);
     assertEq(IERC20(currentReceipt).totalSupply(), closed ? 0 : 1);
     assertGe(successfulTrades, 3);

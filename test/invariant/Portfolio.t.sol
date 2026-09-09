@@ -97,7 +97,7 @@ contract PortfolioInvariantTest is IssuerFixture {
       assertEq(p.shares, handler.warehouse(i));
       assertEq(p.basis, handler.basis(i));
       assertEq(p.purchases, handler.purchases(i));
-      assertEq(p.realizedGains, handler.gains(i));
+      assertEq(handler.eventGains(i), handler.gains(i));
       assertEq(p.realizedLosses, handler.losses(i));
       assertEq(p.pendingBasis, i == 0 ? handler.pendingBasis() : 0);
       assertEq(bases[i].balanceOf(address(vault)), p.shares + handler.baseSurplus(i));
@@ -106,7 +106,7 @@ contract PortfolioInvariantTest is IssuerFixture {
       (uint256 id, uint256 basis, uint256 remaining) = handler.claims(i);
       ClaimAccounting.Claim memory c = book.getClaim(address(adapter), id);
       assertTrue(c.exists);
-      assertEq(c.basis, basis);
+      assertEq(c.basis, remaining == 0 ? 0 : basis);
       assertEq(c.remaining, remaining);
       assertEq(c.closed, remaining == 0);
     }

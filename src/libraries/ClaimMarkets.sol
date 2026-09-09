@@ -26,9 +26,9 @@ library ClaimMarkets {
 
   struct Market {
     address factory;
+    address receipt; // Canonical one-unit base token; native configuration is not copied.
     uint256 sourceRoute;
     uint256 requestId;
-    uint256 acquisition; // Advances on export or purchase, never on publication.
   }
 
   struct Totals {
@@ -44,6 +44,7 @@ library ClaimMarkets {
     mapping(uint256 => Totals) totals;
     uint256[] active; // Only held receipt routes; native rights share the 64-position cap.
     mapping(uint256 => uint256) indexPlusOne;
+    uint256 count; // Stable next receipt route offset; IDs are never reused after disposal.
   }
 
   error InvalidIntegration();
@@ -56,10 +57,42 @@ library ClaimMarkets {
   event ClaimMarketRegistered(
     uint256 indexed route, address indexed receipt, address indexed factory, uint256 requestId
   );
-  event ClaimAcquired(uint256 indexed route, uint256 indexed acquisition, uint256 basis, bool exported);
-  event ClaimDisposed(
-    uint256 indexed route, uint256 indexed acquisition, uint256 basis, uint256 proceeds, bool recovered
+  /// @notice One-unit acquisition at WETH cost; version is the resulting position version, not a history counter.
+  event ReceiptAcquired(uint256 indexed route, uint256 indexed positionVersion, uint256 basisWeth, bool exported);
+  /// @notice Whole-unit disposal; WETH proceeds are net of fees, or measured recovery.
+  event ReceiptDisposed(
+    uint256 indexed route, uint256 indexed positionVersion, uint256 basisWeth, uint256 proceedsWeth, bool recovered
   );
+  /// @notice Native custody becomes a receipt at the same cost, without cash or realized PnL.
+  event NativeClaimExported(
+    uint256 indexed sourceRoute,
+    uint256 indexed issuerId,
+    uint256 indexed receiptRoute,
+    address receipt,
+    uint256 basisWeth
+  );
+
+  /// @notice Resolve the public route view without storing another copy of issuer limits.
+  /// @dev Original routes are immutable. Receipt pricing is fixed by its admitted integration.
+  function config(State storage self, RouteConfig[] storage routes, uint256 route)
+    public
+    view
+    returns (RouteConfig memory r)
+  {
+    if (route < routes.length) return routes[route];
+    Market storage m = self.markets[route];
+    if (m.factory == address(0)) revert InvalidReceipt();
+    r = routes[m.sourceRoute];
+    r.base = m.receipt;
+    r.adapter = m.factory;
+    r.bid = self.integrations[m.factory].bid;
+    r.ask = self.integrations[m.factory].ask;
+  }
+
+  /// @notice Resolve only the token identity required for settlement or custody checks.
+  function base(State storage self, RouteConfig[] storage routes, uint256 route) internal view returns (address) {
+    return route < routes.length ? routes[route].base : self.markets[route].receipt;
+  }
 
   /// @notice Schedule one immutable factory/issuer/pricing configuration.
   function schedule(
@@ -74,8 +107,8 @@ library ClaimMarkets {
     address weth
   ) public {
     if (
-      self.integrations[factory].readyAt != 0 || source >= routes.length || self.markets[source].factory != address(0)
-        || factory.code.length == 0 || bid == 0 || bid > ask || ask > 1e18
+      self.integrations[factory].readyAt != 0 || source >= routes.length || factory.code.length == 0 || bid == 0
+        || bid > ask || ask > 1e18
     ) revert InvalidIntegration();
     IHarborClaimFactory f = IHarborClaimFactory(factory);
     IHarborAdapter a = IHarborAdapter(routes[source].adapter);
@@ -120,14 +153,8 @@ library ClaimMarkets {
         || c.CHAIN_ID() != block.chainid || f.receiptOf(c.REQUEST_ID()) != receipt
         || c.status() != IHarborClaim.Status.PENDING
     ) revert InvalidReceipt();
-    RouteConfig memory r = routes[i.sourceRoute];
-    r.base = receipt;
-    r.adapter = factory;
-    r.bid = i.bid;
-    r.ask = i.ask;
-    route = routes.length;
-    routes.push(r);
-    self.markets[route] = Market(factory, i.sourceRoute, c.REQUEST_ID(), 0);
+    route = routes.length + self.count++;
+    self.markets[route] = Market(factory, receipt, i.sourceRoute, c.REQUEST_ID());
     self.routePlusOne[receipt] = route + 1;
     emit ClaimMarketRegistered(route, receipt, factory, c.REQUEST_ID());
   }
@@ -140,20 +167,28 @@ library ClaimMarkets {
       revert MarketCapacity();
     }
     Market storage m = self.markets[route];
-    if (m.factory == address(0)) revert InvalidReceipt();
+    Accounting.Position storage p = book.positions[route];
+    if (m.factory == address(0) || p.shares != 0 || p.basis != 0 || (!exported && cost == 0)) revert InvalidReceipt();
     self.active.push(route);
     self.indexPlusOne[route] = self.active.length;
     Totals storage t = self.totals[m.sourceRoute];
     t.basis += cost;
     if (!exported) t.purchases += cost;
-    ++m.acquisition;
-    emit ClaimAcquired(route, m.acquisition, cost, exported);
+    p.shares = 1;
+    p.basis = cost;
+    ++p.version;
+    ++book.version;
+    emit ReceiptAcquired(route, p.version, cost, exported);
   }
 
   /// @notice Remove a held receipt after measured sale or holder redemption.
-  function dispose(State storage self, uint256 route, uint256 basis, uint256 cash, bool recovered) public {
+  function dispose(State storage self, Accounting.State storage book, uint256 route, uint256 cash, bool recovered)
+    public
+  {
     uint256 index = self.indexPlusOne[route];
-    if (index == 0) revert InvalidReceipt();
+    Accounting.Position storage p = book.positions[route];
+    if (index == 0 || p.shares != 1) revert InvalidReceipt();
+    uint256 basis = p.basis;
     Market storage m = self.markets[route];
     Totals storage t = self.totals[m.sourceRoute];
     t.basis -= basis;
@@ -163,7 +198,11 @@ library ClaimMarkets {
     self.indexPlusOne[last] = index;
     self.active.pop();
     delete self.indexPlusOne[route];
-    emit ClaimDisposed(route, m.acquisition, basis, cash, recovered);
+    p.shares = 0;
+    p.basis = 0;
+    ++p.version;
+    ++book.version;
+    emit ReceiptDisposed(route, p.version, basis, cash, recovered);
   }
 
   /// @notice Export exactly one unrecovered native right, preserving its full cost.
@@ -190,13 +229,10 @@ library ClaimMarkets {
     ) revert InvalidReceipt();
     route = register(self, routes, factory, receipt, weth);
     uint256 basis = book.claims.transferRight(key);
+    delete book.protocolIds[key];
     book.positions[source].pendingBasis -= basis;
     ++book.positions[source].version;
-    Accounting.Position storage p = book.positions[route];
-    p.shares = 1;
-    p.basis = basis;
-    ++p.version;
-    ++book.version;
     acquire(self, book, route, basis, true);
+    emit NativeClaimExported(source, id, route, receipt, basis);
   }
 }

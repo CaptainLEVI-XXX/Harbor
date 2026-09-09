@@ -8,6 +8,7 @@ import {IHarborPolicyReceiver} from "src/interfaces/IHarborPolicyReceiver.sol";
 import {BookState} from "src/book/base/BookState.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {Trade, FillTerms, Side, AmountMode} from "src/types/HarborTypes.sol";
+import {RealizationLogs} from "test/helpers/RealizationLogs.sol";
 
 /// @notice Real receiver, official Aqua and Harbor's derived router with simulated reports.
 /// @dev No DON signature or confidential-execution claim is made by this fixture.
@@ -65,12 +66,15 @@ contract PermitTradingTest is TradingFixture {
   }
 
   function test_AuthenticatedPermitSettlesAllFourModes() public {
+    vm.recordLogs();
     _execute(Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     _execute(Side.BUY_BASE, AmountMode.EXACT_OUT, 1 ether);
     _execute(Side.SELL_BASE, AmountMode.EXACT_IN, 1 ether);
     _execute(Side.SELL_BASE, AmountMode.EXACT_OUT, 1 ether);
     assertEq(book.getPosition(0).shares, 0);
-    assertGt(book.getPosition(0).realizedGains, 0);
+    (uint256 gains,, uint256 count) = RealizationLogs.totals(vm.getRecordedLogs(), address(book), 0);
+    assertGt(gains, 0);
+    assertEq(count, 2);
   }
 
   function test_PermitCannotOverridePendingLPWithdrawalPriority() public {

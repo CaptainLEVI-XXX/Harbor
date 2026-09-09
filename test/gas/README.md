@@ -58,16 +58,15 @@ Snapshots retain those regressions rather than reporting only improvements.
 Vault and Executor runtime sizes remain unchanged. These are controlled fixture
 measurements, not claims about mainnet transaction fees.
 
-## Receipt market measurements
+## Receipt market baseline before accounting compaction
 
-Current snapshots include linked domain libraries and the receipt-state guard;
-the preceding historical table is not the current runtime or trade cost.
-`HarborRuntimeBytes.json` records Book **23,086**, router **23,017**, vault
+The receipt-market baseline includes linked domain libraries and the receipt-state
+guard. Its runtime measurements were Book **23,086**, router **23,017**, vault
 **17,390**, executor **12,121** and Lido adapter **6,516** bytes. Fixed linked
 libraries add separately deployed code; reducing Book size is not a claim of
 lower aggregate deployment cost.
 
-`HarborClaims.json` measures fixture-warm regions with synthetic issuer behavior:
+The baseline measured fixture-warm regions with synthetic issuer behavior:
 
 | Region | Gas |
 | --- | ---: |
@@ -84,3 +83,18 @@ competitor. Wrapping adds real cost. Its benefit is reusable ERC-20 settlement
 and explicit recovery ownership, not cheaper one-off NFT transfers. Receipt
 snapshots do not reset warmth and must not be compared with the cold inventory
 regions as if only the asset changed.
+
+## Live-state accounting measurements
+
+Storage compaction retains source-level risk budgets and adds native realization
+events. Under the same compiler and fixtures, receipt purchase changes from
+756,854 to 717,352 gas; sale from 534,819 to 516,817; export from 841,510 to
+654,106; and vault receipt recovery from 180,945 to 159,333. Wrapping is unchanged.
+Book runtime changes from 23,086 to 23,135 bytes and the adapter from 6,516 to
+6,421 bytes. Linked libraries remain separate deployment costs.
+
+Not every region improves: native cold exact-input purchases increase from
+660,427 to 667,185, and eight native recoveries from 1,243,727 to 1,261,666.
+Route resolution, result events and retiring settled payloads have execution
+costs. Region snapshots are not post-refund transaction receipts. The committed
+JSON files remain the executable measurements for this checkout.

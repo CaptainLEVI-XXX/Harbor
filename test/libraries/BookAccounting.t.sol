@@ -4,6 +4,7 @@ pragma solidity 0.8.30;
 import {Test} from "forge-std/Test.sol";
 import {BookAccounting} from "src/libraries/BookAccounting.sol";
 import {ClaimAccounting} from "src/libraries/ClaimAccounting.sol";
+import {RealizationLogs} from "test/helpers/RealizationLogs.sol";
 
 contract AccountingHarness {
   using BookAccounting for BookAccounting.State;
@@ -62,21 +63,30 @@ contract BookAccountingTest is Test {
     assertEq(h.request(0, 1, bytes32(uint256(1)), 5), 3);
     BookAccounting.Position memory p = h.position(0);
     assertEq(p.basis + p.pendingBasis, 10);
+    vm.recordLogs();
     h.recover(bytes32(uint256(1)), 2, 3);
     p = h.position(0);
     assertEq(p.pendingBasis, 3);
-    assertEq(p.realizedGains, 0);
+    (uint256 gains,, uint256 count) = RealizationLogs.totals(vm.getRecordedLogs(), address(h), 0);
+    assertEq(count, 0);
+    assertEq(h.claim(bytes32(uint256(1))).received, 2);
     assertFalse(h.claim(bytes32(uint256(1))).closed);
+    vm.recordLogs();
     h.recover(bytes32(uint256(1)), 2, 0);
     p = h.position(0);
     assertEq(p.pendingBasis, 0);
-    assertEq(p.realizedGains, 1);
+    (gains,, count) = RealizationLogs.totals(vm.getRecordedLogs(), address(h), 0);
+    assertEq(gains, 1);
+    assertEq(count, 1);
+    assertEq(h.claim(bytes32(uint256(1))).basis, 0);
+    assertEq(h.claim(bytes32(uint256(1))).received, 0);
     assertEq(h.active().length, 0);
     vm.expectRevert(abi.encodeWithSelector(ClaimAccounting.InactiveClaim.selector, bytes32(uint256(1))));
     h.recover(bytes32(uint256(1)), 2, 0);
   }
 
   function test_UnavoidableLossRecognizedAndProfitDoesNotResetLoss() public {
+    vm.recordLogs();
     h.buy(0, 10, 100);
     h.request(0, 10, bytes32(uint256(1)), 100);
     h.recover(bytes32(uint256(1)), 1, 0);
@@ -84,7 +94,10 @@ contract BookAccountingTest is Test {
     h.sell(0, 10, 200);
     BookAccounting.Position memory p = h.position(0);
     assertEq(p.realizedLosses, 99);
-    assertEq(p.realizedGains, 100);
+    (uint256 gains, uint256 losses, uint256 count) = RealizationLogs.totals(vm.getRecordedLogs(), address(h), 0);
+    assertEq(gains, 100);
+    assertEq(losses, 99);
+    assertEq(count, 2);
     assertEq(p.pendingBasis, 0);
   }
 
@@ -118,5 +131,26 @@ contract BookAccountingTest is Test {
 
   function test_AdapterDomainsDoNotCollide() public pure {
     assertNotEq(ClaimAccounting.key(address(1), 1), ClaimAccounting.key(address(2), 1));
+  }
+
+  function test_ClosedPayloadClearsWithoutReusingIdentityOrLosingNonzeroRoute() public {
+    bytes32 id = bytes32(uint256(7));
+    h.buy(1, 2, 100);
+    h.request(1, 1, id, 60);
+    h.recover(id, 0, 0);
+    ClaimAccounting.Claim memory c = h.claim(id);
+    assertTrue(c.exists);
+    assertTrue(c.closed);
+    assertEq(c.route, 0);
+    assertEq(c.basis, 0);
+    assertEq(c.remaining, 0);
+    assertEq(c.received, 0);
+    assertEq(h.position(1).pendingBasis, 0);
+    assertEq(h.position(1).realizedLosses, 50);
+    assertEq(h.position(0).realizedLosses, 0);
+    vm.expectRevert(abi.encodeWithSelector(ClaimAccounting.DuplicateClaim.selector, id));
+    h.request(1, 1, id, 60);
+    assertEq(h.position(1).shares, 1);
+    assertEq(h.position(1).basis, 50);
   }
 }

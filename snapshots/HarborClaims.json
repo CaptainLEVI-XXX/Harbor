@@ -1,8 +1,8 @@
 {
-  "buy-fixture-warm": "756854",
+  "buy-fixture-warm": "717352",
   "direct-two-transfer-reference-warm": "11783",
-  "export-fixture-warm": "841510",
-  "sell-fixture-warm": "534819",
-  "vault-recovery-fixture-warm": "180945",
+  "export-fixture-warm": "654106",
+  "sell-fixture-warm": "516817",
+  "vault-recovery-fixture-warm": "159333",
   "wrap-fixture-warm": "248247"
 }

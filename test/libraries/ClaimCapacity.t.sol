@@ -17,12 +17,12 @@ contract ClaimCapacityHarness {
   constructor() {
     TokenMock token = new TokenMock("Units", "UNIT");
     token.mint(address(this), 100);
-    for (uint256 i; i < 3; ++i) {
+    for (uint256 i; i < 2; ++i) {
       routes.push(RouteConfig(address(token), address(1), 1e18, 1e18, 0, 0, 100, 200, 5, 100));
     }
-    markets.markets[2] = ClaimMarkets.Market(address(2), 0, 1, 0);
-    book.positions[0] = BookAccounting.Position(10, 60, 10, 80, 0, 1, 0);
-    book.positions[1] = BookAccounting.Position(10, 10, 0, 10, 0, 0, 0);
+    markets.markets[2] = ClaimMarkets.Market(address(2), address(token), 0, 1);
+    book.positions[0] = BookAccounting.Position(10, 60, 10, 80, 1, 0);
+    book.positions[1] = BookAccounting.Position(10, 10, 0, 10, 0, 0);
   }
 
   function totals(uint256 basis, uint256 purchases, uint256 losses) external {

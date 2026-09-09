@@ -29,7 +29,6 @@ library BookPortfolio {
   /// @notice Verify a receipt's live identity, published factory version and one-unit trade.
   function receiptCheck(
     ClaimMarkets.State storage markets,
-    RouteConfig[] storage routes,
     uint256 route,
     bool buy,
     uint256 quantity,
@@ -39,7 +38,7 @@ library BookPortfolio {
   ) public view {
     ClaimMarkets.Market storage m = markets.markets[route];
     if (buy && !markets.integrations[m.factory].enabled) revert InvalidQuote();
-    address receipt = routes[route].base;
+    address receipt = m.receipt;
     HarborClaimGuard.check(
       receipt,
       m.factory,
@@ -86,7 +85,10 @@ library BookPortfolio {
         revert CapacityExceeded();
       }
     } else {
-      if (quantity > p.shares || quantity == 0 || SafeTransfer.balanceOf(routes[route].base, vault) < p.shares) {
+      if (
+        quantity > p.shares || quantity == 0
+          || SafeTransfer.balanceOf(ClaimMarkets.base(markets, routes, route), vault) < p.shares
+      ) {
         revert CapacityExceeded();
       }
       uint256 basis = quantity == p.shares ? p.basis : Math.fullMulDiv(p.basis, quantity, p.shares);
@@ -106,7 +108,7 @@ library BookPortfolio {
     ClaimMarkets.Market storage m = markets.markets[route];
     if (m.factory == address(0)) return provider.inventory(routes[route].base, quantity);
     if (quantity != 1) revert InvalidQuote();
-    IHarborClaim c = IHarborClaim(routes[route].base);
+    IHarborClaim c = IHarborClaim(m.receipt);
     uint256 requested = c.entitlement();
     (mark, time, policy, valid) = provider.claim(routes[m.sourceRoute].adapter, m.requestId, requested);
     valid = valid && mark <= requested;
@@ -119,7 +121,6 @@ library BookPortfolio {
     Accounting.State storage book,
     ClaimMarkets.State storage markets,
     RouteConfig[] storage routes,
-    mapping(bytes32 => uint256) storage protocolIds,
     IHarborValuation provider,
     uint256 nativeRoutes,
     address vault,
@@ -138,14 +139,14 @@ library BookPortfolio {
       bytes32 key = book.claims.active[i];
       ClaimAccounting.Claim storage c = book.claims.claims[key];
       (uint256 mark, uint256 time, uint256 policy, bool ok) =
-        provider.claim(routes[c.route].adapter, protocolIds[key], c.remaining);
+        provider.claim(routes[c.route].adapter, book.protocolIds[key], c.remaining);
       v.claims += mark;
       _merge(v, time, policy, ok && mark <= c.remaining);
     }
     for (uint256 i; i < markets.active.length; ++i) {
       uint256 route = markets.active[i];
       ClaimMarkets.Market storage m = markets.markets[route];
-      IHarborClaim c = IHarborClaim(routes[route].base);
+      IHarborClaim c = IHarborClaim(m.receipt);
       if (book.positions[route].shares != 1 || SafeTransfer.balanceOf(address(c), vault) != 1) {
         v.valid = false;
       }
@@ -176,13 +177,9 @@ library BookPortfolio {
 
   /// @notice Detect issuer finalization or permissionless receipt recovery between NAV checkpoints.
   /// @dev Zero for no held receipts. Invalid custody reverts; callers treat this as stale.
-  function receiptState(ClaimMarkets.State storage markets, RouteConfig[] storage routes, address vault)
-    public
-    view
-    returns (bytes32 hash)
-  {
+  function receiptState(ClaimMarkets.State storage markets, address vault) public view returns (bytes32 hash) {
     for (uint256 i; i < markets.active.length; ++i) {
-      IHarborClaim c = IHarborClaim(routes[markets.active[i]].base);
+      IHarborClaim c = IHarborClaim(markets.markets[markets.active[i]].receipt);
       hash =
         keccak256(abi.encode(hash, address(c), c.status(), c.recovered(), SafeTransfer.balanceOf(address(c), vault)));
     }

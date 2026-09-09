@@ -7,7 +7,8 @@ pragma solidity 0.8.30;
 library ClaimAccounting {
   uint256 internal constant MAX_ACTIVE = 64;
 
-  /// @notice Historical request identity; a closed identity cannot be reused.
+  /// @notice Live accounting payload with permanent exists/closed replay tombstones.
+  /// @dev Closure clears the payload; completed cost and proceeds belong in events.
   struct Claim {
     uint256 route;
     uint256 basis; // Assigned WETH wei, fixed at request.
@@ -15,7 +16,6 @@ library ClaimAccounting {
     uint256 received; // Cumulative attributable WETH wei actually recovered.
     bool exists;
     bool closed;
-    bool transferred; // Closed by custody export, not issuer recovery or loss.
   }
 
   struct State {
@@ -39,7 +39,7 @@ library ClaimAccounting {
     if (self.claims[id].exists) revert DuplicateClaim(id);
     if (self.active.length == MAX_ACTIVE) revert ClaimLimit();
     if (entitlement == 0) revert InvalidRemainingRight();
-    self.claims[id] = Claim(route, basis, entitlement, 0, true, false, false);
+    self.claims[id] = Claim(route, basis, entitlement, 0, true, false);
     self.active.push(id);
     self.indexPlusOne[id] = self.active.length;
   }
@@ -60,8 +60,10 @@ library ClaimAccounting {
     c.received += cash;
     c.remaining = remaining;
     if (remaining != 0) return (false, 0, 0);
+    basis = c.basis;
+    receipts = c.received;
     _close(self, id);
-    return (true, c.basis, c.received);
+    return (true, basis, receipts);
   }
 
   /// @notice Retire native representation after verified export without recording cash.
@@ -71,13 +73,17 @@ library ClaimAccounting {
     if (!c.exists || c.closed) revert InactiveClaim(id);
     if (c.received != 0) revert InvalidRemainingRight();
     basis = c.basis;
-    c.transferred = true;
-    c.remaining = 0;
     _close(self, id);
   }
 
   function _close(State storage self, bytes32 id) private {
-    self.claims[id].closed = true;
+    Claim storage c = self.claims[id];
+    // Keep identity consumption even when the completed economic payload is retired.
+    delete c.route;
+    delete c.basis;
+    delete c.remaining;
+    delete c.received;
+    c.closed = true;
     uint256 index = self.indexPlusOne[id] - 1;
     bytes32 last = self.active[self.active.length - 1];
     self.active[index] = last;

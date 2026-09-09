@@ -9,6 +9,7 @@ import {HarborVault} from "src/vault/HarborVault.sol";
 import {HarborExecutor} from "src/execution/HarborExecutor.sol";
 import {Trade, FillTerms, Side, AmountMode} from "src/types/HarborTypes.sol";
 import {MockLidoQueue} from "test/helpers/LidoFixture.sol";
+import {RealizationLogs} from "test/helpers/RealizationLogs.sol";
 
 interface IPortfolioRelay {
   function prepareQuote(uint256 route, Side side, AmountMode mode, uint256 quantity)
@@ -57,6 +58,7 @@ contract PortfolioHandler is Test {
   uint256[2] public basis;
   uint256[2] public purchases;
   uint256[2] public gains;
+  uint256[2] public eventGains;
   uint256[2] public losses;
   uint256 public pendingBasis;
   uint256[3] public balances;
@@ -210,8 +212,12 @@ contract PortfolioHandler is Test {
     catch {
       return;
     }
+    vm.recordLogs();
     vm.prank(TRADER);
     EXECUTOR.execute(t, f, sig, order);
+    (uint256 realized,, uint256 count) = RealizationLogs.totals(vm.getRecordedLogs(), address(BOOK), route);
+    assertEq(count, buy ? 0 : 1);
+    eventGains[route] += realized;
     if (buy) {
       warehouse[route] += quantity;
       basis[route] += f.routerOut;
@@ -254,7 +260,11 @@ contract PortfolioHandler is Test {
     uint256[] memory hints = new uint256[](1);
     ids[0] = c.id;
     hints[0] = 1;
+    vm.recordLogs();
     BOOK.claimRedemptions(0, ids, hints);
+    (uint256 realized,, uint256 count) = RealizationLogs.totals(vm.getRecordedLogs(), address(BOOK), 0);
+    assertEq(count, 1);
+    eventGains[0] += realized;
     cash += payment;
     pendingBasis -= c.basis;
     if (payment >= c.basis) gains[0] += payment - c.basis;

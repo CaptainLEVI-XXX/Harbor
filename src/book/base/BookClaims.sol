@@ -3,7 +3,6 @@ pragma solidity 0.8.30;
 
 import {BookState} from "src/book/base/BookState.sol";
 import {ClaimMarkets} from "src/libraries/ClaimMarkets.sol";
-import {BookAccounting as Accounting} from "src/libraries/BookAccounting.sol";
 import {Operation} from "src/types/HarborTypes.sol";
 
 /// @title BookClaims
@@ -63,15 +62,13 @@ abstract contract BookClaims is BookState {
       revert InvalidConfiguration();
     }
     _open(keccak256(abi.encode(msg.sender, route, hint)), Operation.RECOVERY);
-    cash = VAULT.recoverReceipt(_context, _routes[route].base, hint);
-    uint256 basis = _state.positions[route].basis;
-    ClaimMarkets.dispose(_claimMarkets, route, basis, cash, true);
-    Accounting.sell(_state, route, 1, cash);
+    cash = VAULT.recoverReceipt(_context, _claimMarkets.markets[route].receipt, hint);
+    ClaimMarkets.dispose(_claimMarkets, _state, route, cash, true);
     VAULT.settleIssuer(_context, cash);
     _release();
   }
 
-  /// @notice Read immutable market identity and its lifetime acquisition sequence.
+  /// @notice Read immutable market identity; acquisition history is reconstructed from receipt events.
   function claimMarket(uint256 route) external view returns (ClaimMarkets.Market memory) {
     return _claimMarkets.markets[route];
   }

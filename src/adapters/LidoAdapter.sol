@@ -14,7 +14,6 @@ contract LidoAdapter is AdapterBase {
   mapping(uint256 => bool) public accepted;
   mapping(uint256 => bool) public closed;
   /// @notice A transferred native right can never be recovered by this adapter again.
-  mapping(uint256 => address) public exportedTo;
 
   event Requested(uint256 indexed id, uint256 wrappedAmount, uint256 entitlement);
   event Recovered(uint256 indexed id, uint256 wethAmount);
@@ -100,7 +99,6 @@ contract LidoAdapter is AdapterBase {
     closed[id] = true;
     IERC721(ISSUER).approve(factory, id);
     receipt = f.wrap(id);
-    exportedTo[id] = receipt;
     if (SafeTransfer.balanceOf(receipt, address(this)) != 1 || SafeTransfer.balanceOf(receipt, VAULT) != 0) {
       revert ReceiptMismatch();
     }

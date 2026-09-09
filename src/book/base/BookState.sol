@@ -137,9 +137,7 @@ abstract contract BookState is IHarborBook {
   Accounting.State internal _state;
   /// @dev Persistent issuer-request nonces, revocation and daily consumption.
   RedemptionAccounting.State internal _redemptions;
-  /// @dev Issuer-native IDs indexed by the adapter-domain claim key.
-  mapping(bytes32 => uint256) internal _protocolIds;
-  /// @dev One or two fixed inventory routes followed by individually admitted receipt routes.
+  /// @dev One or two fixed issuer mandates. Receipt descriptors reference these limits without copying them.
   RouteConfig[] internal _routes;
   /// @dev Per-route publication version; each refresh requires a fresh Aqua hash.
   mapping(uint256 => uint256) public strategyVersion;

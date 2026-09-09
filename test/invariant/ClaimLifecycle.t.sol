@@ -4,6 +4,7 @@ pragma solidity 0.8.30;
 import {Test} from "forge-std/Test.sol";
 import {BookAccounting as Ledger} from "src/libraries/BookAccounting.sol";
 import {ClaimAccounting} from "src/libraries/ClaimAccounting.sol";
+import {RealizationLogs} from "test/helpers/RealizationLogs.sol";
 
 /// @notice Synthetic partial-right semantics, separate from Lido's all-or-nothing claim.
 contract ClaimLifecycleHandler is Test {
@@ -17,6 +18,7 @@ contract ClaimLifecycleHandler is Test {
     uint256 purchases;
     uint256 gains;
     uint256 losses;
+    uint256 eventGains;
   }
   Ghost[2] private _ghosts;
   uint256 private _next;
@@ -56,7 +58,11 @@ contract ClaimLifecycleHandler is Test {
     g.remaining = 0;
     if (g.received >= 90) g.gains += g.received - 90;
     else g.losses += 90 - g.received;
+    vm.recordLogs();
     _state.recover(g.key, cash, 0);
+    (uint256 gains,, uint256 count) = RealizationLogs.totals(vm.getRecordedLogs(), address(this), route);
+    assertEq(count, 1);
+    g.eventGains += gains;
     ++closures;
   }
 
@@ -69,15 +75,15 @@ contract ClaimLifecycleHandler is Test {
       assertEq(p.basis, 0);
       assertEq(p.pendingBasis, g.remaining != 0 ? 90 : 0);
       assertEq(p.purchases, g.purchases);
-      assertEq(p.realizedGains, g.gains);
+      assertEq(g.eventGains, g.gains);
       assertEq(p.realizedLosses, g.losses);
       ClaimAccounting.Claim storage c = _state.claims.claims[g.key];
       assertEq(c.remaining, g.remaining);
-      assertEq(c.received, g.received);
+      assertEq(c.received, g.remaining == 0 ? 0 : g.received);
       if (g.key != 0) {
         assertTrue(c.exists);
         assertEq(c.closed, g.remaining == 0);
-        assertEq(c.basis, 90);
+        assertEq(c.basis, g.remaining == 0 ? 0 : 90);
       }
       if (g.remaining != 0) ++active;
     }

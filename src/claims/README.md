@@ -54,10 +54,18 @@ is upgradeable; the wrapper cannot eliminate issuer upgrade or liveness risk.
 ## Accounting and quote identity
 
 Receipt purchase debits actual WETH and records cost. Selling removes that
-cost once and records net proceeds. Reacquisition advances a lifetime acquisition
-sequence; it does not reset spending or loss budgets. Exporting an adapter-owned
+cost once and records net proceeds. Reacquisition advances the economic position
+version; it does not reset spending or loss budgets. Exporting an adapter-owned
 right moves its existing basis into a vault-owned receipt without realizing PnL.
-The original ledger record remains historical, marked transferred and closed.
+The native record retains consumed-identity flags; its completed accounting payload
+and reverse issuer-ID lookup are cleared. `NativeClaimExported` records the source,
+issuer ID, destination receipt route and preserved WETH basis.
+
+`ReceiptAcquired` and `ReceiptDisposed` identify the resulting position version.
+They do not share a separate acquisition counter: indexers pair transitions in log
+order within each route. Receipt positions retain quantity, cost and version;
+their native-only purchase/loss fields remain zero. Receipt lifetime purchase and
+loss authority lives in the source issuer's `claimTotals`, including disposed routes.
 
 Native inventory, native rights and receipt descendants share the original
 issuer's exposure, lifetime-purchase and realized-loss limits. At most 64 native

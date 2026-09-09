@@ -6,7 +6,7 @@ import {LidoClaimFactory} from "src/claims/LidoClaimFactory.sol";
 import {IHarborClaim} from "src/interfaces/IHarborClaim.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
-import {Trade, FillTerms, FillAmounts, Side, AmountMode, RedeemIntent} from "src/types/HarborTypes.sol";
+import {Trade, FillTerms, FillAmounts, Side, AmountMode, RedeemIntent, RouteConfig} from "src/types/HarborTypes.sol";
 import {Fees} from "src/libraries/Fees.sol";
 import {Amounts} from "src/libraries/Amounts.sol";
 import {ClaimMarkets} from "src/libraries/ClaimMarkets.sol";
@@ -106,6 +106,26 @@ abstract contract RedemptionMarketFixture is IssuerFixture {
 }
 
 contract RedemptionMarketTest is RedemptionMarketFixture {
+  function test_ReceiptRouteDerivesIssuerLimitsAndKeepsIndependentPriceBounds() public {
+    RouteConfig memory expected = book.route(0);
+    (uint256 route,, address receipt) = _externalMarket(1 ether);
+    expected.base = receipt;
+    expected.adapter = address(factory);
+    expected.bid = 0.97e18;
+    expected.ask = 0.98e18;
+    assertEq(abi.encode(book.route(route)), abi.encode(expected));
+    assertEq(book.claimMarket(route).receipt, receipt);
+    _tradeClaim(route, Side.BUY_BASE, AmountMode.EXACT_IN);
+    uint256 basis = book.getPosition(route).basis;
+    assertEq(book.getPosition(route).purchases, 0);
+    assertEq(book.getPosition(route).pendingBasis, 0);
+    assertEq(book.claimTotals(0).purchases, basis);
+    book.retireClaimFactory(address(factory));
+    assertEq(abi.encode(book.route(route)), abi.encode(expected));
+    vm.expectRevert();
+    book.route(route + 1);
+  }
+
   function test_FourModesUseActualAquaReceiptAndWethTransfers() public {
     for (uint256 i; i < 2; ++i) {
       (uint256 route,, address receipt) = _externalMarket(1 ether);
@@ -135,7 +155,9 @@ contract RedemptionMarketTest is RedemptionMarketFixture {
     uint256 oldBasis = book.getClaim(address(adapter), id).basis;
     uint256 route = book.exportClaim(0, id, address(factory));
     address receipt = book.route(route).base;
-    assertTrue(book.getClaim(address(adapter), id).transferred);
+    assertTrue(book.getClaim(address(adapter), id).closed);
+    assertTrue(book.getClaim(address(adapter), id).exists);
+    assertEq(book.getClaim(address(adapter), id).basis, 0);
     assertEq(book.getPosition(0).pendingBasis, 0);
     assertEq(book.getPosition(route).basis, oldBasis);
     assertEq(book.getPosition(route).purchases, 0);
@@ -213,7 +235,7 @@ contract RedemptionMarketTest is RedemptionMarketFixture {
     assertGt(vault.maxWithdraw(alice), 0);
   }
 
-  function test_ReacquisitionAdvancesSequenceWithoutResettingBudgets() public {
+  function test_ReacquisitionAdvancesPositionVersionWithoutResettingBudgets() public {
     (uint256 route,, address receipt) = _externalMarket(1 ether);
     _tradeClaim(route, Side.BUY_BASE, AmountMode.EXACT_IN);
     uint256 first = book.claimTotals(0).purchases;
@@ -221,7 +243,9 @@ contract RedemptionMarketTest is RedemptionMarketFixture {
     vm.prank(trader);
     IERC20(receipt).approve(address(executor), 1);
     _tradeClaim(route, Side.BUY_BASE, AmountMode.EXACT_OUT);
-    assertEq(book.claimMarket(route).acquisition, 2);
+    assertEq(book.getPosition(route).version, 3);
+    assertEq(book.getPosition(route).purchases, 0);
+    assertEq(book.getPosition(route).realizedLosses, 0);
     assertEq(book.claimTotals(0).purchases, first * 2);
     assertEq(book.claimTotals(0).basis, book.getPosition(route).basis);
   }

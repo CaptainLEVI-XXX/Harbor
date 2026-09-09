@@ -17,8 +17,12 @@ contract RedemptionLedgerHarness {
     _state.record(route, amount, minimum, limit);
   }
 
-  function used(uint256 day) external view returns (uint256) {
-    return _state.dailyRequested[0][day];
+  function used(uint256 route) external view returns (uint256) {
+    return _state.usedToday(route);
+  }
+
+  function usage(uint256 route) external view returns (Ledger.DailyUsage memory) {
+    return _state.dailyUsage[route];
   }
 }
 
@@ -38,9 +42,36 @@ contract RedemptionAccountingTest is Test {
     ledger.record(1, 10, 1, 10);
     assertEq(ledger.used(0), 10);
     vm.warp(1 days);
+    assertEq(ledger.used(0), 0);
+    assertEq(ledger.used(1), 0);
     ledger.record(0, 10, 1, 10);
     assertEq(ledger.used(0), 10);
-    assertEq(ledger.used(1), 10);
+    assertEq(ledger.used(1), 0);
+    assertEq(ledger.usage(0).day, 1);
+  }
+
+  function test_LongGapAndFailedRolloverPreserveLastSuccessfulUsage() public {
+    ledger.record(0, 8, 1, 10);
+    vm.warp(400 days);
+    vm.expectRevert(Ledger.DailyLimit.selector);
+    ledger.record(0, 11, 1, 10);
+    assertEq(ledger.used(0), 0);
+    assertEq(ledger.usage(0).day, 0);
+    assertEq(ledger.usage(0).used, 8);
+    ledger.record(0, 10, 1, 10);
+    assertEq(ledger.usage(0).day, 400);
+    assertEq(ledger.used(0), 10);
+  }
+
+  function test_RollbackRestoresCounterBeforeCanonicalReplay() public {
+    ledger.record(0, 7, 1, 10);
+    uint256 checkpoint = vm.snapshotState();
+    vm.warp(1 days);
+    ledger.record(0, 9, 1, 10);
+    assertTrue(vm.revertToState(checkpoint));
+    assertEq(ledger.used(0), 7);
+    ledger.record(0, 3, 1, 10);
+    assertEq(ledger.used(0), 10);
   }
 
   function testFuzz_DailyRequestsNeverExceedLimit(uint128 a, uint128 b, uint128 limit) public {
