@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {RedemptionMarketFixture} from "test/claims/RedemptionMarket.t.sol";
+import {RedemptionMarketFixture} from "test/helpers/RedemptionMarketFixture.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {Trade, FillTerms, Side, AmountMode} from "src/types/HarborTypes.sol";
 

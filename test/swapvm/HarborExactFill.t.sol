@@ -3,7 +3,6 @@ pragma solidity 0.8.30;
 
 import {Test} from "forge-std/Test.sol";
 import {Context, ContextLib, SwapQuery, SwapRegisters} from "@1inch/swap-vm/src/libs/VM.sol";
-import {Opcode} from "@1inch/swap-vm/src/libs/OpcodeList.sol";
 import {CalldataPtrLib} from "@1inch/solidity-utils/contracts/libraries/CalldataPtr.sol";
 import {IHarborFill} from "src/interfaces/IHarborFill.sol";
 import {HarborExactFill} from "src/swapvm/instructions/HarborExactFill.sol";
@@ -78,10 +77,6 @@ contract HarborExactFillTest is Test {
   ReferenceFillParser internal referenceParser = new ReferenceFillParser();
   PackedFillParser internal packedParser = new PackedFillParser();
   FillAuthority internal authority = new FillAuthority();
-
-  function test_LocalOpcodeUsesUnallocatedSwapFamilySlot() public pure {
-    assertEq(HarborExactFill.OPCODE, uint8(Opcode._55));
-  }
 
   function testFuzz_PackedParserMatchesReference(address book, uint256 route, uint256 version) public view {
     if (book == address(0)) book = address(1);

@@ -3,14 +3,20 @@
 ## Compact settlement check
 
 ```sh
-forge test --match-contract '^(HarborSettlement|.*Reentrancy)Test$' --fuzz-runs 64
+FOUNDRY_PROFILE=settlement forge test
 ```
 
-Seven tests in `HarborSettlement.t.sol` reuse the existing issuer fixture; seven
-existing reentrancy checks cover issuer, token and LP callbacks without new mocks.
-The lifecycle fuzz test runs 64 cases with recovery bounded to 0–4.8 WETH. Each
-run reaches recovery and an actual LP payout; expected amounts use independent
-arithmetic, not the contract's preview or conversion helpers.
+Seven tests in `HarborSettlement.t.sol` reuse the shared base in
+`test/helpers/RedemptionMarketFixture.sol`. The profile also selects six existing
+deposit/mint tests, seven reentrancy checks and one claim-accounting invariant:
+21 tests, with no new mocks or harnesses. Shared setup stays outside executable
+test files; assertions stay beside the behavior they check.
+
+Both fuzz tests run 64 cases. The lifecycle bounds recovery to 0–4.8 WETH and
+always reaches an actual LP payout. Issuance uses independently calculated
+rounding, including a nontrivial NAV/share rate. The existing stateful test runs
+32 sequences of 16 calls: partial recovery must not retire cost or release the
+remaining claim. This is synthetic partial-right behavior, not Lido settlement.
 
 | Check | Plausible bug it catches |
 | --- | --- |
@@ -21,12 +27,18 @@ arithmetic, not the contract's preview or conversion helpers.
 | Quote deadline and replay | Expired fills transfer tokens or consume nonces; a fill executes twice. |
 | Live discovery during an outage | Swap-pop cleanup hides another outstanding obligation or requires working marks to recover. |
 | Operator deposit | Funds charged to the controller instead of the payer, or shares sent to the wrong recipient. |
+| Deposit/mint regressions | Incorrect floor/ceiling conversion, donation dilution, stale issuance, reused escrow or failed-call state leakage. |
 | Existing reentrancy regressions | Nested callbacks bypass Book/Vault/Executor locks or observe intermediate accounting. |
+| Existing claim-accounting invariant | Multiple partial recoveries retire cost too early or misstate final losses. |
 
 This replaces four event/discovery-specific files with one economic suite. The
 other established unit, four-mode trading, security and invariant regressions
 remain available; this command is a focused check, not a full-suite replacement.
-No additional invariant harness, dependencies or CI are needed here.
+No additional invariant harness, dependencies or CI are needed here. Boilerplate
+Counter tests and upstream-only wiring/unused-instruction checks are excluded
+from the repository. Duplicate operator/reacquisition assertions live in the main
+suite. First-party SwapVM parser boundaries, differential wire/register checks,
+rollback tests and measured optimization evidence remain in `test/swapvm/`.
 
 Material gaps: synthetic issuer finalization, prices and permits do not validate
 mainnet economics, live oracle/CRE delivery or issuer upgrades. Full event-history

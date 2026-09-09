@@ -6,8 +6,6 @@ import {SwapRegisters} from "@1inch/swap-vm/src/libs/VM.sol";
 import {Opcode} from "@1inch/swap-vm/src/libs/OpcodeList.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {MakerTraitsLib} from "@1inch/swap-vm/src/libs/MakerTraits.sol";
-import {Extruction} from "@1inch/swap-vm/src/instructions/Extruction.sol";
-import {InstructionBuilder} from "@1inch/swap-vm/src/libs/InstructionBuilder.sol";
 import {HarborProgram} from "src/swapvm/HarborProgram.sol";
 import {HarborExactFill} from "src/swapvm/instructions/HarborExactFill.sol";
 
@@ -32,10 +30,6 @@ contract ProgramHarness {
 
   function decode(bytes calldata data) external pure returns (address, uint256, uint256) {
     return HarborExactFill.parse(data);
-  }
-
-  function extension(uint256 size) external pure returns (bytes memory) {
-    return Extruction.build(address(2), new bytes(size));
   }
 }
 
@@ -84,11 +78,5 @@ contract HarborProgramTest is Test {
     h.decode(new bytes(85));
     vm.expectRevert(abi.encodeWithSelector(HarborExactFill.InvalidArgumentsLength.selector, 83));
     h.decode(new bytes(83));
-  }
-
-  function test_UpstreamInstructionLengthBoundary() public {
-    assertEq(h.extension(235).length, 257); // 255 argument bytes plus header.
-    vm.expectRevert(abi.encodeWithSelector(InstructionBuilder.InstructionBuilderArgsLengthExceeded.selector, 256));
-    h.extension(236);
   }
 }

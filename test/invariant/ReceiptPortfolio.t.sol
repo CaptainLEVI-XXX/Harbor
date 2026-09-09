@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {RedemptionMarketFixture} from "test/claims/RedemptionMarket.t.sol";
+import {RedemptionMarketFixture} from "test/helpers/RedemptionMarketFixture.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IHarborClaim} from "src/interfaces/IHarborClaim.sol";
 import {Side, AmountMode, Trade, FillTerms} from "src/types/HarborTypes.sol";

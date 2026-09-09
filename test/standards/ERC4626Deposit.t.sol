@@ -9,16 +9,28 @@ import {VaultFixture} from "test/helpers/VaultFixture.sol";
 /// @title ERC4626DepositTest
 /// @notice Issuance, conversion, caller-funded overloads and surplus exclusion.
 contract ERC4626DepositTest is VaultFixture {
-  function testFuzz_DepositAndMintMatchPreviews(uint64 amount_) public {
+  function testFuzz_DepositAndMintFollowIndependentRounding(uint64 amount_) public {
     uint256 amount = bound(amount_, 1e12, 10 ether);
-    uint256 expected = vault.previewDeposit(amount);
+    uint256 expected = amount * 1e6; // Empty pool: one virtual wei and 1e6 virtual shares.
+    assertEq(vault.previewDeposit(amount), expected);
     assertEq(_deposit(alice, amount), expected);
+
+    // Synthetic noncash gain creates a nontrivial exchange rate for mint rounding.
+    book.setMark(1 ether, 0, block.timestamp, true);
+    vault.checkpointValuation();
     uint256 shares = expected / 3 + 1;
-    uint256 assets = vault.previewMint(shares);
+    uint256 numerator = shares * (amount + 1 ether + 1);
+    uint256 denominator = expected + 1e6;
+    uint256 assets = (numerator - 1) / denominator + 1; // Required WETH rounds up.
+    assertEq(vault.previewMint(shares), assets);
     vm.prank(bob);
     assertEq(vault.mint(shares, bob), assets);
     assertEq(vault.balanceOf(bob), shares);
-    assertEq(vault.totalAssets(), amount + assets);
+    assertEq(vault.totalSupply(), expected + shares);
+    assertEq(weth.balanceOf(alice), 100 ether - amount);
+    assertEq(weth.balanceOf(bob), 100 ether - assets);
+    assertEq(weth.balanceOf(address(vault)), amount + assets);
+    assertEq(vault.totalAssets(), amount + 1 ether + assets);
   }
 
   function test_DonationsDoNotChangeNAVOrDiluteNewDepositors() public {
@@ -29,19 +41,6 @@ contract ERC4626DepositTest is VaultFixture {
     assertEq(vault.totalAssets(), 2 ether);
     vault.checkpointValuation();
     assertEq(vault.totalAssets(), 2 ether);
-  }
-
-  function test_OverloadRequiresControllerPermissionButCollectsFromCaller() public {
-    vm.prank(alice);
-    vault.setOperator(bob, true);
-    vm.prank(bob);
-    vault.deposit(1 ether, alice, alice);
-    assertEq(weth.balanceOf(alice), 100 ether);
-    assertEq(weth.balanceOf(bob), 99 ether);
-    assertEq(vault.balanceOf(alice), 1 ether * 1e6);
-    vm.expectRevert(VaultState.Unauthorized.selector);
-    vm.prank(operator);
-    vault.mint(1e6, alice, alice);
   }
 
   function test_StaleValuationBlocksIssuanceButNotRequests() public {

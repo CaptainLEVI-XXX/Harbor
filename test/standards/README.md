@@ -4,6 +4,12 @@ Foundation: Solady v0.1.26 (`acd959aa4bd04720d640bf4e6a5c71037510cc4b`).
 Tests use synthetic assets and a mock Book. They do not certify live valuation,
 issuer integration, complete standards conformance, or production readiness.
 
+Deposit/mint fuzz expectations use explicit virtual-share arithmetic, not the
+vault's previews as the reference. A synthetic noncash gain exercises upward
+mint rounding at a nontrivial exchange rate; both previews and real balances
+must agree with the independently computed result. Operator funding and its
+unauthorized-call regression live in `test/integration/HarborSettlement.t.sol`.
+
 ## Inherited-path override matrix
 
 | Path | Harbor behavior |

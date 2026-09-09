@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {RedemptionMarketFixture} from "test/claims/RedemptionMarket.t.sol";
+import {RedemptionMarketFixture} from "test/helpers/RedemptionMarketFixture.sol";
 import {BookState} from "src/book/base/BookState.sol";
 import {VaultState} from "src/vault/base/VaultState.sol";
 import {BookPortfolio} from "src/libraries/BookPortfolio.sol";
@@ -143,6 +143,10 @@ contract HarborSettlementTest is RedemptionMarketFixture {
     vm.prank(trader);
     IERC20(receipt).approve(address(executor), 1);
     _tradeClaim(route, Side.BUY_BASE, AmountMode.EXACT_OUT);
+    assertEq(book.getPosition(route).version, 3);
+    assertEq(book.getPosition(route).purchases, 0);
+    assertEq(book.claimTotals(0).basis, 1.164 ether);
+    assertEq(book.claimTotals(0).purchases, 2.328 ether);
     queue.setFinalized(id, 0);
     vm.expectEmit(true, true, false, true, address(book));
     emit ClaimMarkets.ReceiptDisposed(route, 4, 1.164 ether, 0, true);
@@ -217,6 +221,9 @@ contract HarborSettlementTest is RedemptionMarketFixture {
   }
 
   function test_OperatorDepositChargesPayerAndCreditsChosenReceiver() public {
+    vm.expectRevert(VaultState.Unauthorized.selector);
+    vm.prank(trader);
+    vault.mint(1e6, alice, alice);
     weth.mint(bob, 1 ether);
     vm.prank(alice);
     vault.setOperator(bob, true);

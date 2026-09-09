@@ -29,6 +29,17 @@ fail_on_revert = true
 [profile.unit]
 no_match_path = "test/fork/**"
 
+# Focused local settlement checks; reuse existing bases and security regressions.
+[profile.settlement]
+match_contract = "^(HarborSettlement|ERC4626Deposit|ClaimLifecycleInvariant|.*Reentrancy)Test$"
+
+[profile.settlement.fuzz]
+runs = 64
+
+[profile.settlement.invariant]
+runs = 32
+depth = 16
+
 [profile.compatibility]
 match_path = "test/compatibility/**/*.t.sol"
 
