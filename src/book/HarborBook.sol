@@ -52,6 +52,20 @@ contract HarborBook is BookGovernance, BookRedemptions, BookSettlement, BookClai
     return _state.claims.claims[ClaimAccounting.key(adapter, id)];
   }
 
+  /// @notice Discover up to 32 active native rights, including their issuer IDs and accounting.
+  /// @dev Pin pages to the same block; recovery/export uses swap-pop and changes cursor order.
+  /// @param cursor Zero-based live-set offset; start at zero, not at a protocol request ID.
+  /// @param limit Page size, 1..32; an empty page at next indicates the end.
+  /// @return claims Current obligations in WETH-denominated wei, not historical receipts.
+  /// @return next Live-set cursor immediately after the returned page.
+  function activeNativeClaims(uint256 cursor, uint256 limit)
+    external
+    view
+    returns (BookPortfolio.NativeClaim[] memory claims, uint256 next)
+  {
+    return BookPortfolio.nativeClaims(_state, _routes, cursor, limit);
+  }
+
   /// @inheritdoc IHarborBook
   function hasManagedPositions() external view returns (bool) {
     if (_state.claims.active.length != 0 || _claimMarkets.active.length != 0) return true;

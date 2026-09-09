@@ -50,8 +50,19 @@ library ClaimMarkets {
   error InvalidIntegration();
   error InvalidReceipt();
   error MarketCapacity();
+  /// @notice Cursor exceeds the live set or page size is not 1..32.
+  error InvalidPage();
 
-  event IntegrationScheduled(address indexed factory, uint256 indexed sourceRoute, uint256 readyAt);
+  /// @notice Exact delayed factory policy; bid/ask are 1e18 multipliers, readyAt is Unix seconds.
+  event ClaimIntegrationScheduled(
+    address indexed factory,
+    uint256 indexed sourceRoute,
+    address issuer,
+    address weth,
+    uint256 bid,
+    uint256 ask,
+    uint256 readyAt
+  );
   event IntegrationActivated(address indexed factory);
   event IntegrationRetired(address indexed factory);
   event ClaimMarketRegistered(
@@ -71,6 +82,24 @@ library ClaimMarkets {
     address receipt,
     uint256 basisWeth
   );
+
+  /// @notice Bounded current receipt-route discovery without reading any issuer or token.
+  /// @dev Callers pin the block: swap-pop removal may change offsets between transactions.
+  function activeRoutes(State storage self, uint256 cursor, uint256 limit)
+    public
+    view
+    returns (uint256[] memory routes, uint256 next)
+  {
+    uint256 length = self.active.length;
+    if (limit == 0 || limit > 32 || cursor > length) revert InvalidPage();
+    uint256 size = length - cursor;
+    if (size > limit) size = limit;
+    routes = new uint256[](size);
+    for (uint256 i; i < size; ++i) {
+      routes[i] = self.active[cursor + i];
+    }
+    next = cursor + size;
+  }
 
   /// @notice Resolve the public route view without storing another copy of issuer limits.
   /// @dev Original routes are immutable. Receipt pricing is fixed by its admitted integration.
@@ -118,7 +147,7 @@ library ClaimMarkets {
     ) revert InvalidIntegration();
     uint256 readyAt = block.timestamp + delay;
     self.integrations[factory] = Integration(source, readyAt, bid, ask, false, false);
-    emit IntegrationScheduled(factory, source, readyAt);
+    emit ClaimIntegrationScheduled(factory, source, f.ISSUER(), weth, bid, ask, readyAt);
   }
 
   /// @notice Activate after the Book's governance delay; configuration cannot be replaced.

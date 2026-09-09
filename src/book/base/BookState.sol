@@ -209,7 +209,23 @@ abstract contract BookState is IHarborBook {
   //////////////////////////////////////////////////////////////*/
 
   /// @notice A fresh route order is prepared for vault publication to Aqua.
-  event StrategyRegistered(uint256 indexed route, bytes32 indexed orderHash, uint256 version);
+  event StrategyPublished(
+    uint256 indexed route, bytes32 indexed orderHash, uint256 version, uint256 factoryVersion, uint256 quoteEpoch
+  );
+  /// @notice Complete native issuer mandate; multipliers use 1e18, buffers and risk limits use WETH wei.
+  event IssuerRouteConfigured(
+    uint256 indexed route,
+    address indexed base,
+    address indexed adapter,
+    uint256 bid,
+    uint256 ask,
+    uint256 buyBuffer,
+    uint256 sellBuffer,
+    uint256 maxExposure,
+    uint256 maxPurchases,
+    uint256 lossBudget,
+    uint256 maxDailyRedemption
+  );
   /// @notice Inventory accounting records a measured exact pair; amounts are raw token units.
   event FillSettled(
     bytes32 indexed digest,
@@ -296,6 +312,19 @@ abstract contract BookState is IHarborBook {
       ) revert InvalidConfiguration();
       if (i != 0 && (routes[0].base == r.base || routes[0].adapter == r.adapter)) revert InvalidConfiguration();
       _routes.push(r);
+      emit IssuerRouteConfigured(
+        i,
+        r.base,
+        r.adapter,
+        r.bid,
+        r.ask,
+        r.buyBuffer,
+        r.sellBuffer,
+        r.maxExposure,
+        r.maxPurchases,
+        r.lossBudget,
+        r.maxDailyRedemption
+      );
     }
     VAULT = HarborVault(c.vault);
     EXECUTOR = HarborExecutor(c.executor);

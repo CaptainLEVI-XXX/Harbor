@@ -88,17 +88,36 @@ abstract contract VaultState is ERC4626 {
     address indexed controller, address indexed owner, uint256 indexed requestId, address sender, uint256 shares
   );
   /// @notice Escrow shares are burned against reserved WETH wei at the recorded mark.
-  event WithdrawalFulfilled(
+  event WithdrawalFunded(
     uint256 indexed ticket,
     address indexed controller,
     uint256 shares,
     uint256 assets,
-    uint256 valuationVersion,
+    uint256 policyVersion,
+    uint256 markedVersion,
     uint256 remaining
   );
-  /// @notice Commit coherent NAV/cash/reserve WETH wei and LP share supply.
-  event ValuationCheckpoint(
-    uint256 nav, uint256 supply, uint256 cash, uint256 reserved, uint256 policyVersion, uint256 observedAt
+  /// @notice Actual funding account, controller authorization and LP share recipient.
+  /// @dev Supplements the standard Deposit event; assets are WETH wei, shares are LP raw units.
+  event LiquidityIssued(
+    address indexed payer, address indexed controller, address indexed receiver, uint256 assets, uint256 shares
+  );
+  /// @notice Internal FIFO identity; distinct from the standard aggregate requestId zero.
+  event WithdrawalQueued(
+    uint256 indexed ticket, address indexed controller, address indexed owner, address caller, uint256 shares
+  );
+  /// @notice Commit coherent NAV and noncash breakdown in WETH wei, with LP raw-unit supply.
+  /// @dev markedVersion identifies priced state, not a unique checkpoint. Use log identity for history.
+  event ValuationCommitted(
+    uint256 nav,
+    uint256 supply,
+    uint256 cash,
+    uint256 reserved,
+    uint256 inventoryMark,
+    uint256 claimMark,
+    uint256 policyVersion,
+    uint256 markedVersion,
+    uint256 observedAt
   );
   /// @notice ERC-7575 asset-to-vault discovery notification emitted at construction.
   event VaultUpdate(address indexed asset, address vault);

@@ -10,6 +10,9 @@ import {Operation} from "src/types/HarborTypes.sol";
 /// @dev All entrypoints share the existing Book/Vault transaction lock. Prices and
 /// token settlement remain in the ordinary signed-quote executor and router.
 abstract contract BookClaims is BookState {
+  /// @notice Effective factory admission and exact quote invalidation epoch.
+  event ClaimIntegrationStatusChanged(address indexed factory, bool enabled, bool retired, uint256 quoteEpoch);
+
   /// @notice Schedule a factory against a native issuer and immutable claim price bounds.
   /// @param source Original inventory route; all descendant markets share its risk limits.
   /// @param bid Maximum purchase multiplier on public mark, scaled by 1e18.
@@ -23,7 +26,7 @@ abstract contract BookClaims is BookState {
   function activateClaimFactory(address factory) external {
     _claimAdmin();
     ClaimMarkets.activate(_claimMarkets, factory);
-    ++quoteEpoch;
+    emit ClaimIntegrationStatusChanged(factory, true, false, ++quoteEpoch);
   }
 
   /// @notice Irreversibly disable new exposure; existing recovery and sales remain available.
@@ -31,7 +34,7 @@ abstract contract BookClaims is BookState {
     if (msg.sender != GOVERNOR && msg.sender != GUARDIAN) revert Unauthorized();
     if (_operation != Operation.NONE) revert Busy();
     ClaimMarkets.retire(_claimMarkets, factory);
-    ++quoteEpoch;
+    emit ClaimIntegrationStatusChanged(factory, false, true, ++quoteEpoch);
   }
 
   /// @notice Admit one canonical pending receipt as a stable route, without acquiring it.
@@ -85,6 +88,20 @@ abstract contract BookClaims is BookState {
   /// @notice At most 64 combined native/receipt positions can be held.
   function activeReceiptCount() external view returns (uint256) {
     return _claimMarkets.active.length;
+  }
+
+  /// @notice Discover up to 32 held receipt routes; point queries resolve canonical identity and cost.
+  /// @dev Start cursor at zero and pin all pages to one block. Swap-pop removal changes offsets.
+  /// @param cursor Live-set offset, not a stable route ID.
+  /// @param limit Page size, 1..32; an empty page at next indicates the end.
+  /// @return routes Stable receipt IDs for currently held one-unit positions.
+  /// @return next Live-set cursor immediately after this page.
+  function activeReceiptRoutes(uint256 cursor, uint256 limit)
+    external
+    view
+    returns (uint256[] memory routes, uint256 next)
+  {
+    return ClaimMarkets.activeRoutes(_claimMarkets, cursor, limit);
   }
 
   function _claimAdmin() private view {

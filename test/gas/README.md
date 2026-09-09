@@ -84,7 +84,7 @@ and explicit recovery ownership, not cheaper one-off NFT transfers. Receipt
 snapshots do not reset warmth and must not be compared with the cold inventory
 regions as if only the asset changed.
 
-## Live-state accounting measurements
+## Storage-only accounting comparison
 
 Storage compaction retains source-level risk budgets and adds native realization
 events. Under the same compiler and fixtures, receipt purchase changes from
@@ -98,3 +98,32 @@ Not every region improves: native cold exact-input purchases increase from
 Route resolution, result events and retiring settled payloads have execution
 costs. Region snapshots are not post-refund transaction receipts. The committed
 JSON files remain the executable measurements for this checkout.
+
+## Accounting with settlement events and bounded discovery
+
+The following comparison includes the subsequent event schemas and live-position
+views, using the same Solidity 0.8.30/Cancun/via-IR/700-run configuration and
+unchanged measurement regions:
+
+| Region | Before accounting changes | Current |
+| --- | ---: | ---: |
+| Receipt purchase, fixture-warm | 756,854 | 717,908 |
+| Receipt sale, fixture-warm | 534,819 | 517,329 |
+| Native export, fixture-warm | 841,510 | 654,238 |
+| Vault receipt recovery, fixture-warm | 180,945 | 159,465 |
+| Native buy exact-input, cold region | 660,427 | 667,741 |
+| Native sell exact-input, cold region | 484,299 | 472,326 |
+| Eight native recoveries, cold region | 1,243,727 | 1,261,776 |
+| Deposit, cold region | 104,471 | 107,260 |
+| Fund eight FIFO tickets, cold region | 271,717 | 275,010 |
+| Mark 64 native claims, cold region | 790,182 | 795,152 |
+
+Complete events and payload retirement have costs; reduced persistent history
+does not imply every operation is cheaper. Receipt wrapping remains unchanged
+at 248,247 fixture-warm gas. Do not mix these scopes with real transaction fees.
+
+Current runtime sizes are Book **24,165**, vault **18,096**, executor **12,121**,
+router **23,017** and adapter **6,421** bytes. The Book has only **411 bytes** of
+EIP-170 headroom. Preserve the deployment test: adding more entrypoints may require
+moving actual responsibility into an existing linked library, not increasing the
+code-size limit. Library runtime/deployment costs remain separate.

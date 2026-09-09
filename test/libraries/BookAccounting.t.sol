@@ -19,7 +19,9 @@ contract AccountingHarness {
   }
 
   function request(uint256 route, uint256 shares, bytes32 id, uint256 entitlement) external returns (uint256) {
-    return state.request(route, shares, id, entitlement);
+    uint256 basis = state.request(route, shares, id, entitlement);
+    state.protocolIds[id] = uint256(id); // Synthetic inverse ID, as populated by the issuer boundary.
+    return basis;
   }
 
   function recover(bytes32 id, uint256 cash, uint256 remaining) external {
@@ -36,6 +38,14 @@ contract AccountingHarness {
 
   function active() external view returns (bytes32[] memory) {
     return state.claims.active;
+  }
+
+  function protocolId(bytes32 key) external view returns (uint256) {
+    return state.protocolIds[key];
+  }
+
+  function transferClaim(bytes32 key) external returns (uint256) {
+    return ClaimAccounting.transferRight(state.claims, key);
   }
 }
 
@@ -70,6 +80,9 @@ contract BookAccountingTest is Test {
     (uint256 gains,, uint256 count) = RealizationLogs.totals(vm.getRecordedLogs(), address(h), 0);
     assertEq(count, 0);
     assertEq(h.claim(bytes32(uint256(1))).received, 2);
+    assertEq(h.protocolId(bytes32(uint256(1))), 1);
+    vm.expectRevert(ClaimAccounting.InvalidRemainingRight.selector);
+    h.transferClaim(bytes32(uint256(1)));
     assertFalse(h.claim(bytes32(uint256(1))).closed);
     vm.recordLogs();
     h.recover(bytes32(uint256(1)), 2, 0);
@@ -80,6 +93,7 @@ contract BookAccountingTest is Test {
     assertEq(count, 1);
     assertEq(h.claim(bytes32(uint256(1))).basis, 0);
     assertEq(h.claim(bytes32(uint256(1))).received, 0);
+    assertEq(h.protocolId(bytes32(uint256(1))), 0);
     assertEq(h.active().length, 0);
     vm.expectRevert(abi.encodeWithSelector(ClaimAccounting.InactiveClaim.selector, bytes32(uint256(1))));
     h.recover(bytes32(uint256(1)), 2, 0);
@@ -145,6 +159,7 @@ contract BookAccountingTest is Test {
     assertEq(c.basis, 0);
     assertEq(c.remaining, 0);
     assertEq(c.received, 0);
+    assertEq(h.protocolId(id), 0);
     assertEq(h.position(1).pendingBasis, 0);
     assertEq(h.position(1).realizedLosses, 50);
     assertEq(h.position(0).realizedLosses, 0);

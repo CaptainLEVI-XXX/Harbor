@@ -17,6 +17,40 @@ import {RouteConfig} from "src/types/HarborTypes.sol";
 library BookPortfolio {
   error CapacityExceeded();
   error InvalidQuote();
+  /// @notice Cursor exceeds the live set or page size is not 1..32.
+  error InvalidPage();
+
+  /// @notice Current issuer obligation, sufficient to construct a recovery request without logs.
+  struct NativeClaim {
+    bytes32 key;
+    uint256 route;
+    address adapter;
+    uint256 issuerId;
+    uint256 basis; // WETH wei, retained until final settlement.
+    uint256 remaining; // WETH-denominated entitlement, not cash.
+    uint256 received; // Attributable cumulative WETH wei.
+  }
+
+  /// @notice Read up to 32 live native rights; no issuer, token or valuation calls.
+  /// @dev Swap-pop indices are block-local cursors, not persistent claim identifiers.
+  function nativeClaims(Accounting.State storage book, RouteConfig[] storage routes, uint256 cursor, uint256 limit)
+    public
+    view
+    returns (NativeClaim[] memory claims, uint256 next)
+  {
+    uint256 length = book.claims.active.length;
+    if (limit == 0 || limit > 32 || cursor > length) revert InvalidPage();
+    uint256 size = length - cursor;
+    if (size > limit) size = limit;
+    claims = new NativeClaim[](size);
+    for (uint256 i; i < size; ++i) {
+      bytes32 key = book.claims.active[cursor + i];
+      ClaimAccounting.Claim storage c = book.claims.claims[key];
+      claims[i] =
+        NativeClaim(key, c.route, routes[c.route].adapter, book.protocolIds[key], c.basis, c.remaining, c.received);
+    }
+    next = cursor + size;
+  }
 
   struct Value {
     uint256 inventory;

@@ -33,8 +33,26 @@ library WithdrawalQueue {
   error InvalidRequest();
   error InvalidFunding();
   error InsufficientCredit();
+  /// @notice Cursor is outside the live FIFO range or page size is not 1..32.
+  error InvalidPage();
   /// @notice A partial asset claim would consume the last unit and strand cash.
   error ClaimAllAssets(uint256 assets);
+
+  /// @notice Bounded discovery over existing live tickets; never iterate settled history.
+  function page(State storage self, uint256 cursor, uint256 limit)
+    internal
+    view
+    returns (Ticket[] memory tickets, uint256 next)
+  {
+    if (limit == 0 || limit > 32 || cursor < self.head || cursor > self.tail) revert InvalidPage();
+    uint256 size = self.tail - cursor;
+    if (size > limit) size = limit;
+    tickets = new Ticket[](size);
+    for (uint256 i; i < size; ++i) {
+      tickets[i] = self.tickets[cursor + i];
+    }
+    next = cursor + size;
+  }
 
   /// @notice Append an already escrowed share request; no cash liability yet.
   function append(State storage self, address controller, uint256 shares) internal returns (uint256 ticket) {

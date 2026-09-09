@@ -8,6 +8,11 @@ Set `HARBOR_MAINNET_RPC_URL` locally for an archive-capable endpoint; never comm
 its credentials. A public RPC is the fallback, but its historical access may
 expire or require a token. An RPC failure is a failed check, not a skipped pass.
 
+An empty run is also not a pass. If `--list` compiled ABI-only test artifacts and
+the subsequent run says no tests were found, rerun the intended command with
+`--force` to regenerate bytecode. Verify that the actual result contains the two
+named tests for each selected fixture, not merely a successful process exit.
+
 Ethereum block: **25,924,311**
 
 Block hash: `0xfb055f2fab35bcaa52709f6013b6cb5766fefeb4537d61e033a30167f196ebba`.

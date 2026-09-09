@@ -79,7 +79,7 @@ abstract contract BookSettlement is BookState, IHarborFill, IMakerHooks {
     managed = _state.positions[id].shares;
     strategyHash[id] = keccak256(abi.encode(order));
     ++quoteEpoch;
-    emit StrategyRegistered(id, strategyHash[id], version);
+    emit StrategyPublished(id, strategyHash[id], version, strategyFactoryVersion[id], quoteEpoch);
   }
 
   /// @inheritdoc IHarborBook

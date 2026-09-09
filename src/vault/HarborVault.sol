@@ -214,8 +214,9 @@ contract HarborVault is VaultSettlement {
     _shareMutation = true;
     _transfer(owner, address(this), shares);
     _shareMutation = false;
-    _state.withdrawals.append(controller, shares);
+    uint256 ticket = _state.withdrawals.append(controller, shares);
     emit RedeemRequest(controller, owner, 0, msg.sender, shares);
+    emit WithdrawalQueued(ticket, controller, owner, msg.sender, shares);
     return 0;
   }
 
@@ -227,6 +228,25 @@ contract HarborVault is VaultSettlement {
   /// @notice Funded claim units for requestId zero; other IDs return zero.
   function claimableRedeemRequest(uint256 requestId, address controller) external view returns (uint256) {
     return requestId == 0 ? _state.withdrawals.credits[controller].units : 0;
+  }
+
+  /// @notice Current FIFO range [head, tail); completed ticket payloads are not retained.
+  function withdrawalQueueBounds() external view returns (uint256 head, uint256 tail) {
+    return (_state.withdrawals.head, _state.withdrawals.tail);
+  }
+
+  /// @notice Read up to 32 live FIFO tickets without a historical indexer.
+  /// @dev Pin all pages to one block. Start at head; stale cursors below head revert.
+  /// @param cursor Internal ticket ID, between current head and tail inclusive.
+  /// @param limit Page size, 1..32. Ticket IDs are cursor plus the returned array index.
+  /// @return tickets Controller and still-pending LP units for each live ticket.
+  /// @return next Cursor after this page; equals tail when complete.
+  function withdrawalTickets(uint256 cursor, uint256 limit)
+    external
+    view
+    returns (Queue.Ticket[] memory tickets, uint256 next)
+  {
+    return _state.withdrawals.page(cursor, limit);
   }
 
   /// @notice Grant or revoke ERC7540 operator authority for the caller.
@@ -260,7 +280,9 @@ contract HarborVault is VaultSettlement {
       _shareMutation = true;
       _burn(address(this), shares);
       _shareMutation = false;
-      emit WithdrawalFulfilled(ticket, controller, shares, assets, _state.policyVersion, pending - shares);
+      emit WithdrawalFunded(
+        ticket, controller, shares, assets, _state.policyVersion, _state.markedVersion, pending - shares
+      );
       if (shares != pending) break;
     }
   }
@@ -330,7 +352,17 @@ contract HarborVault is VaultSettlement {
     if (!valid) revert ValuationUnavailable();
     _state.checkpoint(inventory, claims, super.totalSupply(), observedAt, policy, MAX_MARK_AGE);
     _receiptState = BOOK.receiptState();
-    emit ValuationCheckpoint(_state.nav, _state.supply, _state.cash, _state.withdrawals.reserved, policy, observedAt);
+    emit ValuationCommitted(
+      _state.nav,
+      _state.supply,
+      _state.cash,
+      _state.withdrawals.reserved,
+      inventory,
+      claims,
+      policy,
+      _state.markedVersion,
+      observedAt
+    );
   }
 
   /*//////////////////////////////////////////////////////////////
@@ -358,6 +390,7 @@ contract HarborVault is VaultSettlement {
     _mint(receiver, shares);
     _shareMutation = false;
     emit Deposit(controller, receiver, assets, shares);
+    emit LiquidityIssued(msg.sender, controller, receiver, assets, shares);
   }
 
   /// @dev Require controller authority and backed reserves; fresh NAV is not required.
