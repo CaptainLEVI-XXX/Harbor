@@ -38,3 +38,7 @@ node_modules/
 !.env.example
 
 tools/
+client/.superpowers/
+client/docs/
+
+client/internal/
