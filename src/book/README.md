@@ -81,8 +81,9 @@ Harbor logs from deployment. Existing receipts can finalize without a Harbor
 transaction, so Harbor logs alone cannot reconstruct their external lifecycle.
 Retain raw logs and reversible block deltas, roll back orphaned blocks to a common
 ancestor and replay canonical replacements idempotently. Reconcile projections
-against contract state at one fixed block. The local replay tests simulate this
-boundary; they are not a deployed indexer or a network-specific finality policy.
+against contract state at one fixed block. The compact settlement suite checks
+economic transitions and selected event payloads, not production indexer replay
+or a network-specific finality policy.
 
 Without Harbor's frontend/indexer, an RPC user can discover outstanding rights,
 recover eligible claims and request or claim their own LP exit. New funding still

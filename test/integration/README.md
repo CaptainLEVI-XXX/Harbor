@@ -1,5 +1,40 @@
 # Pooled settlement tests
 
+## Compact settlement check
+
+```sh
+forge test --match-contract '^(HarborSettlement|.*Reentrancy)Test$' --fuzz-runs 64
+```
+
+Seven tests in `HarborSettlement.t.sol` reuse the existing issuer fixture; seven
+existing reentrancy checks cover issuer, token and LP callbacks without new mocks.
+The lifecycle fuzz test runs 64 cases with recovery bounded to 0–4.8 WETH. Each
+run reaches recovery and an actual LP payout; expected amounts use independent
+arithmetic, not the contract's preview or conversion helpers.
+
+| Check | Plausible bug it catches |
+| --- | --- |
+| Deposit → purchase → claim export → recovery → LP payout | Lost/double-counted basis, duplicate recovery, wrong loss or payout rounding, conflated policy/mark event versions. |
+| Cash-limited FIFO funding | Pending rights treated as cash, or a partially funded head dropped. |
+| Funded credit failures | Another wallet steals credit, overdraws it, or claims it twice. |
+| Receipt sale, reacquisition and loss | Recycling a receipt resets the issuer's lifetime risk budgets. |
+| Quote deadline and replay | Expired fills transfer tokens or consume nonces; a fill executes twice. |
+| Live discovery during an outage | Swap-pop cleanup hides another outstanding obligation or requires working marks to recover. |
+| Operator deposit | Funds charged to the controller instead of the payer, or shares sent to the wrong recipient. |
+| Existing reentrancy regressions | Nested callbacks bypass Book/Vault/Executor locks or observe intermediate accounting. |
+
+This replaces four event/discovery-specific files with one economic suite. The
+other established unit, four-mode trading, security and invariant regressions
+remain available; this command is a focused check, not a full-suite replacement.
+No additional invariant harness, dependencies or CI are needed here.
+
+Material gaps: synthetic issuer finalization, prices and permits do not validate
+mainnet economics, live oracle/CRE delivery or issuer upgrades. Full event-history
+reconstruction and indexer reorg handling are not exercised. Fork tests and longer
+stateful campaigns remain separate; passing this check is not an audit.
+
+## Broader integration coverage
+
 `forge test --match-path 'test/integration/*.t.sol'` runs the real Harbor Vault,
 Book and Executor against official Aqua and Harbor's router derived from the
 pinned official SwapVM implementation. Two synthetic wrapped assets share one

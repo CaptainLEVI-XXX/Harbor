@@ -237,11 +237,22 @@ is proved. Do not replace checked financial arithmetic with Yul for appearance.
 Code changes must include proportionate tests. Documentation-only changes need
 accurate commands, working references, and a check for accidental disclosure.
 
-- Pure arithmetic and encoding get deterministic boundary cases and fuzzed
-  differential tests against an independent readable reference.
-- Accounting changes get conservation tests with independent ghost state.
-- Security-critical invariants get stateful tests with meaningful successful
-  actions as well as rejected actions. An all-reverting campaign proves little.
+- Start with a compact suite covering accounting, authorization, payouts and
+  replay protection. Exercise one complete lifecycle with actual balances and
+  entitlements, then add distinct failure cases rather than repetitive variants.
+- Reuse shared setup and existing fixtures. Prefer one main test file for a
+  cohesive change; do not add mocks, getter tests or upstream-library tests
+  without a concrete first-party risk.
+- Use compact arithmetic fuzzing where useful, with independently calculated
+  expected results and meaningful boundary inputs. Fuzz runs must reach useful
+  states, not merely avoid reverting.
+- Add stateful invariants only when transaction sequences create a concrete
+  risk. Use independent accounting and successful actions; an all-reverting
+  campaign proves little. Do not require a new harness for every change.
+- Every additional test should identify a plausible bug existing coverage misses.
+  Keep the default workflow lightweight; expand campaigns or CI only for an
+  unresolved risk. Report tests written separately from tests actually executed,
+  with one focused run command and material gaps.
 - Integration tests distinguish local mock assets from deployed protocol tests.
 - Every bug fix gets a permanent regression test named for what it prevents.
   Do not delete coverage merely because the original bug is old.
