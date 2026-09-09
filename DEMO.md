@@ -45,7 +45,7 @@ second burn. Issuer finalization in these two tests is explicitly synthetic.
 FOUNDRY_PROFILE=fork forge test --match-contract LidoAdapterForkTest -vvvv
 ```
 
-See [pinned block and proof boundaries](test/fork/README.md). The first test creates
+See [pinned block and proof boundaries](README.md#pinned-fork-checks). The first test creates
 a real unfinalized request. The second exercises inherited production claim code
 with a separately mature historical NFT and a test-only tracking setup. The
 observed historical recovery is 807,507,852,022,935,682 wei, sent as WETH to the
@@ -62,7 +62,7 @@ FOUNDRY_PROFILE=gas forge test --gas-snapshot-check true --gas-snapshot-emit fal
 
 The invariant profile checks partial-claim accounting in 32 short sequences of
 16 calls. The gas profile now retains only the deployment-size gate; its scope
-is documented [here](test/gas/README.md).
+is documented [here](README.md#deployment-size-gate).
 The deployment script is local-only. No mainnet readiness, calibrated APY,
 live confidential underwriting, or second-issuer integration is claimed by this
 demo. Those require their own measured evidence and security review.

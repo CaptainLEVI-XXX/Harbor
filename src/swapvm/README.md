@@ -52,7 +52,8 @@ Claim guard: opcode 0x56, argument length 96,
 
 `0x55` and `0x56` are unused swap-family slots in the pinned upstream table.
 They are **local Harbor assignments**, not registered 1inch instructions.
-The collision test must be revisited whenever the dependency pin changes.
+Recheck opcode collisions whenever the dependency pin changes; the compact
+suite does not retain the earlier collision matrix.
 The router's capability getter catches accidental deployment against an old
 router, but is not a substitute for verifying source, bytecode and dependencies.
 
@@ -81,15 +82,16 @@ byte count. This intentionally narrows the earlier generic `Extruction`
 integration. The exact-fill instruction consumes all remaining taker arguments.
 Instructions requiring their own taker arguments must precede it. Harbor's
 canonical program has no subsequent fee/amount transformations; its hooks bind
-the final pair. Upstream Salt/Deadline composition and late-failure rollback
-are tested separately without changing that canonical program.
+the final pair. The retained late-instruction rollback test exercises failure
+without changing that canonical program.
 
 The appended claim guard needs no taker payload. It verifies factory canonicality,
 issuer, chain, recovery token, pending custody, one-unit quantity and the published
 factory version. Factory activity is required for purchases, not exits. Its checks
 are read-only in quote and execution modes. Book rechecks claim state at final
 settlement; late failure rolls back prior authorization and transfers. See the
-[receipt guide](../claims/README.md) for admission and accounting boundaries.
+[redemption market](../../README.md#redemption-market) and
+[accounting boundaries](../../README.md#accounting-and-public-reads).
 
 ## Authority and lifecycle
 
@@ -148,7 +150,8 @@ movements, signed/independent authorization and late-fee rollback. The earlier
 upstream-router, truncated-bytecode and publication-ownership matrices are not
 part of the 50-test hackathon suite.
 Synthetic assets, marks and permits are not live capital or model-validation
-evidence. See the root demo and integration test documentation for proof limits.
+evidence. See the [contract demo](../../DEMO.md) and
+[test scope](../../README.md#testing) for proof limits.
 
 ## Deployment compatibility
 

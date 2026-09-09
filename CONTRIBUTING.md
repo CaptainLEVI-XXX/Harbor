@@ -81,6 +81,11 @@ lib/             pinned third-party Solidity sources
 This is a placement convention, not a claim that every directory or component
 already exists. Create a directory when it has actual code to contain.
 
+Keep first-party README guidance in the root `README.md` and
+`src/swapvm/README.md` only. Put shared test commands and scope in the root
+guide rather than adding a README to every folder. Leave dependency and client
+documentation under their respective ownership.
+
 First matching answer determines where new code belongs:
 
 | Question | Location |
