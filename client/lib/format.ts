@@ -49,3 +49,16 @@ export function formatWeiFixed(value: bigint, decimals: number, fractionDigits: 
   const sign = negative ? '-' : '';
   return fractionDigits > 0 ? `${sign}${whole}.${fraction.padEnd(fractionDigits, '0')}` : `${sign}${whole}`;
 }
+
+/**
+ * A signed result, for the one column that carries a gain/loss colour.
+ *
+ * The minus is U+2212 MINUS SIGN, not a hyphen: in tabular figures a hyphen
+ * is narrower than a digit and pulls the column out of alignment. Zero is
+ * unsigned - "+0.00" reads as a gain that is not there.
+ */
+export function formatSigned(value: bigint, decimals: number, fractionDigits: number): string {
+  if (value === 0n) return formatWeiFixed(0n, decimals, fractionDigits);
+  const body = formatWeiFixed(value < 0n ? -value : value, decimals, fractionDigits);
+  return `${value < 0n ? '−' : '+'}${body}`;
+}

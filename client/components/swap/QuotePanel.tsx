@@ -1,5 +1,5 @@
 import type { Quote } from '@/lib/swap/types';
-import { formatWei } from '@/lib/swap/format';
+import { formatWei } from '@/lib/format';
 
 export type QuoteRow = {
   label: string;

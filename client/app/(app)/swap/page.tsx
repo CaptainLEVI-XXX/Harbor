@@ -6,7 +6,7 @@ import QuotePanel, { type QuoteRow } from '@/components/swap/QuotePanel';
 import ReceiptList from '@/components/swap/ReceiptList';
 import { useConnect } from '@/components/PrivyProvider';
 import { ASSETS, RECEIPTS } from '@/lib/swap/fixtures';
-import { formatWei, parseWei } from '@/lib/swap/format';
+import { formatWei, parseWei } from '@/lib/format';
 import { quoteTokens, quoteReceipt, isExpired } from '@/lib/swap/useQuote';
 import type { Direction, TradeMode } from '@/lib/swap/types';
 

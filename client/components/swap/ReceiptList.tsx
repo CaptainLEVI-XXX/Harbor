@@ -1,5 +1,5 @@
 import type { Receipt } from '@/lib/swap/types';
-import { formatWeiFixed } from '@/lib/swap/format';
+import { formatWeiFixed } from '@/lib/format';
 
 type Props = {
   receipts: Receipt[];

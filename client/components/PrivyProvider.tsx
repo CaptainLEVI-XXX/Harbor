@@ -40,21 +40,22 @@ export function truncateAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
-type Connect = { label: string; onConnect: () => void };
+type Connect = { label: string; connected: boolean; onConnect: () => void };
 
 function useConnectWithPrivy(): Connect {
   const { ready, authenticated, user, login, logout } = usePrivy();
 
-  if (!ready) return { label: DESIGN.copy.connect, onConnect: () => {} };
+  if (!ready) return { label: DESIGN.copy.connect, connected: false, onConnect: () => {} };
   if (authenticated && user?.wallet?.address) {
-    return { label: truncateAddress(user.wallet.address), onConnect: logout };
+    return { label: truncateAddress(user.wallet.address), connected: true, onConnect: logout };
   }
-  return { label: DESIGN.copy.connect, onConnect: login };
+  return { label: DESIGN.copy.connect, connected: false, onConnect: login };
 }
 
 function useConnectUnconfigured(): Connect {
   return {
     label: DESIGN.copy.connect,
+    connected: false,
     onConnect: () => {
       console.warn(
         'NEXT_PUBLIC_PRIVY_APP_ID is not set. Copy .env.local.example to .env.local and add an app ID from dashboard.privy.io.',

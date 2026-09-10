@@ -1,6 +1,6 @@
 import type { Quote, TradeMode, Direction } from './types';
 import { TOKEN_RATE_1E18, FEE_BPS, BOOK_LIMIT_WEI } from './fixtures';
-import { formatWei } from './format';
+import { formatWei } from '@/lib/format';
 
 /** A firm signed quote genuinely dies. The UI has to show it dying. */
 export const QUOTE_TTL_MS = 30_000;
