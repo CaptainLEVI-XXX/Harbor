@@ -53,11 +53,14 @@ export default function SwapPage() {
 
   const shown = isExpired(quote, now) ? { ...quote, state: 'expired' as const } : quote;
 
-  /** The leg the user is not typing into, rendered from the quote. */
+  /**
+   * The leg the user is not typing into, rendered from the quote. Only a firm
+   * quote has figures: showing 0 when nothing was quoted would read as a price.
+   */
   const derived =
-    quote.state === 'idle' || quote.state === 'unavailable'
-      ? ''
-      : formatWei(mode === 'exactInput' ? quote.receiveWei : quote.payWei, 18);
+    quote.state === 'firm'
+      ? formatWei(mode === 'exactInput' ? quote.receiveWei : quote.payWei, 18)
+      : '';
 
   const payValue = mode === 'exactInput' ? typed : derived;
   const receiveValue = mode === 'exactInput' ? derived : typed;

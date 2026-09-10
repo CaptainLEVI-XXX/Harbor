@@ -47,7 +47,9 @@ describe('landing page parity', () => {
       '.qrow > span.big',     // that same derived leg, restated in the quote
     ]);
     // no view shows more than one of the two amount selectors: .amt exists on
-    // Tokens only, and there .qrow > span.big restates the very same figure
+    // Tokens only, and there .qrow > span.big restates the very same figure.
+    // The Basin mark's exit unit is the accent too, but that is the brand mark
+    // shipped with the landing page, not ink this surface spends.
   });
 
   it('sets tabular mono figures wherever a number renders', () => {

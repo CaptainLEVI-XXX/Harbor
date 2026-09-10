@@ -54,9 +54,10 @@ canvas.layer {
   font-family: var(--font-display), system-ui, sans-serif;
   font-weight: 700; font-size: 1.30em;      /* 24px - guidelines wordmark */
   letter-spacing: -0.03em; line-height: 0.96;
+  color: inherit; text-decoration: none;      /* it is a link to / now */
 }
-.mark { color: inherit; text-decoration: none; }
-.mark svg { flex: none; filter: drop-shadow(0 3px 6px rgba(74,47,107,.26)); }
+/* the mark carries its own drop shadow inline - see HarborMark.tsx */
+.mark svg { flex: none; }
 .mark sup { font-size: 0.42em; font-weight: 500; color: #6F6689; margin-top: 0.1em; }
 
 .navlinks {

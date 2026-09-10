@@ -132,3 +132,28 @@ describe('/swap quote states', () => {
     }
   });
 });
+
+describe('the derived leg', () => {
+  it('is blank rather than zero when nothing was quoted', async () => {
+    render(<SwapPage />);
+    const pay = screen.getByLabelText('Amount you pay');
+    await userEvent.clear(pay);
+    await userEvent.type(pay, '99');
+    // 0 in the receive well would read as a price the vault had offered
+    expect(screen.getByLabelText('Amount you receive')).toHaveValue('');
+  });
+
+  it('keeps the last figures visible once a quote expires', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<SwapPage />);
+      const before = (screen.getByLabelText('Amount you receive') as HTMLInputElement).value;
+      expect(before).not.toBe('');
+      await act(() => vi.advanceTimersByTimeAsync(31_000));
+      expect(screen.getByText('expired')).toBeInTheDocument();
+      expect(screen.getByLabelText('Amount you receive')).toHaveValue(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
