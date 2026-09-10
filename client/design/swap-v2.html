@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Harbor · Swap — design review</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#4A2F6B; --muted:#6F6689; --faint:#9086A8;
+  --exit:#6A3FD1;                       /* the ONE accent - only where value moves */
+  --sheet:#F4EDFC;
+  --r-tile:30%;                          /* the lattice radius */
+  --display:'Quicksand'; --body:'Figtree'; --mono:'IBM Plex Mono';
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--sheet)}
+body{isolation:isolate}
+body{font-family:var(--body),system-ui,sans-serif;color:var(--ink);font-size:15px}
+button,input,select{font:inherit;color:inherit}
+button{border:0;background:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--exit);outline-offset:3px;border-radius:6px}
+#ground{position:fixed;inset:0;z-index:0;pointer-events:none}
+#ground canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#burst{position:absolute;inset:0;pointer-events:none}
+
+/* ---------- shell: the shipped nav ---------- */
+.nav{position:relative;z-index:2;display:flex;align-items:center;padding:20px 3.1% 0;gap:16px}
+.mark{display:flex;align-items:flex-start;gap:.40em;font-family:var(--display);
+      font-weight:700;font-size:24px;letter-spacing:-.03em;line-height:.96}
+.mark svg{filter:drop-shadow(0 3px 6px rgba(74,47,107,.26))}
+.mark sup{font-size:10px;font-weight:500;color:var(--muted);margin-top:2px}
+.navlinks{margin:0 auto;display:flex;align-items:center;gap:2px;padding:5px;border-radius:22px;
+  background:linear-gradient(135deg,rgba(255,255,255,.86),rgba(255,255,255,.62) 55%,rgba(255,255,255,.48));
+  border:1px solid rgba(255,255,255,.75);
+  box-shadow:0 1px 0 rgba(255,255,255,.9) inset,0 10px 26px -14px rgba(74,47,107,.42);
+  font-size:15px;font-weight:500;color:var(--muted)}
+.navlinks a{padding:9px 17px;border-radius:15px;color:inherit;text-decoration:none}
+.navlinks a[aria-current]{background:linear-gradient(135deg,#fff,rgba(255,255,255,.72));
+  color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(74,47,107,.10)}
+.connect{padding:13px 23px;border-radius:22px;color:#fff;font-weight:600;
+  background:linear-gradient(135deg,#5C3D82,#4A2F6B 52%,#402659);
+  box-shadow:0 1px 0 rgba(255,255,255,.26) inset,
+             0 14px 30px -12px rgba(74,47,107,.70),
+             0 3px 8px -3px rgba(74,47,107,.30);
+  transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s}
+.connect:hover{transform:translateY(-1px);
+  box-shadow:0 1px 0 rgba(255,255,255,.3) inset,0 18px 36px -12px rgba(74,47,107,.78),0 4px 10px -3px rgba(74,47,107,.34)}
+
+/* ---------- workspace ---------- */
+.wrap{position:relative;z-index:2;height:calc(100dvh - 72px);display:flex;flex-direction:column;
+      align-items:center;justify-content:center;padding:8px 0 28px}
+.panel{width:512px}
+/* DEPTH 1 - the modal, raised off the lattice */
+.modal{border-radius:34px;padding:22px 22px 20px;
+  background:
+    linear-gradient(135deg,rgba(255,255,255,.92) 0%,rgba(255,255,255,.62) 46%,rgba(214,199,240,.42) 100%),
+    linear-gradient(135deg,#F7F3FD,#EFE8F9);
+  border:1px solid rgba(255,255,255,.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,1),
+    inset 0 -1px 0 rgba(116,94,166,.08),
+    0 40px 80px -32px rgba(74,47,107,.62),
+    0 12px 28px -14px rgba(74,47,107,.22),
+    0 3px 8px -4px rgba(74,47,107,.10)}
+/* DEPTH 2 - wells sunk into it */
+.well{border-radius:24px;padding:15px 20px 13px;
+  background:linear-gradient(135deg,rgba(226,215,244,.72),rgba(238,231,250,.55));
+  box-shadow:
+    inset 0 2px 6px rgba(88,70,110,.11),
+    inset 0 -1px 0 rgba(255,255,255,.85)}
+.well + .well{margin-top:9px}
+/* DEPTH 4 - flat sections on the modal face, divided by a hairline */
+.sec{padding:15px 4px 3px;margin-top:14px;border-top:1px solid rgba(116,94,166,.13)}
+h1{font-family:var(--display);font-weight:700;font-size:21px;letter-spacing:-.03em;margin:0 0 2px}
+.sub{color:var(--muted);font-size:12.5px;margin:0}
+.head{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:2px 2px 15px}
+
+/* the one glass material, two radii only */
+/* ---------------------------------------------------------------
+   Everything here is the lattice cell at a different scale.
+   A cell is: 135deg white .60 -> white .085 @50% -> lavender .17,
+   a hairline white edge, and a padded drop. Nothing else exists.
+   --------------------------------------------------------------- */
+.glass{background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.58) 55%,rgba(255,255,255,.46));
+  border:1px solid rgba(255,255,255,.72);
+  box-shadow:0 1px 0 rgba(255,255,255,.9) inset,0 10px 26px -18px rgba(74,47,107,.34)}
+
+/* a cell, raised */
+.surface{
+  background:
+    linear-gradient(135deg,rgba(255,255,255,.80) 0%,rgba(255,255,255,.30) 48%,rgba(184,145,230,.17) 100%),
+    linear-gradient(135deg,#F2ECFB,#E9E1F6);
+  border:1px solid rgba(255,255,255,.78);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.95),
+    inset 0 -1px 0 rgba(116,94,166,.07),
+    0 20px 44px -30px rgba(74,47,107,.55),
+    0 2px 8px -4px rgba(74,47,107,.07)}
+
+/* a cell, sitting lower - reads as recessed against the ones above it */
+.surface-soft{
+  background:
+    linear-gradient(135deg,rgba(255,255,255,.54) 0%,rgba(255,255,255,.16) 50%,rgba(184,145,230,.15) 100%),
+    linear-gradient(135deg,#EEE7F9,#E5DCF3);
+  border:1px solid rgba(255,255,255,.6);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.7),
+    inset 0 2px 7px rgba(88,70,110,.055),
+    0 10px 26px -22px rgba(74,47,107,.4)}
+.seg{display:inline-flex;gap:2px;padding:3px;border-radius:16px;margin-bottom:0;flex:none;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 6px 16px -10px rgba(74,47,107,.32)}
+.seg button{padding:7px 16px;border-radius:13px;font-weight:500;color:var(--muted);font-size:13px}
+.seg button[aria-pressed=true]{background:linear-gradient(135deg,#fff,rgba(255,255,255,.7));
+  color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(74,47,107,.1)}
+
+
+
+.frow{display:flex;align-items:center;justify-content:space-between}
+.flabel{font-size:13px;color:#5B4478}
+.amt{display:flex;align-items:center;gap:16px;margin:6px 0 5px}
+.amt input{flex:1;min-width:0;border:0;background:none;padding:0;
+  font-family:var(--mono);font-variant-numeric:tabular-nums;
+  font-size:34px;font-weight:400;letter-spacing:-.02em;color:var(--ink)}
+.amt input.out{color:var(--exit)}                 /* value that moves */
+.asset{display:flex;align-items:center;gap:8px;padding:7px 13px 7px 8px;border-radius:16px;
+  font-weight:600;font-size:16px;white-space:nowrap;
+  background:linear-gradient(135deg,rgba(255,255,255,.9),rgba(233,225,246,.85));
+  border:1px solid rgba(255,255,255,.85);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.95),
+             0 6px 14px -7px rgba(74,47,107,.35),
+             0 1px 3px -1px rgba(74,47,107,.18)}
+.asset i{width:26px;height:26px;border-radius:50%;background:#fff9;display:grid;place-items:center;font-size:13px;font-style:normal}
+.fmeta{display:flex;justify-content:space-between;font-size:12px;color:#5F4A7C}
+.rev{position:relative;height:0;z-index:3}
+/* A HOLE, not a button.
+   Light comes from the top-left, so the top and left inner walls are in shadow
+   and the bottom and right walls catch it. The single most important part is the
+   1px highlight on the LIP below the opening - that is what reads as an edge.
+   No outer shadow of any kind: an outer shadow makes anything float. */
+.rev button{
+  position:absolute;left:50%;top:0;transform:translate(-50%,-50%);
+  width:56px;height:56px;border-radius:30%;display:grid;place-items:center;
+  font-size:18px;color:#5F4A82;border:0;
+  background:linear-gradient(135deg,
+    rgba(120,98,164,.22) 0%,
+    rgba(150,130,190,.07) 42%,
+    rgba(255,255,255,.50) 100%),
+    linear-gradient(#E4DBF3,#E9E2F6);
+  box-shadow:
+    inset 0 5px 9px -2px rgba(74,56,100,.34),      /* top wall, in shadow */
+    inset 4px 0 8px -4px rgba(74,56,100,.22),      /* left wall */
+    inset 0 -5px 8px -3px rgba(255,255,255,.90),   /* bottom wall, catching light */
+    inset -4px 0 7px -4px rgba(255,255,255,.62),   /* right wall */
+    0 1px 0 rgba(255,255,255,.95);                 /* the lip below the hole */
+  transition:box-shadow .2s cubic-bezier(.2,.8,.2,1),background .2s}
+.rev button:hover{                                  /* a hole gets deeper, it does not lift */
+  box-shadow:
+    inset 0 7px 12px -2px rgba(74,56,100,.42),
+    inset 5px 0 10px -4px rgba(74,56,100,.28),
+    inset 0 -5px 8px -3px rgba(255,255,255,.92),
+    inset -4px 0 7px -4px rgba(255,255,255,.66),
+    0 1px 0 rgba(255,255,255,.95)}
+.rev button:active{
+  box-shadow:
+    inset 0 9px 14px -2px rgba(74,56,100,.5),
+    inset 5px 0 11px -4px rgba(74,56,100,.32),
+    inset 0 -4px 7px -3px rgba(255,255,255,.9),
+    0 1px 0 rgba(255,255,255,.95)}
+
+/* quote block */
+
+.qhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:11px}
+.qhead b{font-weight:600;font-size:14px}
+.count{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;color:var(--exit)}
+.qrow{display:flex;justify-content:space-between;font-size:13px;padding:4px 0;color:var(--muted)}
+.qrow span:last-child{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+.qrow .big{font-size:20px;font-weight:500;color:var(--exit)}   /* the value that moves */
+.qrow:has(.big){padding:7px 0 9px;align-items:baseline}
+.note{margin-top:11px;font-size:12px;color:var(--muted);line-height:1.5}
+
+.act{width:100%;margin-top:16px;padding:15px;border-radius:20px;color:#fff;font-weight:600;font-size:15px;
+  background:linear-gradient(135deg,#5C3D82,#4A2F6B 52%,#402659);
+  box-shadow:0 1px 0 rgba(255,255,255,.26) inset,0 16px 34px -16px rgba(74,47,107,.7);
+  transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s}
+.act:hover:not([disabled]){transform:translateY(-1px);box-shadow:0 1px 0 rgba(255,255,255,.3) inset,0 20px 40px -16px rgba(74,47,107,.78)}
+.act[disabled]{opacity:.42;cursor:not-allowed;box-shadow:none}
+.foot{text-align:center;font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:13px}
+
+/* receipts list */
+  .list{border-radius:24px;padding:6px;max-height:none;overflow:visible;
+  background:linear-gradient(135deg,rgba(226,215,244,.72),rgba(238,231,250,.55));
+  box-shadow:inset 0 2px 6px rgba(88,70,110,.11),inset 0 -1px 0 rgba(255,255,255,.85)}
+.rhead{display:grid;grid-template-columns:66px 1fr 84px 40px 16px;gap:12px;
+  padding:7px 15px 5px;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
+.rhead span:nth-child(n+2):nth-child(-n+4){text-align:right}
+.rcpt{display:grid;grid-template-columns:66px 1fr 84px 40px 16px;align-items:center;gap:12px;
+  width:100%;text-align:left;padding:11px 15px;border-radius:17px;color:inherit}
+.rcpt .ent,.rcpt .mk,.rcpt .qd{text-align:right}
+.rcpt:hover:not([disabled]){background:rgba(255,255,255,.55)}
+.rcpt[aria-pressed=true]{background:linear-gradient(135deg,rgba(255,255,255,.95),rgba(255,255,255,.72));
+  box-shadow:0 1px 3px rgba(74,47,107,.14),inset 0 0 0 1px rgba(106,63,209,.28)}
+.rcpt[aria-pressed=true] .chev{color:var(--exit)}
+.rcpt[disabled]{opacity:.5;cursor:not-allowed}
+.rid{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.ent{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:14.5px;white-space:nowrap}
+.ent small{display:none}
+.mk{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted);white-space:nowrap}
+.qd{font-size:12px;color:var(--faint);white-space:nowrap}
+.chev{color:var(--faint);text-align:right}
+.warn{font-size:12px;color:var(--faint)}
+
+.state{position:fixed;z-index:3;left:3.1%;bottom:16px;display:flex;gap:6px;align-items:center;
+  font-family:var(--mono);font-size:11px;color:var(--muted)}
+.state button{padding:5px 10px;border-radius:99px;background:rgba(255,255,255,.66);
+  border:1px solid rgba(255,255,255,.8);font-size:11px;font-family:var(--mono)}
+.state button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+[hidden]{display:none!important}
+.skel{display:inline-block;height:1em;width:5.5em;border-radius:5px;vertical-align:-2px;
+  background:linear-gradient(90deg,rgba(116,94,166,.13),rgba(116,94,166,.06),rgba(116,94,166,.13));
+  background-size:200% 100%;animation:sh 1.1s linear infinite}
+@keyframes sh{to{background-position:-200% 0}}
+.dim{opacity:.45}
+</style></head><body>
+
+<div id="ground"><canvas id="cv"></canvas><canvas id="dt"></canvas><div id="burst"></div></div>
+
+<header class="nav">
+  <div class="mark">
+    <svg width="24.5" height="24.5" viewBox="0 0 64 64" aria-label="Harbor" role="img">
+      <defs><linearGradient id="hi" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#63428C"/><stop offset=".55" stop-color="#4A2F6B"/><stop offset="1" stop-color="#3B2456"/>
+      </linearGradient></defs>
+      <path d="M 56 38 A 18 18 0 0 1 38 56 L 26 56 A 18 18 0 0 1 8 38 L 8 26 A 18 18 0 0 1 26 8 L 38 8 A 18 18 0 0 1 56 26"
+            fill="none" stroke="url(#hi)" stroke-width="7.5" stroke-linecap="round"/>
+      <rect x="19" y="24.5" width="15" height="15" rx="5" fill="url(#hi)"/>
+      <rect x="39" y="28" width="8.5" height="8.5" rx="2.8" fill="#6A3FD1"/>
+    </svg>Harbor<sup>beta</sup>
+  </div>
+  <nav class="navlinks">
+    <a href="#" aria-current="page">Swap</a><a href="#">Earn</a><a href="#">Portfolio</a><a href="#">Analytics</a><a href="#">Docs</a>
+  </nav>
+  <button class="connect">Connect wallet</button>
+</header>
+
+<div class="wrap"><div class="panel"><div class="modal">
+  <div class="head">
+    <div>
+      <h1 id="ttl">Swap inventory</h1>
+      <p class="sub" id="sub">Quoted both directions, at exact amounts.</p>
+    </div>
+    <div class="seg glass">
+      <button id="tabTok" aria-pressed="true">Tokens</button>
+      <button id="tabRcp" aria-pressed="false">Receipts</button>
+    </div>
+  </div>
+
+  <!-- ============ TOKENS ============ -->
+  <section id="tokens">
+    <div class="well">
+      <div class="frow"><span class="flabel">Pay</span><span class="flabel">Ethereum</span></div>
+      <div class="amt"><input id="pay" value="1" inputmode="decimal" aria-label="Amount you pay">
+        <span class="asset"><i>◈</i>wstETH</span></div>
+      <div class="fmeta"><span>Wrapped staked ETH</span><span id="payBal">Balance —</span></div>
+    </div>
+    <div class="rev"><button aria-label="Reverse direction">⇅</button></div>
+    <div class="well">
+      <div class="frow"><span class="flabel">Receive</span><span class="flabel">Fee included</span></div>
+      <div class="amt"><input id="recv" class="out" value="1.18406" inputmode="decimal" aria-label="Amount you receive">
+        <span class="asset"><i>◇</i>WETH</span></div>
+      <div class="fmeta"><span>Wrapped ETH</span><span>Balance —</span></div>
+    </div>
+  </section>
+
+  <!-- ============ RECEIPTS ============ -->
+  <section id="receipts" hidden>
+    <div class="list" id="rlist"></div>
+  </section>
+
+  <!-- ============ QUOTE ============ -->
+  <div class="sec" id="quote">
+    <div class="qhead"><b id="qtitle">Quote</b><span class="count" id="qcount">expires in 0:27</span></div>
+    <div id="qrows"></div>
+    <p class="note" id="qnote"></p>
+  </div>
+
+  <button class="act" id="act">Connect wallet</button>
+  </div>
+  <p class="foot" id="foot">Exact quoted amounts · the full trade completes or reverts</p>
+</div></div>
+
+<div class="state">
+  <span>quote state</span>
+  <button data-s="firm" class="on">firm</button>
+  <button data-s="idle">idle</button>
+  <button data-s="requesting">requesting</button>
+  <button data-s="expired">expired</button>
+  <button data-s="unavailable">unavailable</button>
+  <button data-s="wontfill">won't fill</button>
+  <button data-s="connected">connected</button>
+</div>
+
+<script>
+/* ---------- ground: lattice only. no coins, no hover, no pop ---------- */
+(function(){
+  const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+  const DPR=Math.min(devicePixelRatio||1,2), CELL=84, RAD=25;
+  const rr=(c,x,y,w,h,r)=>{c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);
+    c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()};
+  const mask=(x,y,w,h)=>{const d=Math.hypot((x-w/2)/(w*.46),(y-h/2)/(h*.38));
+    if(d<=0)return 0; if(d>=.8)return 1; if(d<=.48)return d/.48*.3; return .3+(d-.48)/.32*.7};
+  function paint(){
+    const w=innerWidth,h=innerHeight; cv.width=w*DPR;cv.height=h*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+    ctx.fillStyle='#F4EDFC';ctx.fillRect(0,0,w,h);
+    let g=ctx.createRadialGradient(w*.84,h*.08,0,w*.84,h*.08,Math.max(w*.58,h*.42));
+    g.addColorStop(0,'rgba(216,184,255,.60)');g.addColorStop(.68,'rgba(216,184,255,0)');
+    ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+    g=ctx.createRadialGradient(w*.10,h*.96,0,w*.10,h*.96,Math.max(w*.64,h*.48));
+    g.addColorStop(0,'rgba(231,211,255,.55)');g.addColorStop(.72,'rgba(231,211,255,0)');
+    ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+    const ins=CELL*2/84;
+    for(let gy=0;gy<Math.ceil(h/CELL)+1;gy++)for(let gx=0;gx<Math.ceil(w/CELL)+1;gx++){
+      const x=gx*CELL,y=gy*CELL,m=mask(x+CELL/2,y+CELL/2,w,h); if(m<=.001)continue;
+      if(window.__popped&&window.__popped.has(gx+':'+gy)){
+        ctx.save();ctx.globalAlpha=m*.5;rr(ctx,x+ins,y+ins,CELL-ins*2,CELL-ins*2,RAD);ctx.clip();
+        const pg=ctx.createLinearGradient(x,y,x,y+CELL*.4);
+        pg.addColorStop(0,'rgba(116,94,166,.12)');pg.addColorStop(1,'rgba(116,94,166,0)');
+        ctx.fillStyle=pg;ctx.fillRect(x,y,CELL,CELL);ctx.restore();continue;}
+      ctx.save();ctx.globalAlpha=m;rr(ctx,x+ins,y+ins,CELL-ins*2,CELL-ins*2,RAD);ctx.clip();
+      const lg=ctx.createLinearGradient(x,y,x+CELL,y+CELL);
+      lg.addColorStop(0,'rgba(255,255,255,.60)');lg.addColorStop(.5,'rgba(255,255,255,.085)');
+      lg.addColorStop(1,'rgba(184,145,230,.17)');
+      ctx.fillStyle=lg;ctx.fillRect(x,y,CELL,CELL);ctx.restore();
+    }
+  }
+  paint(); addEventListener('resize',paint);
+
+  /* ---- hover: the cell springs to 93% and eases back over 420ms ----
+     Same values as the landing page: framer's spring stiffness 420 damping 26,
+     exit duration .42 easeOut. Restored - it should never have been cut. */
+  const dt=document.getElementById('dt'),dc=dt.getContext('2d');
+  const popped=new Set(); let live=[], uid=0;   // declared before the loop that reads them
+  let active=null,fading=[],last=performance.now(),W=0,H=0;
+  function size(){W=innerWidth;H=innerHeight;dt.width=W*DPR;dt.height=H*DPR;dc.setTransform(DPR,0,0,DPR,0,0)}
+  size(); addEventListener('resize',size);
+
+  function press(c,gx,gy,alpha,scale){
+    const x=gx*CELL,y=gy*CELL,k=CELL/84;
+    c.save(); c.globalAlpha=alpha;
+    c.translate(x+CELL/2,y+CELL/2); c.scale(scale,scale); c.translate(-(x+CELL/2),-(y+CELL/2));
+    c.save(); c.shadowColor='rgba(214,180,255,.30)'; c.shadowBlur=22*k;
+    c.fillStyle='rgba(255,255,255,.01)'; rr(c,x,y,CELL,CELL,RAD); c.fill(); c.restore();
+    rr(c,x,y,CELL,CELL,RAD); c.clip();
+    let g=c.createLinearGradient(x,y,x+CELL,y+CELL);
+    g.addColorStop(0,'rgba(115,90,146,.34)'); g.addColorStop(.44,'rgba(182,162,206,.06)');
+    g.addColorStop(1,'rgba(255,255,255,.95)');
+    c.fillStyle=g; c.fillRect(x,y,CELL,CELL);
+    g=c.createLinearGradient(x,y,x,y+13*k);
+    g.addColorStop(0,'rgba(88,70,110,.30)'); g.addColorStop(.5,'rgba(88,70,110,.13)');
+    g.addColorStop(1,'rgba(88,70,110,0)');
+    c.fillStyle=g; c.fillRect(x,y,CELL,CELL);
+    g=c.createLinearGradient(x,y+CELL,x,y+CELL-3*k);
+    g.addColorStop(0,'rgba(255,255,255,.85)'); g.addColorStop(1,'rgba(255,255,255,0)');
+    c.fillStyle=g; c.fillRect(x,y,CELL,CELL);
+    c.restore();
+  }
+  addEventListener('pointermove',e=>{
+    if(e.pointerType!=='mouse')return;
+    const gx=Math.floor(e.clientX/CELL),gy=Math.floor(e.clientY/CELL);
+    if(active&&active.gx===gx&&active.gy===gy)return;          // hold while inside
+    if(active)fading.push({gx:active.gx,gy:active.gy,at:performance.now(),from:active.s});
+    active={gx,gy,s:1,v:0,in:performance.now()};
+  });
+  addEventListener('pointerleave',()=>{ if(active){fading.push({gx:active.gx,gy:active.gy,at:performance.now(),from:active.s});active=null;} });
+  (function loop(now){
+    dc.clearRect(0,0,W,H);
+    for(let i=fading.length-1;i>=0;i--){
+      const f=fading[i],t=(now-f.at)/420;
+      if(t>=1){fading.splice(i,1);continue}
+      const e=1-Math.pow(1-t,3);
+      press(dc,f.gx,f.gy,1-e,f.from+(1-f.from)*e);
+    }
+    if(active){
+      const d=Math.min(.032,(now-last)/1000);
+      active.v+=(-420*(active.s-.93)-26*active.v)*d; active.s+=active.v*d;
+      press(dc,active.gx,active.gy,Math.min(1,(now-active.in)/120),active.s);
+    }
+    /* burst coins: no gravity, random directions, friction to rest, permanent */
+    for(let i=live.length-1;i>=0;i--){
+      const c=live[i];
+      c.vx*=.955; c.vy*=.955; c.x+=c.vx; c.y+=c.vy; c.r+=c.vr; c.vr*=.97;
+      c.el.style.transform=`translate(${c.x-c.s/2}px,${c.y-c.s/2}px) rotate(${c.r}deg)`;
+      if(Math.abs(c.vx)+Math.abs(c.vy)<.02) live.splice(i,1);   /* settled: stop simulating, element stays */
+    }
+    last=now; requestAnimationFrame(loop);
+  })(performance.now());
+
+  /* ---------- popping ---------- */
+  const burst=document.getElementById('burst');
+  function coin(size){
+    const id=++uid, pale=Math.random()<.45;
+    const f = pale?['#F0EBFA','#D6C9F0','#B9A4E0']:['#E7DFF7','#B79FE2','#8E6FC8'];
+    const w=document.createElement('div');
+    w.style.cssText='position:absolute;left:0;top:0;will-change:transform';
+    w.innerHTML=`<svg viewBox="0 0 120 150" width="${size}" height="${size*150/120}">
+      <defs><linearGradient id="k${id}" x1=".9" y1="0" x2=".1" y2="1">
+        <stop offset="0" stop-color="${f[0]}" stop-opacity=".48"/>
+        <stop offset=".45" stop-color="${f[1]}" stop-opacity=".78"/>
+        <stop offset="1" stop-color="${f[2]}" stop-opacity=".92"/></linearGradient>
+      <linearGradient id="m${id}" x1=".05" y1="0" x2=".9" y2="1">
+        <stop offset="0" stop-color="#FFF"/><stop offset=".55" stop-color="#DDD5EE"/>
+        <stop offset="1" stop-color="#FFF"/></linearGradient>
+      <filter id="n${id}" x="-80%" y="-200%" width="260%" height="520%"><feGaussianBlur stdDeviation="4"/></filter></defs>
+      <ellipse cx="59" cy="106" rx="33" ry="4.5" fill="#4A2F6B" opacity=".13" filter="url(#n${id})"/>
+      <path d="M17 62 A43 27 0 0 0 103 62 L103 71 A43 27 0 0 1 17 71 Z" fill="url(#m${id})"/>
+      <ellipse cx="60" cy="62" rx="43" ry="27" fill="url(#k${id})"/>
+      <ellipse cx="60" cy="62" rx="43" ry="27" fill="none" stroke="#FFF" stroke-opacity=".85" stroke-width="2.6"/></svg>`;
+    return w;
+  }
+  addEventListener('pointerdown',e=>{
+    if(e.target.closest('.modal,.nav,.state'))return;           /* the panel swallows its own clicks */
+    const gx=Math.floor(e.clientX/CELL),gy=Math.floor(e.clientY/CELL),key=gx+':'+gy;
+    if(popped.has(key))return;
+    popped.add(key);
+    if(active&&active.gx===gx&&active.gy===gy)active=null;
+    paint();                                                     /* repaint the field without that cell */
+    const cx=(gx+.5)*CELL, cy=(gy+.5)*CELL, n=6+Math.floor(Math.random()*4);
+    for(let i=0;i<n;i++){
+      const size=CELL*(.14+Math.random()*.12), el=coin(size); burst.appendChild(el);
+      const a=Math.random()*Math.PI*2, sp=CELL*(.022+Math.random()*.028);
+      live.push({el,x:cx,y:cy,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+                 r:Math.random()*360,vr:(Math.random()-.5)*4,s:size});
+    }
+  });
+  window.__popped=popped;
+})();
+
+/* ---------- data: contract-shaped fixtures ---------- */
+const RECEIPTS=[
+  {id:18421,ent:'4.1200',mark:'3.9414',days:6,state:'pending'},
+  {id:18422,ent:'1.8000',mark:'1.7226',days:2,state:'pending'},
+  {id:18987,ent:'12.5000',mark:'11.9625',days:11,state:'pending'},
+  {id:19003,ent:'9.0000',mark:null,days:14,state:'finalized'},
+];
+let tab='tokens', side='sell', sel=18421, state='firm';
+
+const $=id=>document.getElementById(id);
+function rows(){
+  if(tab==='tokens') return [
+    ['Rate','1 wstETH = 1.18406 WETH'],
+    ['Harbor fee <small style="color:var(--faint)">included</small>','0.001185 WETH'],
+    ['Network fee <small style="color:var(--faint)">estimated</small>','0.00006 ETH'],
+  ];
+  const r=RECEIPTS.find(x=>x.id===sel)||RECEIPTS[0];
+  const net=r.mark?(Number(r.mark)-0.00394).toFixed(4):'—';
+  return [
+    ['You give','1 receipt · #'+r.id],
+    ['<b style="color:var(--ink);font-weight:600">You receive</b>','<b class="big">'+net+' WETH</b>'],
+    ['Entitlement <small style="color:var(--faint)">at recovery</small>',r.ent+' ETH'],
+    ['Conservative mark <small style="color:var(--faint)">price reference</small>',(r.mark||'—')+' ETH'],
+    ['Harbor fee <small style="color:var(--faint)">included</small>','0.00394 WETH'],
+  ];
+}
+function renderList(){
+  $('rlist').innerHTML =
+    '<div class="rhead"><span>request</span><span>entitlement</span><span>mark</span><span>queued</span><span></span></div>'
+    + RECEIPTS.map(r=>{
+    const dead=r.state!=='pending';
+    return `<button class="rcpt" ${dead?'disabled':''} aria-pressed="${!dead&&r.id===sel}" data-id="${r.id}">
+      <span class="rid">#${r.id}</span>
+      <span class="ent">${r.ent}</span>
+      <span class="mk">${r.mark?r.mark:'<span class="warn">finalized</span>'}</span>
+      <span class="qd">${dead?'—':r.days+'d'}</span>
+      <span class="chev">${dead?'✕':'›'}</span></button>`;
+  }).join('');
+  $('rlist').querySelectorAll('.rcpt').forEach(b=>b.onclick=()=>{sel=+b.dataset.id;render()});
+}
+function render(){
+  $('tabTok').ariaPressed=tab==='tokens'; $('tabRcp').ariaPressed=tab==='receipts';
+  $('tokens').hidden=tab!=='tokens'; $('receipts').hidden=tab!=='receipts';
+  $('ttl').textContent = tab==='tokens'?'Swap inventory':'Trade withdrawal receipts';
+  $('sub').textContent = tab==='tokens'
+    ? 'Quoted both directions, at exact amounts.'
+    : 'One request, one whole receipt. Never fractional.';
+  $('foot').textContent = tab==='tokens'
+    ? 'Exact quoted amounts · the full trade completes or reverts'
+    : 'Receipts are whole units · one receipt, one request';
+  renderList();
+
+  const q=$('quote'),act=$('act');
+  q.classList.remove('dim'); q.hidden=false; act.disabled=false;
+  $('qcount').hidden=false; $('qnote').textContent='';
+  $('qtitle').textContent='Quote';
+  const html=v=>rows().map(([k,val])=>`<div class="qrow"><span>${k}</span><span>${v?v:val}</span></div>`).join('');
+
+  if(state==='idle'){ q.hidden=true; act.textContent='Enter an amount'; act.disabled=true; }
+  else if(state==='requesting'){ $('qrows').innerHTML=html('<span class="skel"></span>');
+    $('qcount').hidden=true; $('qtitle').textContent='Requesting quote'; act.textContent='Connect wallet'; }
+  else if(state==='firm'){ $('qrows').innerHTML=html(); $('qcount').textContent='expires in 0:27';
+    act.textContent='Connect wallet'; }
+  else if(state==='expired'){ $('qrows').innerHTML=html(); q.classList.add('dim');
+    $('qcount').textContent='expired'; act.textContent='Refresh quote'; }
+  else if(state==='unavailable'){ $('qrows').innerHTML=''; $('qcount').hidden=true;
+    $('qtitle').textContent='No quote available';
+    $('qnote').innerHTML = tab==='receipts'
+      ? 'Harbor is not quoting receipts right now. This does not affect recovery — a finalized receipt can always be redeemed by its holder.'
+      : 'Harbor is not quoting this pair right now. Trading requires a live signed quote and a policy permit.';
+    act.textContent='Unavailable'; act.disabled=true; }
+  else if(state==='wontfill'){ $('qrows').innerHTML=html(); $('qcount').hidden=true;
+    $('qtitle').textContent='Above the book';
+    $('qnote').textContent='Harbor will fill up to 8.4 wstETH at this price. Reduce the amount to get a quote.';
+    act.textContent='Amount too large'; act.disabled=true; }
+  else if(state==='connected'){ $('qrows').innerHTML=html(); $('qcount').textContent='expires in 0:24';
+    $('payBal').textContent='Balance 12.084'; act.textContent = tab==='tokens'?'Approve wstETH':'Sell receipt #'+sel; }
+}
+$('tabTok').onclick=()=>{tab='tokens';render()};
+$('tabRcp').onclick=()=>{tab='receipts';render()};
+document.querySelectorAll('.state button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.state button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); state=b.dataset.s; render();
+});
+
+/* review helper: #tab=receipts&state=unavailable */
+(function(){
+  const q=new URLSearchParams(location.hash.slice(1));
+  if(q.get('tab')) tab=q.get('tab');
+  if(q.get('side')) side=q.get('side');
+  if(q.get('state')){ state=q.get('state');
+    document.querySelectorAll('.state button').forEach(x=>x.classList.toggle('on',x.dataset.s===state)); }
+})();
+render();
+</script></body></html>
