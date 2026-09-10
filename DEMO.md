@@ -1,68 +1,86 @@
 # Harbor contract demo
 
-This demo is test-driven; it does not broadcast transactions or require a client.
+Test-driven execution with actual token transfers in the local EVM; no frontend
+or transaction broadcast is required. Synthetic issuer finalization is labeled
+separately from real pinned-fork evidence.
+
+## 1. Standing four-way swaps
 
 ```sh
-forge install
-forge test --list
-forge test
+forge test --match-contract StandingTradingTest -vvvv
 ```
 
-## Four-way trading
+Show `publishPricing` once, then two trades with the same parameter version.
+The caller submits only Trade. The custom SwapVM instruction computes from
+Book's current state; Aqua moves the tokens; Book measures vault deltas; Executor
+pays customer and protocol fee. A separate case crosses 60% FACE utilization,
+observes a lower next bid and rejects the old minimum-output expectation.
+
+`test_StandingProgramSettlesAllFourModes` demonstrates exact input/output in both
+directions. Prices and parameters in this demo are illustrative, not calibrated.
+
+## 2. Deposit, issuer request, recovery and LP payout
 
 ```sh
-forge test --match-contract PermitTradingTest --match-test test_AuthenticatedPermitSettlesAllFourModes -vvvv
-```
-
-The trace shows the pooled vault as the maker, official Aqua transfers through
-Harbor's SwapVM-derived router, the real Harbor permit receiver, exact user
-limits, WETH fees, and consumed
-quote/trader nonces. Workflow report delivery and asset/valuation inputs are
-synthetic; this is not a live CRE or confidential-computing demonstration.
-
-| Vault action | Trader action | Modes |
-| --- | --- | --- |
-| Buys wrapped inventory | Sells wrapped inventory for net WETH | Exact input / exact output |
-| Sells wrapped inventory | Buys wrapped inventory with gross WETH | Exact input / exact output |
-
-## Claims, cash and LP exits
-
-```sh
-forge test --match-contract HarborSettlementTest --match-test testFuzz_DepositPurchaseClaimRecoveryAndLpPayout --fuzz-runs 1 -vvvv
 forge test --match-contract IssuerRecoveryTest --match-test test_RecoveryFundsPendingFIFOExitsUsingActualWETH -vvvv
 ```
 
-Observe inventory leaving the vault only for the fixed adapter, ownership of
-issuer rights, unchanged cash while requests are pending, and cash recognition
-only after measured WETH arrives. In the LP example, available cash funds the
-oldest request partially; actual recovery enables the remainder. Funding burns
-escrowed LP shares and reserves WETH; claiming pays that fixed credit without a
-second burn. Issuer finalization in these two tests is explicitly synthetic.
+Two LPs seed 20 WETH. The vault purchases 16 synthetic wstETH representing 19.2
+WETH nominal entitlement, using the actual native valuation implementation.
+Requesting withdrawal changes custody but leaves 19.2 FACE outstanding and only
+0.992 WETH liquid. FIFO funding reserves that available cash first. Synthetic
+issuer finalization/recovery then clears FACE, brings actual WETH into the vault
+and funds the remaining LP exit. Only the controller claims its funded credit.
 
-## Real Lido fork evidence
+`test_KeeperIntentDomainReplayAndExactInventoryAreEnforced` additionally proves
+keeper replay checks and independently authorized NAV publication. Changing
+marks invalidates a cached NAV even at the same timestamp. Finalized issuer
+evidence remains available when estimates expire or their publisher is revoked.
 
-```sh
-FOUNDRY_PROFILE=fork forge test --match-contract LidoAdapterForkTest -vvvv
-```
-
-See [pinned block and proof boundaries](README.md#pinned-fork-checks). The first test creates
-a real unfinalized request. The second exercises inherited production claim code
-with a separately mature historical NFT and a test-only tracking setup. The
-observed historical recovery is 807,507,852,022,935,682 wei, sent as WETH to the
-fixed beneficiary. No time warp or fake oracle finalization links those two tests.
-
-## Failure and consistency checks
+## 3. Pending rights as transferable inventory
 
 ```sh
-forge test --match-contract '.*ReentrancyTest'
-forge test --match-contract PermitTradingTest
-FOUNDRY_PROFILE=invariant forge test
-FOUNDRY_PROFILE=gas forge test --gas-snapshot-check true --gas-snapshot-emit false
+bash script/demo-redemption-market.sh
 ```
 
-The invariant profile checks partial-claim accounting in 32 short sequences of
-16 calls. The gas profile now retains only the deployment-size gate; its scope
-is documented [here](README.md#deployment-size-gate).
-The deployment script is local-only. No mainnet readiness, calibrated APY,
-live confidential underwriting, or second-issuer integration is claimed by this
-demo. Those require their own measured evidence and security review.
+Follow NFT -> one-unit receipt -> vault purchase/resale -> holder recovery.
+Only pending rights trade; arbitrary exact-cash requests cannot buy a fraction
+or donate the difference. Native export transfers existing basis and FACE
+rather than creating cash/profit. Holder redemption burns the receipt and pays
+attributable recovery once. The fuzzed complete lifecycle includes loss cases.
+
+## 4. Real Ethereum fork
+
+```sh
+FOUNDRY_PROFILE=fork forge test -vvvv
+```
+
+Set an archive-capable `HARBOR_MAINNET_RPC_URL` locally. Public endpoints may
+reject history; missing RPC access is not a passing fork test.
+
+At block 25,930,239, the full Harbor Book, vault, native valuation and executor
+use locally deployed official Aqua/Harbor router against real issuer/token state.
+The test creates a genuine pending withdrawal, wraps it, trades it both ways
+with standing prices and pays an LP from measured vault cash. Its one-day warp
+satisfies Harbor factory admission only; it does not finalize the new request.
+
+Separate historical tests use mature request 134,829, fork-only owner
+impersonation and explicitly test-only tracking to execute issuer recovery.
+They do not prove the newly created request matures, change issuer storage or
+inject issuer recovery cash. See [fork scope](README.md#pinned-fork-checks).
+Report the actual run result separately from code merely written or compiled.
+
+## 5. Review gates
+
+```sh
+forge test
+forge build --sizes
+forge fmt --check
+python3 -m unittest discover -s script/pricing -v
+```
+
+The Solidity suite stays at 50 entrypoints: 46 local plus four fork.
+No external report service, signature server, confidential workflow or indexer
+is required. Native estimates still need an authorized publisher.
+The deployment script is restricted to local chain 31337. Pricing calibration,
+maximum-portfolio gas, audits and any funded deployment migration remain open.

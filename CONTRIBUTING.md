@@ -26,12 +26,9 @@ releases are 1inch solidity-utils 6.9.10 and OpenZeppelin 5.4.0; Aqua remains
 `9c5c42e5840e8741fba3597c48456c9510212b66` and SwapVM remains
 `f09a41e689240adc645934f965c8061749397cd2`.
 
-Chainlink's `IReceiver` comes from `chainlink-evm` commit
-`b6427ea1f4847d640abdf24dbd6c6f01d7799d59`. Its version-qualified IERC165
-import alone is mapped to the existing OpenZeppelin 5.4.0 interface: the
-`supportsInterface(bytes4)` ABI is unchanged. This is not a remapping of all
-OpenZeppelin 5.0.2 implementations to another release. No Chainlink npm tree is
-needed for the Solidity receiver.
+Do not add report-service or signature-server dependencies to standing pricing.
+Pricing parameters are published directly to Book; valuation is independently
+authorized. Neither publication replaces measured settlement or issuer evidence.
 
 Build, test, and check formatting:
 
@@ -69,7 +66,7 @@ src/             contract entrypoints and implementations
   swapvm/        program construction and execution extensions
 test/            unit, differential, integration, and security tests
   base/          shared fixtures and test-only helpers
-  core/          accounting, vault, adapter, permit, and settlement tests
+  core/          accounting, pricing, vault, adapter, and settlement tests
   swapvm/        custom instruction parsing, registers, and rollback
   invariant/     stateful accounting checks and handlers
   fork/          pinned-block issuer and token evidence
