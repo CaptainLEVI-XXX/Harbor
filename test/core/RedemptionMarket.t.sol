@@ -7,7 +7,7 @@ import {LidoClaimReceipt} from "src/claims/LidoClaimReceipt.sol";
 import {IHarborClaim} from "src/interfaces/IHarborClaim.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
-import {Trade, FillTerms, Side, AmountMode, RedeemIntent, RouteConfig} from "src/types/HarborTypes.sol";
+import {Trade, Side, AmountMode} from "src/types/HarborTypes.sol";
 import {BookState} from "src/book/base/BookState.sol";
 import {HarborClaimGuard} from "src/swapvm/instructions/HarborClaimGuard.sol";
 
@@ -23,7 +23,7 @@ contract RedemptionMarketTest is RedemptionMarketFixture {
       assertEq(book.getPosition(route).shares, 1);
       assertEq(book.activeReceiptCount(), 1);
       (uint256 inventory, uint256 claims,,,,) = _values();
-      assertEq(inventory, 4 ether);
+      assertEq(inventory, 4.8 ether);
       assertEq(claims, 1.2 ether);
       _tradeClaim(route, Side.SELL_BASE, AmountMode(i));
       assertEq(IERC20(receipt).balanceOf(trader), 1);
@@ -50,6 +50,7 @@ contract RedemptionMarketTest is RedemptionMarketFixture {
     assertEq(book.claimTotals(0).purchases, 0);
     assertEq(book.claimTotals(0).basis, oldBasis);
     vault.refreshStrategy(route);
+    _configureReceipt(route);
     vault.checkpointValuation();
     _tradeClaim(route, Side.SELL_BASE, AmountMode.EXACT_OUT);
     uint256 vaultCash = weth.balanceOf(address(vault));
@@ -92,14 +93,13 @@ contract RedemptionMarketTest is RedemptionMarketFixture {
   function test_LifecycleChangeInvalidatesCachedNavAndPendingQuote() public {
     (uint256 route, uint256 id, address receipt) = _externalMarket(1 ether);
     _tradeClaim(route, Side.BUY_BASE, AmountMode.EXACT_IN);
-    (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
-      _claimQuote(route, Side.SELL_BASE, AmountMode.EXACT_OUT);
+    (Trade memory t,) = _claimQuote(route, Side.SELL_BASE, AmountMode.EXACT_OUT);
     assertGt(vault.maxDeposit(alice), 0);
     queue.setFinalized(id, 0.8 ether);
     assertEq(vault.maxDeposit(alice), 0);
     vm.prank(trader);
     vm.expectRevert();
-    executor.execute(t, f, sig, order);
+    executor.execute(t);
     IHarborClaim(receipt).recover(1);
     assertEq(vault.maxDeposit(alice), 0);
     vault.checkpointValuation();

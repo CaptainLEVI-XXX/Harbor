@@ -2,22 +2,13 @@
 pragma solidity 0.8.30;
 
 import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
-import {Amounts} from "src/libraries/Amounts.sol";
-import {Trade, FillTerms, FillAmounts, Side} from "src/types/HarborTypes.sol";
+import {Side} from "src/types/HarborTypes.sol";
 
 /// @title QuoteValidation
 /// @notice Deterministic amount and public-price guards on authenticated inputs.
 library QuoteValidation {
-  error InconsistentAmounts();
   error PublicPriceViolation();
   error InvalidPricePolicy();
-
-  function amounts(Trade memory trade, FillTerms memory terms) internal pure returns (FillAmounts memory a) {
-    a = Amounts.normalize(trade, terms.traderIn, terms.traderOut, terms.feeBps);
-    if (a.routerIn != terms.routerIn || a.routerOut != terms.routerOut || a.fee != terms.fee) {
-      revert InconsistentAmounts();
-    }
-  }
 
   /// @notice Bound gross purchase debit or net resale receipt in WETH wei.
   /// @param entitlement Verified entitlement for the exact base quantity, WETH wei.

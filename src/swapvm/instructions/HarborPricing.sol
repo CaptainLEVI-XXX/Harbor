@@ -4,15 +4,15 @@ pragma solidity 0.8.30;
 import {Context, ContextLib, SwapRegisters} from "@1inch/swap-vm/src/libs/VM.sol";
 import {IHarborFill, IHarborFillQuote} from "src/interfaces/IHarborFill.sol";
 
-/// @title HarborExactFill
-/// @notice A native SwapVM instruction for Book-authorized, indivisible fills.
-/// @dev Opcode 0x55 occupies an unused swap-family slot in the pinned upstream
+/// @title HarborPricing
+/// @notice Native standing-pricing instruction, backed by the Book's live-state kernel.
+/// @dev Opcode 0x57 occupies an unused swap-family slot in the pinned upstream
 /// table. This assignment is local to HarborSwapVMRouter, not an upstream opcode.
-/// Wire: [0x55:1][length=84:1][book:20][route:32][version:32].
+/// Wire: [0x57:1][length=84:1][book:20][route:32][version:32].
 /// The instruction consumes ALL remaining taker arguments. Instructions that
 /// need taker data must precede it. Fee/amount transforms must not follow it in
 /// Harbor's canonical program: settlement hooks bind the authorized exact pair.
-library HarborExactFill {
+library HarborPricing {
   using ContextLib for Context;
 
   /*//////////////////////////////////////////////////////////////
@@ -20,7 +20,7 @@ library HarborExactFill {
   //////////////////////////////////////////////////////////////*/
 
   /// @dev Local opcode assignment; upgrading upstream requires a collision check.
-  uint8 internal constant OPCODE = 0x55;
+  uint8 internal constant OPCODE = 0x57;
   /// @dev Packed address plus two full-width ABI words.
   uint8 internal constant ARGS_LENGTH = 84;
 
@@ -39,7 +39,7 @@ library HarborExactFill {
                              ENCODING
   //////////////////////////////////////////////////////////////*/
 
-  /// @notice Encode a maker-committed exact-fill instruction.
+  /// @notice Encode a maker-committed standing-pricing instruction.
   /// @param book Fixed authorization and settlement authority.
   /// @param route Route identifier, without narrowing.
   /// @param version Strategy version, without narrowing.
@@ -72,9 +72,9 @@ library HarborExactFill {
                              EXECUTION
   //////////////////////////////////////////////////////////////*/
 
-  /// @notice Authorize the pair and compute only the complementary VM amount.
+  /// @notice Calculate the live pair through Book and complete the complementary register.
   /// @dev No router storage writes. Book writes on swap are reverted atomically
-  /// if amount validation or any later transfer/hook fails. Quote authorization
+  /// if amount validation or any later transfer/hook fails. Quote computation
   /// uses STATICCALL. Balances, query, fees and nextPC are never assigned here.
   /// @param ctx Official SwapVM context, passed by memory reference.
   /// @param args Maker-committed packed authority, route and version.

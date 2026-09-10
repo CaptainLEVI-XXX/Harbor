@@ -9,7 +9,7 @@ import {Fees} from "src/libraries/Fees.sol";
 library Amounts {
   /// @notice Zero legs, nonminimal gross input, or mismatched exact-size instruction.
   error InvalidFillAmounts();
-  /// @notice Actual input/output breaches the trader's signed limit.
+  /// @notice Actual input/output breaches the caller's minimum-output/maximum-input limit.
   error LimitExceeded();
 
   /// @notice Normalize an exact authorized pair; this does not authenticate it.

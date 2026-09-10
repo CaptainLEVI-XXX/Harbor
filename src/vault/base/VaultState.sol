@@ -176,6 +176,19 @@ abstract contract VaultState is ERC4626 {
 
   function _fresh() internal view returns (bool) {
     if (!_state.fresh(MAX_MARK_AGE)) return false;
+    // Cached timestamps alone cannot detect a changed haircut, issuer conversion,
+    // native finalization or an observation revoked before its age limit. Compare
+    // live bounded marks without committing a new NAV in this read path.
+    try BOOK.valuation() returns (uint256 inventory, uint256 claims, uint256 time, uint256 policy, bool valid) {
+      if (
+        !valid || time == 0 || time > block.timestamp || block.timestamp - time > MAX_MARK_AGE
+          || policy != _state.policyVersion || inventory != _state.inventoryValue || claims != _state.claimsValue
+      ) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
     try BOOK.receiptState() returns (bytes32 current) {
       return current == _receiptState;
     } catch {

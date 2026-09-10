@@ -3,11 +3,12 @@ pragma solidity 0.8.30;
 
 import {SwapVM} from "@1inch/swap-vm/src/SwapVM.sol";
 import {HarborSwapVMRouter} from "src/swapvm/HarborSwapVMRouter.sol";
-import {HarborExactFill} from "src/swapvm/instructions/HarborExactFill.sol";
+import {HarborPricing} from "src/swapvm/instructions/HarborPricing.sol";
 import {HarborClaimGuard} from "src/swapvm/instructions/HarborClaimGuard.sol";
 import {IHarborBook} from "src/interfaces/IHarborBook.sol";
 import {IHarborValuation} from "src/interfaces/IHarborValuation.sol";
-import {IHarborPolicyReceiver} from "src/interfaces/IHarborPolicyReceiver.sol";
+import {PricingPolicy, PricingParameters, PricingCurve} from "src/types/PricingTypes.sol";
+import {PricingMath} from "src/libraries/PricingMath.sol";
 import {RedemptionAccounting} from "src/libraries/RedemptionAccounting.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {HarborExecutor} from "src/execution/HarborExecutor.sol";
@@ -48,16 +49,14 @@ abstract contract BookState is IHarborBook {
     address aqua;
     /// @notice Harbor router deployment with exact-fill and claim-guard instructions.
     address router;
-    /// @notice Initial quote signer; replacement is governance-delayed.
-    address signer;
+    /// @notice Initial scoped parameter publisher; replacement is governance-delayed.
+    address updater;
     /// @notice Authority for bounded configuration operations.
     address governor;
     /// @notice Emergency stop and keeper-revocation authority.
     address guardian;
     /// @notice Only caller allowed to initiate issuer requests.
     address keeper;
-    /// @notice Independent authenticated fill-permit receiver.
-    address receiver;
     /// @notice Public inventory and issuer-right valuation provider.
     address valuation;
     /// @notice Fixed beneficiary of WETH-denominated trading fees.
@@ -66,14 +65,16 @@ abstract contract BookState is IHarborBook {
     uint256 feeBps;
     /// @notice Unreserved cash floor in WETH wei.
     uint256 cashBuffer;
-    /// @notice Maximum signed observation-to-expiry interval in seconds.
-    uint256 maxQuoteAge;
+    /// @notice Maximum pricing observation-to-expiry interval in seconds.
+    uint256 maxParameterAge;
     /// @notice Maximum public valuation age in seconds.
     uint256 maxMarkAge;
     /// @notice Aggregate exposure ceiling in WETH wei; vault cap is bound at deployment.
     uint256 depositCap;
-    /// @notice Delay for signer rotation and trading resumption, in seconds.
+    /// @notice Delay for updater rotation and trading resumption, in seconds.
     uint256 governanceDelay;
+    /// @notice Independent nominal FACE cap and inventory penalty parameters.
+    PricingCurve curve;
   }
 
   /*//////////////////////////////////////////////////////////////
@@ -92,9 +93,7 @@ abstract contract BookState is IHarborBook {
   address public immutable GUARDIAN;
   /// @dev Issuer-request initiator; never the recipient of treasury assets.
   address public immutable KEEPER;
-  /// @dev Independent permit authority; cannot set NAV or destinations.
-  IHarborPolicyReceiver public immutable RECEIVER;
-  /// @dev Public marks provider; not the private quote signer.
+  /// @dev Independent public marking policy and verified nominal conversions.
   IHarborValuation public immutable VALUATION;
   /// @dev Fixed WETH fee beneficiary.
   address public immutable FEE_RECIPIENT;
@@ -103,12 +102,12 @@ abstract contract BookState is IHarborBook {
   /// @dev Cash floor excluded from new purchases, in WETH wei.
   uint256 public immutable CASH_BUFFER;
   /// @dev Maximum quote observation-to-expiry interval, seconds.
-  uint256 public immutable MAX_QUOTE_AGE;
+  uint256 public immutable MAX_PARAMETER_AGE;
   /// @dev Maximum age of public marks, seconds.
   uint256 public immutable MAX_MARK_AGE;
   /// @dev Aggregate warehouse plus pending acquisition basis ceiling, WETH wei.
   uint256 public immutable MAX_EXPOSURE;
-  /// @dev Minimum delay for signer rotation or trading resumption, seconds.
+  /// @dev Minimum delay for updater rotation or trading resumption, seconds.
   uint256 public immutable GOVERNANCE_DELAY;
   /// @dev Sole custody and LP-share accounting boundary.
   HarborVault public immutable VAULT;
@@ -116,21 +115,24 @@ abstract contract BookState is IHarborBook {
   HarborExecutor public immutable EXECUTOR;
   /// @notice Number of original inventory routes; receipt history is never iterated.
   uint256 public immutable INVENTORY_ROUTES;
+  uint256 public immutable FACE_CAP;
+  uint256 public immutable TARGET_UTILIZATION;
+  uint256 public immutable CAPACITY_PENALTY;
 
   /*//////////////////////////////////////////////////////////////
                          PERSISTENT STATE
   //////////////////////////////////////////////////////////////*/
 
-  /// @dev Current exact-fill signer, independently constrained by public marks and permits.
-  address public quoteSigner;
+  /// @dev Publisher of reusable discounts; no treasury or valuation authority.
+  address public parameterUpdater;
   /// @dev Persistent quote invalidation version; never reset by transaction cleanup.
-  uint256 public quoteEpoch;
+  uint256 public configVersion;
   /// @dev Trading and fresh-mark gate; funded withdrawals and recovery remain available.
   bool public stopped;
-  /// @dev Scheduled replacement signer; zero when no rotation is pending.
-  address public pendingSigner;
-  /// @dev Earliest signer-rotation timestamp; zero disables application.
-  uint256 public signerReadyAt;
+  /// @dev Scheduled replacement updater; zero when no rotation is pending.
+  address public pendingUpdater;
+  /// @dev Earliest updater-rotation timestamp; zero disables application.
+  uint256 public updaterReadyAt;
   /// @dev Earliest trading-resumption timestamp; stopping cancels a pending resume.
   uint256 public resumeReadyAt;
   /// @dev Single owner of position cost basis, active claims and portfolio version.
@@ -143,10 +145,10 @@ abstract contract BookState is IHarborBook {
   mapping(uint256 => uint256) public strategyVersion;
   /// @dev Current shipped order hash by route.
   mapping(uint256 => bytes32) public strategyHash;
-  /// @dev Consumed quote nonces by epoch; durable across calls and refreshes.
-  mapping(uint256 => mapping(uint256 => bool)) public usedQuoteNonce;
-  /// @dev Consumed trader nonces; durable across signer/strategy changes.
-  mapping(address => mapping(uint256 => bool)) public usedTraderNonce;
+  /// @dev Only current parameters are needed on-chain; history belongs in events.
+  mapping(uint256 => PricingParameters) internal _prices;
+  /// @dev Configured once by governance; the publisher cannot change these bounds.
+  mapping(uint256 => PricingPolicy) internal _pricingPolicies;
   /// @dev Admission and receipt risk metadata share the Book's authority and lock.
   ClaimMarkets.State internal _claimMarkets;
   /// @notice Factory version fixed at strategy publication, invalidated on retirement.
@@ -166,8 +168,6 @@ abstract contract BookState is IHarborBook {
   bytes32 internal transient _beforePortfolio;
   /// @dev Input-first hook lifecycle; never a durable accounting value.
   SettlementPhase internal transient _phase;
-  /// @dev Authorized fill digest required at final executor settlement.
-  bytes32 internal transient _digest;
   /// @dev Commitment to the exact maker/taker/token/amount/order hook tuple.
   bytes32 internal transient _hookHash;
   /// @dev Maker input-token balance before router transfers, raw units.
@@ -193,10 +193,6 @@ abstract contract BookState is IHarborBook {
   error InvalidConfiguration();
   /// @notice Exact-fill identity, timing or normalized trade constraints fail.
   error InvalidQuote();
-  /// @notice The configured signer did not authorize this exact digest.
-  error InvalidSignature();
-  /// @notice The independent receiver has no current permit for this digest.
-  error PolicyNotApproved();
   /// @notice Cash, inventory, exposure, lifetime purchases or loss capacity is insufficient.
   error CapacityExceeded();
   /// @notice Router callback identity, order or lifecycle phase is invalid.
@@ -210,7 +206,7 @@ abstract contract BookState is IHarborBook {
 
   /// @notice A fresh route order is prepared for vault publication to Aqua.
   event StrategyPublished(
-    uint256 indexed route, bytes32 indexed orderHash, uint256 version, uint256 factoryVersion, uint256 quoteEpoch
+    uint256 indexed route, bytes32 indexed orderHash, uint256 version, uint256 factoryVersion, uint256 configVersion
   );
   /// @notice Complete native issuer mandate; multipliers use 1e18, buffers and risk limits use WETH wei.
   event IssuerRouteConfigured(
@@ -236,14 +232,14 @@ abstract contract BookState is IHarborBook {
     uint256 portfolioVersion
   );
   /// @notice Quotes are invalidated and new trading is stopped.
-  event TradingStopped(uint256 quoteEpoch);
-  /// @notice A signer replacement is scheduled for the given Unix timestamp.
-  event SignerScheduled(address indexed signer, uint256 readyAt);
-  /// @notice A delayed signer replacement advances the quote epoch.
-  event SignerChanged(address indexed signer, uint256 epoch);
+  event TradingStopped(uint256 configVersion);
+  /// @notice An updater replacement is scheduled for the given Unix timestamp.
+  event UpdaterScheduled(address indexed updater, uint256 readyAt);
+  /// @notice A delayed updater replacement advances the configuration version.
+  event UpdaterChanged(address indexed updater, uint256 epoch);
   /// @notice Trading resumption is scheduled for the given Unix timestamp.
   event ResumeScheduled(uint256 readyAt);
-  /// @notice A delayed resumption advances the quote epoch but does not refresh NAV.
+  /// @notice A delayed resumption advances the configuration version but does not refresh NAV.
   event TradingResumed(uint256 epoch);
   /// @notice Inventory shares become an issuer right; basis and entitlement are WETH wei.
   event RedemptionRequested(
@@ -271,17 +267,17 @@ abstract contract BookState is IHarborBook {
     if (
       c.vault == address(0) || c.executor == address(0) || c.vault == c.executor || c.vault == address(this)
         || c.executor == address(this) || c.weth.code.length == 0 || c.aqua.code.length == 0
-        || c.router.code.length == 0 || c.signer == address(0) || c.governor == address(0) || c.guardian == address(0)
-        || c.receiver.code.length == 0 || c.valuation.code.length == 0 || c.feeRecipient == address(0)
-        || c.feeRecipient == address(this) || c.feeRecipient == c.router || c.feeRecipient == c.aqua || c.feeBps > 100
-        || c.maxQuoteAge == 0 || routes.length == 0 || routes.length > 2 || c.governanceDelay < 1 days
+        || c.router.code.length == 0 || c.updater == address(0) || c.governor == address(0) || c.guardian == address(0)
+        || c.valuation.code.length == 0 || c.feeRecipient == address(0) || c.feeRecipient == address(this)
+        || c.feeRecipient == c.router || c.feeRecipient == c.aqua || c.feeBps > 100 || c.maxParameterAge == 0
+        || c.maxParameterAge > 1 days || routes.length == 0 || routes.length > 2 || c.governanceDelay < 1 days
         || c.governanceDelay > 30 days || c.keeper == address(0)
     ) revert InvalidConfiguration();
     if (address(SwapVM(payable(c.router)).AQUA()) != c.aqua || address(SwapVM(payable(c.router)).WETH()) != c.weth) {
       revert InvalidConfiguration();
     }
     if (
-      HarborSwapVMRouter(payable(c.router)).HARBOR_EXACT_FILL_OPCODE() != HarborExactFill.OPCODE
+      HarborSwapVMRouter(payable(c.router)).HARBOR_PRICING_OPCODE() != HarborPricing.OPCODE
         || HarborSwapVMRouter(payable(c.router)).HARBOR_CLAIM_GUARD_OPCODE() != HarborClaimGuard.OPCODE
     ) {
       revert InvalidConfiguration();
@@ -292,13 +288,17 @@ abstract contract BookState is IHarborBook {
     GOVERNOR = c.governor;
     GUARDIAN = c.guardian;
     KEEPER = c.keeper;
-    RECEIVER = IHarborPolicyReceiver(c.receiver);
     VALUATION = IHarborValuation(c.valuation);
-    quoteSigner = c.signer;
+    parameterUpdater = c.updater;
+    configVersion = 1;
+    PricingMath.validateCurve(c.curve);
+    FACE_CAP = c.curve.capacity;
+    TARGET_UTILIZATION = c.curve.target;
+    CAPACITY_PENALTY = c.curve.kappa;
     FEE_RECIPIENT = c.feeRecipient;
     FEE_BPS = c.feeBps;
     CASH_BUFFER = c.cashBuffer;
-    MAX_QUOTE_AGE = c.maxQuoteAge;
+    MAX_PARAMETER_AGE = c.maxParameterAge;
     MAX_MARK_AGE = c.maxMarkAge;
     MAX_EXPOSURE = c.depositCap;
     GOVERNANCE_DELAY = c.governanceDelay;
@@ -342,6 +342,10 @@ abstract contract BookState is IHarborBook {
     _beforePortfolio = VAULT.portfolioHash();
   }
 
+  function isIdle() external view returns (bool) {
+    return _operation == Operation.NONE;
+  }
+
   /// @inheritdoc IHarborBook
   function finishVaultOperation(bytes32 context) external {
     if (msg.sender != address(VAULT) || _operation != Operation.VAULT || context != _context) revert Unauthorized();
@@ -372,7 +376,6 @@ abstract contract BookState is IHarborBook {
     _context = 0;
     _beforePortfolio = 0;
     _phase = SettlementPhase.IDLE;
-    _digest = 0;
     _hookHash = 0;
     _beforeIn = 0;
     _beforeOut = 0;

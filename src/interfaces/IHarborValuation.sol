@@ -5,6 +5,9 @@ pragma solidity 0.8.30;
 /// @notice Public observation provider, fixed at deployment and independent of quotes.
 /// @dev Implementations must prove provenance, issuer conversion and executable marks.
 interface IHarborValuation {
+  /// @notice Exact protocol-native nominal conversion, independent of marking estimates.
+  /// @dev Approved inventory uses 18 decimals. Neither value is a rounded one-token price.
+  function conversion(address base) external view returns (uint256 numerator, uint256 denominator);
   /// @notice Public value of a tracked residual right; never a spendable balance.
   function claim(address adapter, uint256 id, uint256 remaining)
     external

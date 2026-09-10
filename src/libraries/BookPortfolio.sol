@@ -84,7 +84,7 @@ library BookPortfolio {
     );
   }
 
-  /// @notice Enforce aggregate and issuer-level budgets independently of signed prices.
+  /// @notice Enforce aggregate and issuer-level budgets independently of pricing estimates.
   function capacity(
     Accounting.State storage book,
     ClaimMarkets.State storage markets,
@@ -146,7 +146,7 @@ library BookPortfolio {
     uint256 requested = c.entitlement();
     (mark, time, policy, valid) = provider.claim(routes[m.sourceRoute].adapter, m.requestId, requested);
     valid = valid && mark <= requested;
-    entitlement = mark;
+    entitlement = requested;
     hash = keccak256(abi.encode(m.factory, address(c), c.ISSUER(), m.requestId, requested, mark, time, policy));
   }
 
@@ -207,6 +207,36 @@ library BookPortfolio {
   function _merge(Value memory v, uint256 time, uint256 policy, bool valid) private pure {
     if (time < v.observedAt) v.observedAt = time;
     v.valid = v.valid && valid && policy == v.policy;
+  }
+
+  /// @notice Live nominal FACE, independent of acquisition cost and discounted NAV.
+  /// @dev At most two inventory conversions plus 64 live native/receipt rights.
+  /// Request/export move the same right between sets. Loss settlement removes
+  /// extinguished rights even when recovered cash is zero. CASH_READY receipts
+  /// retain their FACE allocation until their cash reaches the vault.
+  function face(
+    Accounting.State storage book,
+    ClaimMarkets.State storage markets,
+    RouteConfig[] storage routes,
+    IHarborValuation provider,
+    uint256 nativeRoutes,
+    address vault
+  ) public view returns (uint256 total) {
+    for (uint256 i; i < nativeRoutes; ++i) {
+      uint256 quantity = book.positions[i].shares;
+      if (SafeTransfer.balanceOf(routes[i].base, vault) < quantity) revert InvalidQuote();
+      (uint256 numerator, uint256 denominator) = provider.conversion(routes[i].base);
+      if (numerator == 0 || denominator == 0) revert InvalidQuote();
+      total += Math.fullMulDiv(quantity, numerator, denominator);
+    }
+    for (uint256 i; i < book.claims.active.length; ++i) {
+      total += book.claims.claims[book.claims.active[i]].remaining;
+    }
+    for (uint256 i; i < markets.active.length; ++i) {
+      IHarborClaim c = IHarborClaim(markets.markets[markets.active[i]].receipt);
+      if (SafeTransfer.balanceOf(address(c), vault) != 1) revert InvalidQuote();
+      total += c.entitlement();
+    }
   }
 
   /// @notice Detect issuer finalization or permissionless receipt recovery between NAV checkpoints.

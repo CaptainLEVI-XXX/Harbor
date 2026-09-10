@@ -3,27 +3,32 @@ pragma solidity 0.8.30;
 
 import {IssuerFixture} from "test/base/IssuerFixture.sol";
 import {LidoClaimFactory} from "src/claims/LidoClaimFactory.sol";
-import {Trade, FillTerms, FillAmounts, Side, AmountMode} from "src/types/HarborTypes.sol";
+import {Trade, FillAmounts, Side, AmountMode} from "src/types/HarborTypes.sol";
+import {PricingPolicy} from "src/types/PricingTypes.sol";
 import {Fees} from "src/libraries/Fees.sol";
 import {Amounts} from "src/libraries/Amounts.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 
-/// @notice Whole-position trades through official Aqua and the Harbor SwapVM router.
-/// @dev Issuer finalization/marks are synthetic; balances and settlements are actual EVM transfers.
+/// @notice Whole receipts through actual Aqua/SwapVM transfers; issuer inputs are synthetic.
 abstract contract RedemptionMarketFixture is IssuerFixture {
   LidoClaimFactory internal factory;
-  uint256 internal claimNonce = 10000;
 
   function setUp() public virtual override {
     super.setUp();
     _buy(0, 4 ether);
     factory = new LidoClaimFactory(address(queue), address(weth), address(this));
     book.scheduleClaimFactory(address(factory), 0, 0.97e18, 0.98e18);
-    vm.warp(block.timestamp + 1 days);
-    valuation.setObservedAt(block.timestamp);
+    vm.warp(vm.getBlockTimestamp() + 1 days);
+    valuation.setObservedAt(vm.getBlockTimestamp());
     book.activateClaimFactory(address(factory));
+    _publish(0, 1e18);
+    _publish(1, 1e18);
     vault.checkpointValuation();
+  }
+
+  function _configureReceipt(uint256 route) internal {
+    book.configurePricing(route, PricingPolicy(0.95e18, 1e18, 0.005e18, 0.005e18, 0, 0));
+    _publish(route, 0.975e18);
   }
 
   function _externalMarket(uint256 amount) internal returns (uint256 route, uint256 id, address receipt) {
@@ -38,65 +43,28 @@ abstract contract RedemptionMarketFixture is IssuerFixture {
     vm.stopPrank();
     route = book.registerClaimMarket(address(factory), receipt);
     vault.refreshStrategy(route);
+    _configureReceipt(route);
   }
 
   function _claimQuote(uint256 route, Side side, AmountMode mode)
     internal
-    returns (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order)
+    view
+    returns (Trade memory t, FillAmounts memory a)
   {
     bool buy = side == Side.BUY_BASE;
-    (uint256 value,, uint256 time,, bytes32 observation,) = book.observation(route, 1);
-    uint256 input = buy ? 1 : Fees.grossForNet(value * 98 / 100, 10);
-    uint256 output = buy ? Fees.net(value * 97 / 100, 10) : 1;
-    address receipt = book.route(route).base;
-    t = Trade(
-      trader,
-      trader,
-      buy ? receipt : address(weth),
-      buy ? address(weth) : receipt,
-      route,
-      side,
-      mode,
-      mode == AmountMode.EXACT_IN ? input : output,
-      mode == AmountMode.EXACT_IN ? output : input,
-      block.timestamp + 60,
-      ++claimNonce
-    );
-    FillAmounts memory a = Amounts.normalize(t, input, output, 10);
-    order = book.currentOrder(route);
-    f.vault = address(vault);
-    f.adapter = address(factory);
-    f.feeRecipient = feeRecipient;
-    f.strategyVersion = book.strategyVersion(route);
-    f.adapterVersion = factory.version();
-    f.epoch = book.quoteEpoch();
-    f.nonce = claimNonce;
-    f.portfolioVersion = book.portfolioVersion();
-    f.positionVersion = book.getPosition(route).version;
-    (, f.valuationVersion,) = vault.valuationIdentity();
-    f.policyVersion = 1;
-    f.traderIn = input;
-    f.traderOut = output;
-    f.routerIn = a.routerIn;
-    f.routerOut = a.routerOut;
-    f.fee = a.fee;
-    f.feeBps = 10;
-    f.observedAt = time;
-    f.validUntil = block.timestamp + 60;
-    f.orderHash = router.hash(order);
-    f.observationHash = observation;
-    sig = _sign(t, f);
+    (uint256 face,,,,,) = book.observation(route, 1);
+    uint256 input = buy ? 1 : Fees.grossForNet(face * 98 / 100, 10);
+    uint256 output = buy ? Fees.net(face * 97 / 100, 10) : 1;
+    t = _trade(route, side, mode, input, output);
+    a = Amounts.normalize(t, input, output, 10);
   }
 
   function _tradeClaim(uint256 route, Side side, AmountMode mode) internal {
-    (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) = _claimQuote(route, side, mode);
-    (uint256 quotedIn, uint256 quotedOut) = executor.quoteFill(t, f, sig, order);
-    assertEq(quotedIn, f.routerIn);
-    assertEq(quotedOut, f.routerOut);
-    assertFalse(book.usedQuoteNonce(f.epoch, f.nonce));
+    (Trade memory t, FillAmounts memory expected) = _claimQuote(route, side, mode);
+    FillAmounts memory actual = executor.quote(t);
+    assertEq(abi.encode(actual), abi.encode(expected));
     vm.prank(trader);
-    executor.execute(t, f, sig, order);
-    assertTrue(book.usedQuoteNonce(f.epoch, f.nonce));
+    executor.execute(t);
     vault.checkpointValuation();
   }
 }

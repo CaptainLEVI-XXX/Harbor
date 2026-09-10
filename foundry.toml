@@ -33,7 +33,7 @@ no_match_path = "test/fork/**"
 [profile.settlement]
 
 [profile.compatibility]
-match_contract = "PermitTradingTest"
+match_contract = "StandingTradingTest"
 
 [profile.invariant]
 match_path = "test/invariant/**/*.t.sol"

@@ -13,6 +13,11 @@ import {RouteConfig} from "src/types/HarborTypes.sol";
 /// Deploy HarborSwapVMRouter first and pass it as config.router. Unmodified
 /// routers cannot execute the native Harbor program and are rejected by Book.
 /// Live deployment stays gated pending issuer, valuation and independent review.
+/// For Lido, deploy LidoValuation with the predicted adapter, bind config.valuation,
+/// and deploy that adapter against the returned Book/Vault. Verify the CREATE
+/// bindings. Governor then configures route pricing and refreshes vault strategies;
+/// the respective pricing/valuation publishers submit initial public parameters.
+/// Publication uses ordinary authenticated transactions, not an external report.
 contract DeployHarbor is Script {
   error LiveDeploymentGated();
   error DeploymentMismatch();

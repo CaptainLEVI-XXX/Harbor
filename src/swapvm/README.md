@@ -1,162 +1,122 @@
 # Harbor's Aqua / SwapVM strategy
 
-Harbor deploys `HarborSwapVMRouter`, a subclass of the pinned official
-`AquaSwapVMRouter`. The subclass adds two instructions; it does not replace
-Aqua accounting, the VM loop, quote simulation, taker limits or transfer logic.
-The unmodified official router does **not** support Harbor's program.
+Harbor subclasses the pinned official `AquaSwapVMRouter`, adding two local
+instructions without changing upstream accounting, VM execution or token transfers.
+The unmodified official router cannot execute this program.
 
-## Start here
+## Ownership
 
 | Component | Responsibility |
 | --- | --- |
-| `HarborProgram.sol` | Encode the vault's maker traits, hooks and strategy program. |
-| `instructions/HarborExactFill.sol` | Decode maker arguments, obtain authorization, complete VM amounts. |
-| `instructions/HarborClaimGuard.sol` | Check canonical one-unit pending receipts after amounts are known. |
-| `HarborSwapVMRouter.sol` | Dispatch the custom opcode; delegate other opcodes to upstream. |
-| `../book/base/BookSettlement.sol` | Authenticate fills, consume nonces and verify transfer hooks. |
-| `../book/base/BookState.sol` | Own the shared persistent ledger and transient operation context. |
-| `../interfaces/IHarborFill.sol` | Narrow authorization interface, including its static-call view. |
+| `HarborProgram.sol` | Vault maker traits, authenticated Book hooks and canonical program. |
+| `instructions/HarborPricing.sol` | Ask Book to compute live prices; preserve the specified register and fill the other. |
+| `instructions/HarborClaimGuard.sol` | Canonical pending custody and exactly one whole receipt. |
+| `HarborSwapVMRouter.sol` | Local dispatch, delegating every other opcode to upstream. |
+| `../book/base/BookPricing.sol` | Parameter authority and shared public/execution pricing path. |
+| `../libraries/StandingPricing.sol` | Live state and independent economic gates. |
+| `../libraries/PricingMath.sol` | Pure potential, conservative rounding and bounded inversion. |
+| `../book/base/BookSettlement.sol` | Authenticate context and verify measured token deltas. |
 
-The Book's other responsibilities live in `BookGovernance`, `BookClaims` and
-`BookRedemptions`. These are abstract source modules, not deployed services.
-They inherit one `BookState`; accounting libraries receive explicit storage
-references. The concrete `HarborBook` binds deployment and exposes portfolio
-views. Splitting source files is not itself a bytecode optimization.
+Book modules share one BookState. Linked libraries have explicit storage references
+and immutable compiler linkage; none has an independent portfolio ledger.
 
-Similarly, `HarborVault` exposes LP entrypoints, `VaultSettlement` owns Book
-callbacks and Aqua publication, and `VaultState` owns accounting and cross-call
-coordination. All three are one deployed vault; no intermediate custody is added.
-
-## Program and instruction format
+## Program and payload
 
 ```text
-Salt(version) -> HarborExactFill(book, route, version)
+Salt(version) -> HarborPricing(book, route, strategyVersion)
+             -> HarborClaimGuard(receipt, factory, factoryVersion) [receipts only]
 
-Receipt routes append:
-  -> HarborClaimGuard(receipt, factory, factoryVersion)
+Pricing instruction:
+[0,1)   opcode 0x57
+[1,2)   argument length 84
+[2,22)  packed Book address
+[22,54) uint256 route
+[54,86) uint256 strategy version
 
-Instruction byte offsets (including header):
-  [0, 1)   opcode 0x55
-  [1, 2)   argument length 84
-  [2, 22)  authorization Book, packed 20-byte address
-  [22, 54) route, full-width uint256
-  [54, 86) strategy version, full-width uint256
+Remaining taker arguments: abi.encode(Trade), exactly 13 ABI words / 416 bytes.
+No FillTerms, bespoke quote signature or report.
 
-Remaining taker arguments:
-  abi.encode(Trade, FillTerms, signature)
-
-Claim guard: opcode 0x56, argument length 96,
-  abi.encode(receipt, factory, factoryVersion)
-  No taker arguments; no VM register modifications.
+Receipt guard:
+opcode 0x56, length 96, abi.encode(receipt, factory, factoryVersion)
 ```
 
-`0x55` and `0x56` are unused swap-family slots in the pinned upstream table.
-They are **local Harbor assignments**, not registered 1inch instructions.
-Recheck opcode collisions whenever the dependency pin changes; the compact
-suite does not retain the earlier collision matrix.
-The router's capability getter catches accidental deployment against an old
-router, but is not a substitute for verifying source, bytecode and dependencies.
+These are Harbor-local opcode assignments, unused by the pinned upstream dispatch.
+Recheck collisions on dependency upgrades. The old 0x55 program is not retained.
+Router capability getters prevent accidental binding to an old implementation;
+deployment provenance and runtime verification are still required.
 
-The canonical order enables Aqua mode with the vault as maker and recipient.
-The vault itself calls Aqua `ship` against the Harbor router. Refreshing docks
-the old strategy and uses a fresh salt/hash. The router, not the Book, is the
-registered Aqua application. LPs deposit into the vault; this is not a claim
-that deposited LP assets remain in individual users' wallets.
+The vault calls Aqua `ship`, or docks/replaces an old order with a fresh salt.
+The router is Aqua's registered application. Price updates do not re-ship orders;
+allocation replenishment or mandate replacement can still require a refresh.
+Aqua allocations bound transfers, but never override Book's shared cash/risk limits.
 
-## Register contract
+## Pricing and registers
 
-| Field | Exact input | Exact output |
+Book takes the trader's intent and verifies current parameters, nominal FACE,
+independent valuation, cash, reserves, inventory, public bounds and issuer budgets.
+The pricing kernel computes the pair, including customer exactness and fees.
+The opcode itself does not implement a second rounding convention.
+
+| VM field | Exact input | Exact output |
 | --- | --- | --- |
-| `amountIn` | Must equal authorized input; preserve it. | Set to authorized input. |
-| `amountOut` | Set to authorized output. | Must equal authorized output; preserve it. |
-| `balanceIn`, `balanceOut` | Preserve. | Preserve. |
-| Query, fee metadata, next program counter | Preserve. | Preserve. |
+| amountIn | Validate and preserve | Set computed input |
+| amountOut | Set computed output | Validate and preserve |
+| balanceIn, balanceOut, query, fees, nextPC | Preserve | Preserve |
 
-Both amounts must be nonzero. The instruction applies no price rounding:
-the Book verifies the signed pair through the existing fee/amount and public
-price checks. In particular, exact-output gross input must still be minimal
-under Harbor's fee rounding. A supplied pair alone is never authority to spend.
+Both amounts must be positive. The pricing instruction consumes all remaining
+taker arguments. No fee/amount transformation follows it in the canonical program;
+Book hooks bind the computed pair. The guard changes no registers.
 
-The Book cannot return arbitrary registers, a program counter, or a consumed
-byte count. This intentionally narrows the earlier generic `Extruction`
-integration. The exact-fill instruction consumes all remaining taker arguments.
-Instructions requiring their own taker arguments must precede it. Harbor's
-canonical program has no subsequent fee/amount transformations; its hooks bind
-the final pair. The retained late-instruction rollback test exercises failure
-without changing that canonical program.
+A static quote invokes Book using STATICCALL, even if the router was invoked by
+a normal call. Quote computation cannot write persistent or transient state.
+Execution uses CALL and binds the computed amount pair to the active lock.
 
-The appended claim guard needs no taker payload. It verifies factory canonicality,
-issuer, chain, recovery token, pending custody, one-unit quantity and the published
-factory version. Factory activity is required for purchases, not exits. Its checks
-are read-only in quote and execution modes. Book rechecks claim state at final
-settlement; late failure rolls back prior authorization and transfers. See the
-[redemption market](../../README.md#redemption-market) and
-[accounting boundaries](../../README.md#accounting-and-public-reads).
-
-## Authority and lifecycle
+## Settlement lifecycle
 
 ```text
-Executor opens Book and Vault locks
-  -> OPENED
-HarborExactFill calls Book.authorizeFill
-  -> AUTHORIZED (quote + trader nonces consumed)
-Router transfers input, Book checks exact maker credit
-  -> INPUT_RECEIVED
-Router requests permission for output
-  -> OUTPUT_AUTHORIZED
-Router transfers output, Book checks debit and records inventory basis
-  -> OUTPUT_SENT
-Executor verifies results, clears allowance, pays fee and user
-Book/Vault reconcile cash and explicitly clear context
-  -> IDLE
+Executor: caller == trade.trader; read live amounts
+  -> checkpoint independent NAV if needed
+  -> open Book/Vault lock [OPENED]
+  -> collect exactly computed customer input
+Router pricing -> Book recomputes and binds pair [AUTHORIZED]
+Router/Aqua input -> Book measures vault credit [INPUT_RECEIVED]
+Book authorizes output [OUTPUT_AUTHORIZED]
+Router/Aqua output -> Book measures debit and records position [OUTPUT_SENT]
+Executor checks pair/hash, zeros allowance, pays fee/customer, rejects residue
+Book/Vault reconcile actual cash and clear all transient context [IDLE]
 ```
 
-The Book checks the immutable router, vault maker, executor taker, shipped order,
-route/version, token direction, signed payload, independent permit, live cash,
-inventory, reserves and risk budgets. The instruction calls authorization via
-`STATICCALL` in quote mode and `CALL` in swap mode. Quote mode cannot consume
-nonces even if a faulty authority attempts a write.
+The Book verifies router, maker, executor taker, order hash, route/versions,
+tokens, amount mode and canonical payload. The context hash identifies the exact
+intent within this transaction; it is not a signature or a durable nonce.
+Any failure rolls back transfers and accounting together. Repeated identical
+caller-authenticated intents are legal new trades when live limits permit them.
 
-Any subsequent instruction, transfer, hook or executor payout failure rolls
-back the Book's nonce consumption and accounting along with token movements.
-An idle quote is only a preflight, not a reservation or a guarantee of execution
-after state changes. Issuer requests and funded LP claims are separate domains.
+The receipt guard checks factory identity/version, issuer, chain, recovery token,
+pending NFT custody and one-unit amount. Book repeats the relevant checks before
+recording final settlement. Finalized/cash-ready rights recover, but do not trade
+through this initial pending-right program.
 
-## Low-level code and evidence
+## Low-level code and tests
 
-Packed maker arguments are decoded by three bounded `calldataload` operations.
-The exact 84-byte length check precedes assembly; the last read ends at byte 84.
-The address is explicitly shifted to 160 bits. This block does not write memory,
-persistent storage or transient storage. Ordinary typed transient fields own
-the lifecycle; durable accounting has not been converted into manual slots.
-
-`HarborExactFill.t.sol` retains readable slicing/ABI decoding as the reference
-for valid packed arguments, register/payload checks and static-write rejection.
-`HarborClaimGuard.t.sol` retains non-unit receipt rejection and late-instruction
-rollback. These five checks are focused regression coverage, not exhaustive
-malformed-program or decoder proof. Earlier parser-call measurements were
-383 versus 452 gas; that microbenchmark is no longer in the active test suite.
+Three bounded `calldataload` operations parse the packed authority/route/version.
+The 84-byte length check precedes every load; the last word ends at byte 84.
+The 20-byte address is shifted explicitly. Assembly reads calldata only.
+Typed transient storage owns cross-call locks; durable balances/nonces remain
+ordinary auditable storage. Arithmetic uses full-precision reviewed primitives.
 
 ```sh
 forge test --match-path 'test/swapvm/*.t.sol' -vv
-forge test --match-contract PermitTradingTest -vvvv
-forge test --match-contract FourModeTradingTest -vvvv
-FOUNDRY_PROFILE=invariant forge test
-FOUNDRY_PROFILE=gas forge test
+forge test --match-contract StandingTradingTest -vvvv
+forge test --match-contract RedemptionMarketTest -vvvv
+forge test --match-contract PricingTest -vv
 ```
 
-The retained core flows exercise all four trading modes, exact Aqua token
-movements, signed/independent authorization and late-fee rollback. The earlier
-upstream-router, truncated-bytecode and publication-ownership matrices are not
-part of the 50-test hackathon suite.
-Synthetic assets, marks and permits are not live capital or model-validation
-evidence. See the [contract demo](../../DEMO.md) and
-[test scope](../../README.md#testing) for proof limits.
+Five instruction regressions cover parsing against a readable reference,
+register preservation, static-write rejection, whole-unit quantity and late
+rollback. Core tests exercise actual Aqua transfers, the shared kernel, all
+four modes, exposure-driven repricing and late payout failure.
+These are focused hackathon checks, not an exhaustive VM audit.
 
-## Deployment compatibility
-
-This changes the router deployment, maker program hash and Book authorization
-callback ABI. It is not an in-place upgrade of an existing immutable deployment.
-Old `Extruction` orders and signatures must not be reused. Deploy and verify the
-Harbor router first, bind its address in the Book/Executor, then publish fresh
-vault strategies and generate new quotes. The local deployment gate remains.
+See the [demo](../../DEMO.md) and [test scope](../../README.md#development-and-testing).
+Use fresh router/core deployments and orders; no old signed-fill ABI is supported.

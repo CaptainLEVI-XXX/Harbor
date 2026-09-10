@@ -2,14 +2,12 @@
 pragma solidity 0.8.30;
 
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
-import {Trade, FillTerms, RouteConfig} from "src/types/HarborTypes.sol";
-import {IHarborPolicyReceiver} from "src/interfaces/IHarborPolicyReceiver.sol";
+import {Trade, FillAmounts, RouteConfig} from "src/types/HarborTypes.sol";
 import {IHarborValuation} from "src/interfaces/IHarborValuation.sol";
 
 /// @title IHarborBook
 /// @notice Vault-facing authority and public-valuation boundary.
 interface IHarborBook {
-  function RECEIVER() external view returns (IHarborPolicyReceiver);
   function VALUATION() external view returns (IHarborValuation);
   function MAX_MARK_AGE() external view returns (uint256);
   function route(uint256 id) external view returns (RouteConfig memory);
@@ -31,17 +29,16 @@ interface IHarborBook {
   /// @param tradeHash Exact trader-intent hash; does not itself authorize a price.
   function beginTrade(bytes32 tradeHash) external;
   /// @notice Reconcile treasury cash after all router hooks and executor payouts.
-  /// @param fillDigest Authorized fill identity recorded in the active context.
-  function finishTrade(bytes32 fillDigest) external;
-  /// @notice Idle-state preflight of exact-fill authority and portfolio capacity.
+  /// @param tradeHash Trader-intent identity recorded in the active context.
+  function finishTrade(bytes32 tradeHash) external;
+  /// @notice Idle-state live pricing with independent valuation and capacity checks.
   /// @param trade Trader intent; limits and specified amount are raw token units.
-  /// @param terms Exact pair, fee, observations and settlement authority bindings.
-  /// @param signature Signature by the configured quote signer.
-  /// @return Domain-separated fill digest; no capital is reserved by this view.
-  function validate(Trade calldata trade, FillTerms calldata terms, bytes calldata signature)
-    external
-    view
-    returns (bytes32);
+  function quote(Trade calldata trade) external view returns (FillAmounts memory);
+  function currentOrder(uint256 route) external view returns (ISwapVM.Order memory);
+  function FEE_RECIPIENT() external view returns (address);
+  function FEE_BPS() external view returns (uint256);
+  /// @notice Used by the independently authorized valuation publisher to avoid mid-settlement changes.
+  function isIdle() external view returns (bool);
   /// @notice Prepare a fresh program for publication by the vault itself.
   /// @param route Approved token/adapter route.
   /// @param requester Original caller forwarded by the vault; must be governor.

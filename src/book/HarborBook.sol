@@ -38,7 +38,7 @@ contract HarborBook is BookGovernance, BookRedemptions, BookSettlement, BookClai
     return _state.positions[id];
   }
 
-  /// @notice Current persistent portfolio version used to invalidate quotes.
+  /// @notice Current portfolio accounting version; standing quotes recompute from live state.
   /// @return Version advanced on material portfolio transitions.
   function portfolioVersion() external view returns (uint256) {
     return _state.version;

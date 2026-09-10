@@ -7,13 +7,13 @@ import {VaultState} from "src/vault/base/VaultState.sol";
 import {BookPortfolio} from "src/libraries/BookPortfolio.sol";
 import {ClaimMarkets} from "src/libraries/ClaimMarkets.sol";
 import {WithdrawalQueue} from "src/libraries/WithdrawalQueue.sol";
-import {Trade, FillTerms, Side, AmountMode} from "src/types/HarborTypes.sol";
+import {Trade, Side, AmountMode} from "src/types/HarborTypes.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title HarborSettlementTest
 /// @notice Compact economic regressions through real Harbor, Aqua and SwapVM execution.
-/// @dev Reuses synthetic issuer/mark/permit fixtures. WETH amounts are wei; LP
+/// @dev Reuses synthetic issuer/mark fixtures. WETH amounts are wei; LP
 /// shares have a 1e6 offset. Expected payouts do not call production math helpers.
 contract HarborSettlementTest is RedemptionMarketFixture {
   function testFuzz_DepositPurchaseClaimRecoveryAndLpPayout(uint96 recoverySeed) public {
@@ -23,19 +23,19 @@ contract HarborSettlementTest is RedemptionMarketFixture {
     assertEq(vault.balanceOf(alice), shares);
     assertEq(vault.totalSupply(), 2 * shares);
     assertEq(weth.balanceOf(alice), 0);
-    assertEq(weth.balanceOf(address(vault)), 16.04 ether);
+    assertEq(weth.balanceOf(address(vault)), 15.248 ether);
     assertEq(bases[0].balanceOf(address(vault)), 4 ether);
-    assertEq(weth.balanceOf(feeRecipient), 0.00396 ether);
+    assertEq(weth.balanceOf(feeRecipient), 0.004752 ether);
 
     uint256 id = _request(4 ether);
-    assertEq(book.getClaim(address(adapter), id).basis, 3.96 ether);
-    assertEq(book.getPosition(0).pendingBasis, 3.96 ether);
+    assertEq(book.getClaim(address(adapter), id).basis, 4.752 ether);
+    assertEq(book.getPosition(0).pendingBasis, 4.752 ether);
     uint256 route = book.exportClaim(0, id, address(factory));
     assertTrue(book.getClaim(address(adapter), id).closed);
     assertEq(book.getPosition(0).pendingBasis, 0);
-    assertEq(book.getPosition(route).basis, 3.96 ether);
+    assertEq(book.getPosition(route).basis, 4.752 ether);
     assertEq(book.claimTotals(0).purchases, 0); // Export is custody movement, not a purchase.
-    assertEq(weth.balanceOf(address(vault)), 16.04 ether);
+    assertEq(weth.balanceOf(address(vault)), 15.248 ether);
     vm.expectRevert(ClaimMarkets.InvalidReceipt.selector);
     book.exportClaim(0, id, address(factory));
 
@@ -45,20 +45,20 @@ contract HarborSettlementTest is RedemptionMarketFixture {
     assertEq(vault.maxWithdraw(alice), 0); // A request alone creates no cash credit.
     queue.setFinalized(id, recovery);
     vm.expectEmit(true, true, false, true, address(book));
-    emit ClaimMarkets.ReceiptDisposed(route, 2, 3.96 ether, recovery, true);
+    emit ClaimMarkets.ReceiptDisposed(route, 2, 4.752 ether, recovery, true);
     vm.prank(bob); // Recovery is permissionless but always pays the vault.
     book.recoverClaim(route, 1);
     assertEq(weth.balanceOf(bob), 0);
-    assertEq(weth.balanceOf(address(vault)), 16.04 ether + recovery);
+    assertEq(weth.balanceOf(address(vault)), 15.248 ether + recovery);
     assertEq(book.claimTotals(0).basis, 0);
-    assertEq(book.claimTotals(0).losses, recovery < 3.96 ether ? 3.96 ether - recovery : 0);
+    assertEq(book.claimTotals(0).losses, recovery < 4.752 ether ? 4.752 ether - recovery : 0);
     vm.expectRevert(BookState.InvalidConfiguration.selector);
     book.recoverClaim(route, 1);
 
     vault.checkpointValuation();
-    assertEq(vault.totalAssets(), 16.04 ether + recovery);
+    assertEq(vault.totalAssets(), 15.248 ether + recovery);
     // Virtual asset = 1 wei; virtual shares = 1e6. Funding rounds WETH down.
-    uint256 payout = shares * (16.04 ether + recovery + 1) / (2 * shares + 1e6);
+    uint256 payout = shares * (15.248 ether + recovery + 1) / (2 * shares + 1e6);
     (uint256 policy, uint256 marked,) = vault.valuationIdentity();
     assertNotEq(policy, marked); // Regression: the funding log must not conflate these.
     vm.expectEmit(true, true, false, true, address(vault));
@@ -71,7 +71,7 @@ contract HarborSettlementTest is RedemptionMarketFixture {
     vm.prank(alice);
     assertEq(vault.withdraw(payout, alice, alice), shares);
     assertEq(weth.balanceOf(alice), payout);
-    assertEq(weth.balanceOf(address(vault)), 16.04 ether + recovery - payout);
+    assertEq(weth.balanceOf(address(vault)), 15.248 ether + recovery - payout);
     assertEq(vault.claimableRedeemRequest(0, alice), 0);
     (, uint256 reserved,,,) = vault.accountingStatus();
     assertEq(reserved, 0);
@@ -86,15 +86,15 @@ contract HarborSettlementTest is RedemptionMarketFixture {
     vm.prank(bob);
     vault.requestRedeem(shares, bob, bob);
     vault.fulfillWithdrawals(2);
-    uint256 aliceCash = shares * (20.84 ether + 1) / (2 * shares + 1e6);
+    uint256 aliceCash = shares * (20.048 ether + 1) / (2 * shares + 1e6);
     assertEq(vault.maxWithdraw(alice), aliceCash);
-    assertEq(vault.maxWithdraw(bob), 16.04 ether - aliceCash);
+    assertEq(vault.maxWithdraw(bob), 15.248 ether - aliceCash);
     assertEq(vault.pendingRedeemRequest(0, alice), 0);
     uint256 pending = vault.pendingRedeemRequest(0, bob);
     assertGt(pending, 0);
     assertLt(pending, shares);
     (uint256 cash, uint256 reserved,,,) = vault.accountingStatus();
-    assertEq(cash, 16.04 ether);
+    assertEq(cash, 15.248 ether);
     assertEq(reserved, cash); // Claim marks cannot back funded WETH liabilities.
     (uint256 head, uint256 tail) = vault.withdrawalQueueBounds();
     assertEq(head, 1);
@@ -106,7 +106,7 @@ contract HarborSettlementTest is RedemptionMarketFixture {
     assertEq(tickets[0].pending, pending);
     vault.fulfillWithdrawals(2);
     assertEq(vault.pendingRedeemRequest(0, bob), pending);
-    assertEq(vault.maxWithdraw(bob), 16.04 ether - aliceCash);
+    assertEq(vault.maxWithdraw(bob), 15.248 ether - aliceCash);
   }
 
   function test_FundedCreditCannotBeStolenOverdrawnOrSpentTwice() public {
@@ -161,34 +161,27 @@ contract HarborSettlementTest is RedemptionMarketFixture {
     assertEq(routes.length, 0);
   }
 
-  function test_QuoteExpiryIsInclusiveAndSuccessfulFillConsumesNonces() public {
+  function test_DeadlineIsInclusiveAndReceiptCannotBeSoldTwice() public {
     (uint256 route,, address receipt) = _externalMarket(1 ether);
-    (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
-      _claimQuote(route, Side.BUY_BASE, AmountMode.EXACT_IN);
-    t.deadline = block.timestamp + 30;
-    f.validUntil = t.deadline;
-    sig = _sign(t, f);
+    (Trade memory t,) = _claimQuote(route, Side.BUY_BASE, AmountMode.EXACT_IN);
+    t.deadline = vm.getBlockTimestamp() + 30;
     uint256 snapshot = vm.snapshotState();
     vm.warp(t.deadline + 1); // Marks are still fresh; expiration alone must reject.
     vm.expectRevert(BookState.InvalidQuote.selector);
     vm.prank(trader);
-    executor.execute(t, f, sig, order);
-    assertFalse(book.usedQuoteNonce(f.epoch, f.nonce));
-    assertFalse(book.usedTraderNonce(trader, t.nonce));
+    executor.execute(t);
     assertEq(IERC20(receipt).balanceOf(trader), 1);
-    assertEq(weth.balanceOf(address(vault)), 16.04 ether);
+    assertEq(weth.balanceOf(address(vault)), 15.248 ether);
     assertTrue(vm.revertToState(snapshot));
     vm.warp(t.deadline);
     vm.prank(trader);
-    executor.execute(t, f, sig, order);
-    assertTrue(book.usedQuoteNonce(f.epoch, f.nonce));
-    assertTrue(book.usedTraderNonce(trader, t.nonce));
+    executor.execute(t);
     assertEq(IERC20(receipt).balanceOf(address(vault)), 1);
-    assertEq(weth.balanceOf(address(vault)), 14.876 ether);
-    vm.expectRevert(BookState.InvalidQuote.selector);
+    assertEq(weth.balanceOf(address(vault)), 14.084 ether);
+    vm.expectRevert(BookState.CapacityExceeded.selector);
     vm.prank(trader);
-    executor.execute(t, f, sig, order);
-    assertEq(weth.balanceOf(address(vault)), 14.876 ether);
+    executor.execute(t);
+    assertEq(weth.balanceOf(address(vault)), 14.084 ether);
   }
 
   function test_LiveDiscoverySurvivesMiddleRemovalAndUnavailableMarks() public {
@@ -204,7 +197,7 @@ contract HarborSettlementTest is RedemptionMarketFixture {
     assertEq(next, 1);
     assertEq(claims.length, 1);
     assertEq(claims[0].issuerId, last);
-    assertEq(claims[0].basis, 0.495 ether);
+    assertEq(claims[0].basis, 0.594 ether);
     (uint256[] memory routes,) = book.activeReceiptRoutes(0, 1);
     assertEq(routes.length, 1);
     assertEq(routes[0], route);
@@ -212,7 +205,7 @@ contract HarborSettlementTest is RedemptionMarketFixture {
     _claim(claims[0].issuerId);
     queue.setFinalized(first, 0.5 ether);
     book.recoverClaim(routes[0], 1);
-    assertEq(weth.balanceOf(address(vault)), 17.04 ether);
+    assertEq(weth.balanceOf(address(vault)), 16.248 ether);
     (claims,) = book.activeNativeClaims(0, 1);
     (routes,) = book.activeReceiptRoutes(0, 1);
     assertEq(claims.length + routes.length, 0);
@@ -229,14 +222,14 @@ contract HarborSettlementTest is RedemptionMarketFixture {
     vault.setOperator(bob, true);
     vm.prank(bob);
     weth.approve(address(vault), 1 ether);
-    uint256 shares = uint256(1 ether) * (20 ether * 1e6 + 1e6) / (20.04 ether + 1);
+    uint256 shares = uint256(1 ether) * (20 ether * 1e6 + 1e6) / (20.048 ether + 1);
     vm.expectEmit(true, true, true, true, address(vault));
     emit VaultState.LiquidityIssued(bob, alice, trader, 1 ether, shares);
     vm.prank(bob);
     vault.deposit(1 ether, trader, alice);
     assertEq(weth.balanceOf(bob), 0);
     assertEq(weth.balanceOf(alice), 0);
-    assertEq(weth.balanceOf(address(vault)), 17.04 ether);
+    assertEq(weth.balanceOf(address(vault)), 16.248 ether);
     assertEq(vault.balanceOf(trader), shares);
     assertEq(vault.balanceOf(alice), 10 ether * 1e6);
   }

@@ -1,168 +1,177 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {BookState} from "src/book/base/BookState.sol";
 import {HarborExecutor} from "src/execution/HarborExecutor.sol";
-import {Trade, FillTerms, Side, AmountMode} from "src/types/HarborTypes.sol";
+import {Trade, FillAmounts, Side, AmountMode} from "src/types/HarborTypes.sol";
+import {PricingParameters} from "src/types/PricingTypes.sol";
 import {TradingFixture} from "test/base/TradingFixture.sol";
-import {MockCREForwarder} from "test/core/HarborPolicyReceiver.t.sol";
-import {HarborPolicyReceiver as Receiver} from "src/HarborPolicyReceiver.sol";
-import {IHarborPolicyReceiver} from "src/interfaces/IHarborPolicyReceiver.sol";
 import {RealizationLogs} from "test/base/RealizationLogs.sol";
 
-/// @title FourModeTradingTest
-/// @notice Official settlement through the real Book, Executor and pooled vault.
-contract FourModeTradingTest is TradingFixture {
+/// @notice Actual Aqua/SwapVM settlement with reusable, bounded route parameters.
+contract StandingTradingTest is TradingFixture {
   function test_TwoRoutesCannotSpendSameCash() public {
     _buy(0, 16 ether);
-    (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
-      _quote(1, Side.BUY_BASE, AmountMode.EXACT_IN, 16 ether);
-    vm.expectRevert(BookState.CapacityExceeded.selector);
+    (Trade memory t,) = _quote(1, Side.BUY_BASE, AmountMode.EXACT_IN, 16 ether);
+    vm.expectRevert();
     vm.prank(trader);
-    executor.execute(t, f, sig, order);
+    executor.execute(t);
     assertEq(book.getPosition(1).shares, 0);
+
+    // Fund enough actual cash to cross the capacity curve's 60% threshold.
+    // The same standing publication must then quote less for the next purchase.
+    weth.mint(alice, 800 ether);
+    vm.startPrank(alice);
+    weth.approve(address(vault), 800 ether);
+    vault.deposit(800 ether, alice);
+    vm.stopPrank();
+    vault.refreshStrategy(0);
+    bases[0].mint(trader, 600 ether);
+    Trade memory small = _trade(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether, 0);
+    uint256 beforePrice = executor.quote(small).traderOut;
+    t = _trade(0, Side.BUY_BASE, AmountMode.EXACT_IN, 600 ether, 0);
+    FillAmounts memory priced = executor.quote(t);
+    uint256 cashBefore = weth.balanceOf(address(vault));
+    vm.prank(trader);
+    executor.execute(t);
+    assertEq(weth.balanceOf(address(vault)), cashBefore - priced.routerOut);
+    assertEq(book.faceExposure(), 616 ether);
+    assertLt(executor.quote(small).traderOut, beforePrice);
+    small.limitAmount = beforePrice;
+    vm.expectRevert();
+    vm.prank(trader);
+    executor.execute(small); // Slippage, not a portfolio nonce, rejects the old expectation.
+    assertEq(book.faceExposure(), 616 ether);
   }
 
-  function test_SignerAndPolicyAreIndependentlyRequired() public {
-    (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
-      _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
-    _setApproval(executor.fillDigest(t, f), false);
-    vm.expectRevert(BookState.PolicyNotApproved.selector);
+  function test_PublicationIsBoundedVersionedAndIndependentOfNav() public {
+    PricingParameters memory p = book.pricingParameters(0);
+    ++p.version;
     vm.prank(trader);
-    executor.execute(t, f, sig, order);
-    _setApproval(executor.fillDigest(t, f), true);
-    sig[0] = bytes1(uint8(sig[0]) ^ 1);
-    vm.expectRevert(BookState.InvalidSignature.selector);
+    vm.expectRevert(BookState.Unauthorized.selector);
+    book.publishPricing(0, p);
+    p.discount = 0.9e18;
+    vm.expectRevert(BookState.InvalidQuote.selector);
+    book.publishPricing(0, p);
+    p.discount = 1e18;
+    p.configVersion += 1;
+    vm.expectRevert(BookState.InvalidQuote.selector);
+    book.publishPricing(0, p);
+    p.configVersion -= 1;
+    (Trade memory old,) = _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
+    _buy(0, 1 ether);
+    (Trade memory t,) = _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     vm.prank(trader);
-    executor.execute(t, f, sig, order);
+    executor.execute(t); // Invalidates cached NAV.
+    uint256 nav = vault.totalAssets();
+    (,, bool fresh) = vault.valuationIdentity();
+    assertFalse(fresh);
+    book.publishPricing(0, p);
+    (,, fresh) = vault.valuationIdentity();
+    assertFalse(fresh);
+    assertEq(vault.totalAssets(), nav);
+    vm.expectRevert(BookState.InvalidQuote.selector);
+    executor.quote(old);
+    vm.expectRevert(BookState.InvalidQuote.selector);
+    book.publishPricing(0, p); // Version replay.
+    p.version += 1;
+    p.observedAt = vm.getBlockTimestamp() + 1;
+    vm.expectRevert(BookState.InvalidQuote.selector);
+    book.publishPricing(0, p);
   }
 
   function test_LateFeeFailureRollsBackEverything() public {
-    (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
-      _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
+    (Trade memory t, FillAmounts memory f) = _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     uint256 version = book.portfolioVersion();
     vm.mockCallRevert(
       address(weth), abi.encodeWithSignature("transfer(address,uint256)", feeRecipient, f.fee), "fee payout failed"
     );
     vm.expectRevert();
     vm.prank(trader);
-    executor.execute(t, f, sig, order);
-    assertFalse(book.usedQuoteNonce(f.epoch, f.nonce));
-    assertFalse(book.usedTraderNonce(trader, t.nonce));
+    executor.execute(t);
     assertEq(book.portfolioVersion(), version);
+    assertEq(book.faceExposure(), 0);
     assertEq(book.getPosition(0).shares, 0);
     assertEq(weth.balanceOf(address(vault)), 20 ether);
     assertEq(bases[0].balanceOf(trader), 100 ether);
     assertEq(bases[0].allowance(address(executor), address(router)), 0);
     vm.clearMockedCalls();
     vm.prank(trader);
-    executor.execute(t, f, sig, order);
+    executor.execute(t);
+    assertEq(book.faceExposure(), 1 ether);
   }
 
-  function test_OldQuoteFailsAfterPortfolioChange() public {
-    (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
-      _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
-    _buy(1, 1 ether);
-    vm.expectRevert(BookState.InvalidQuote.selector);
+  function test_StandingParametersSurviveTwoTradesAndAutomaticCheckpoint() public {
+    (Trade memory t, FillAmounts memory f) = _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
+    uint256 version = book.pricingParameters(0).version;
     vm.prank(trader);
-    executor.execute(t, f, sig, order);
+    executor.execute(t);
+    (,, bool fresh) = vault.valuationIdentity();
+    assertFalse(fresh);
+    assertEq(abi.encode(executor.quote(t)), abi.encode(f));
+    vm.prank(trader);
+    executor.execute(t); // Same intent, no signature/nonce or intervening publisher.
+    assertEq(book.getPosition(0).shares, 2 ether);
+    assertEq(book.pricingParameters(0).version, version);
+    assertEq(weth.balanceOf(address(vault)), 18.02 ether);
+    assertEq(book.faceExposure(), 2 ether);
   }
 
   function test_OnlyTraderMayExecute() public {
-    (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
-      _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
+    (Trade memory t,) = _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     vm.expectRevert(HarborExecutor.UnauthorizedTrader.selector);
-    executor.execute(t, f, sig, order);
-  }
-}
-
-/// @notice Real receiver, official Aqua and Harbor's derived router with simulated reports.
-/// @dev No DON signature or confidential-execution claim is made by this fixture.
-contract PermitTradingTest is TradingFixture {
-  Receiver private receiver;
-  MockCREForwarder private forwarder;
-  Receiver.Config private receiverConfig;
-
-  function _deployPolicy() internal override returns (IHarborPolicyReceiver) {
-    uint64 nonce = vm.getNonce(address(this));
-    forwarder = new MockCREForwarder();
-    receiverConfig = Receiver.Config(
-      address(forwarder),
-      vm.computeCreateAddress(address(this), nonce + 2),
-      vm.computeCreateAddress(address(this), nonce + 3),
-      address(this),
-      address(this),
-      keccak256("synthetic-workflow"),
-      bytes10(keccak256("synthetic-name")),
-      address(42),
-      5009297550715157269,
-      1,
-      keccak256("public-model"),
-      60
-    );
-    receiver = new Receiver(receiverConfig);
-    return receiver;
+    executor.execute(t);
+    t.receiver = address(0x5555);
+    uint256 beforeBalance = weth.balanceOf(t.receiver);
+    vm.prank(trader);
+    executor.execute(t);
+    assertEq(weth.balanceOf(t.receiver) - beforeBalance, 0.98901 ether);
   }
 
-  function _approveFill(Trade memory, FillTerms memory f, bytes32 digest) internal override {
-    Receiver.Report memory r = Receiver.Report(
-      1,
-      block.chainid,
-      receiverConfig.chainSelector,
-      address(receiver),
-      address(book),
-      address(vault),
-      digest,
-      receiver.authorizationEpoch(),
-      f.nonce,
-      1,
-      receiverConfig.modelHash,
-      f.observationHash,
-      f.observedAt,
-      f.validUntil,
-      1
-    );
-    forwarder.deliver(
-      receiver,
-      abi.encodePacked(
-        receiverConfig.workflowId, receiverConfig.workflowName, receiverConfig.workflowOwner, bytes2(0x0000)
-      ),
-      abi.encode(r)
-    );
-  }
-
-  function test_AuthenticatedPermitSettlesAllFourModes() public {
+  function test_StandingProgramSettlesAllFourModes() public {
     vm.recordLogs();
     _execute(Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     _execute(Side.BUY_BASE, AmountMode.EXACT_OUT, 1 ether);
     _execute(Side.SELL_BASE, AmountMode.EXACT_IN, 1 ether);
     _execute(Side.SELL_BASE, AmountMode.EXACT_OUT, 1 ether);
     assertEq(book.getPosition(0).shares, 0);
+    assertEq(book.faceExposure(), 0);
     (uint256 gains,, uint256 count) = RealizationLogs.totals(vm.getRecordedLogs(), address(book), 0);
     assertGt(gains, 0);
     assertEq(count, 2);
   }
 
-  function test_ChangedReceiverNeedsIndependentNewPermit() public {
-    (Trade memory t, FillTerms memory f,, ISwapVM.Order memory order) =
-      _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
-    t.receiver = address(0x5555);
-    bytes32 digest = executor.fillDigest(t, f);
-    (uint8 v, bytes32 r, bytes32 s) = vm.sign(QUOTE_TEST_KEY, digest);
-    assertFalse(receiver.isApproved(digest));
-    vm.prank(trader);
-    vm.expectRevert(BookState.PolicyNotApproved.selector);
-    executor.execute(t, f, abi.encodePacked(r, s, v), order);
+  function test_ExpiryAndUpdaterRevocationDoNotBlockFundedLpClaims() public {
+    vm.prank(alice);
+    vault.requestRedeem(10 ether * 1e6, alice, alice);
+    vault.fulfillWithdrawals(1);
+    uint256 credit = vault.maxWithdraw(alice);
+    (Trade memory t,) = _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
+    book.revokeUpdater();
+    vm.expectRevert(BookState.InvalidQuote.selector);
+    executor.quote(t);
+    vm.prank(alice);
+    vault.withdraw(credit, alice, alice);
+    assertEq(weth.balanceOf(alice), credit);
+    book.scheduleUpdater(address(this));
+    vm.warp(vm.getBlockTimestamp() + 1 days);
+    book.applyUpdater();
+    valuation.setObservedAt(vm.getBlockTimestamp());
+    _publish(0, 1e18);
+    t = _trade(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether, 0);
+    vm.warp(vm.getBlockTimestamp() + 60);
+    assertGt(executor.quote(t).traderOut, 0); // Inclusive parameter expiry.
+    ++t.deadline;
+    vm.warp(vm.getBlockTimestamp() + 1);
+    valuation.setObservedAt(vm.getBlockTimestamp()); // Isolate parameter expiry from mark age.
+    vm.expectRevert(BookState.InvalidQuote.selector);
+    executor.quote(t);
   }
 
   function _execute(Side side, AmountMode mode, uint256 amount) private {
-    (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) = _quote(0, side, mode, amount);
-    bytes32 digest = executor.fillDigest(t, f);
-    assertTrue(receiver.isApproved(digest));
-    executor.quoteFill(t, f, sig, order);
+    (Trade memory t, FillAmounts memory f) = _quote(0, side, mode, amount);
+    assertEq(abi.encode(executor.quote(t)), abi.encode(f));
     bool buy = side == Side.BUY_BASE;
-    // Independent fixture prices: buy at 0.99, sell at 1.01; 10 bps WETH fee.
     uint256 cash = amount * (buy ? 99 : 101) / 100;
     uint256 traderCash = buy ? cash * 9990 / 10000 : (cash * 10000 + 9989) / 9990;
     uint256 fee = buy ? cash - traderCash : traderCash - cash;
@@ -171,19 +180,12 @@ contract PermitTradingTest is TradingFixture {
     uint256 beforeBase = bases[0].balanceOf(trader);
     uint256 beforeFee = weth.balanceOf(feeRecipient);
     vm.prank(trader);
-    executor.execute(t, f, sig, order);
+    executor.execute(t);
     assertEq(weth.balanceOf(address(vault)), buy ? beforeCash - cash : beforeCash + cash);
     assertEq(weth.balanceOf(trader), buy ? beforeTrader + traderCash : beforeTrader - traderCash);
     assertEq(bases[0].balanceOf(trader), buy ? beforeBase - amount : beforeBase + amount);
     assertEq(weth.balanceOf(feeRecipient), beforeFee + fee);
     assertEq(weth.balanceOf(address(executor)), 0);
     assertEq(bases[0].balanceOf(address(executor)), 0);
-    assertTrue(book.usedQuoteNonce(f.epoch, f.nonce));
-    // Permit storage is not consumption; Book's persistent nonce prevents reuse.
-    assertTrue(receiver.isApproved(digest));
-    vm.prank(trader);
-    vm.expectRevert(BookState.InvalidQuote.selector);
-    executor.execute(t, f, sig, order);
-    vault.checkpointValuation();
   }
 }

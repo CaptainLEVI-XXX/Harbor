@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Context, ContextLib, SwapQuery, SwapRegisters} from "@1inch/swap-vm/src/libs/VM.sol";
 import {CalldataPtrLib} from "@1inch/solidity-utils/contracts/libraries/CalldataPtr.sol";
 import {IHarborFill} from "src/interfaces/IHarborFill.sol";
-import {HarborExactFill} from "src/swapvm/instructions/HarborExactFill.sol";
+import {HarborPricing} from "src/swapvm/instructions/HarborPricing.sol";
 
 /// @notice Synthetic authority: amounts and attempted quote writes are test-controlled.
 contract FillAuthority is IHarborFill {
@@ -32,11 +32,11 @@ contract FillAuthority is IHarborFill {
 
 contract PackedFillParser {
   function parse(bytes calldata args) external pure returns (address, uint256, uint256) {
-    return HarborExactFill.parse(args);
+    return HarborPricing.parse(args);
   }
 }
 
-contract ExactFillHarness is PackedFillParser {
+contract PricingInstructionHarness is PackedFillParser {
   using ContextLib for Context;
 
   function run(bytes calldata args, bytes calldata payload, SwapRegisters calldata r, bool exactIn, bool quoting)
@@ -52,7 +52,7 @@ contract ExactFillHarness is PackedFillParser {
     ctx.swap = r;
     ctx.fee.feeTotal = 99;
     bytes32 queryHash = keccak256(abi.encode(ctx.query));
-    HarborExactFill.exec(ctx, args);
+    HarborPricing.exec(ctx, args);
     require(ctx.vm.nextPC == 123 && ctx.vm.isStaticContext == quoting, "VM control changed");
     require(ctx.fee.feeTotal == 99 && keccak256(abi.encode(ctx.query)) == queryHash, "query or fees changed");
     require(ctx.takerArgs().length == 0, "unconsumed payload");
@@ -63,17 +63,17 @@ contract ExactFillHarness is PackedFillParser {
 /// @notice Readable packed-decoding reference with the same external signature.
 contract ReferenceFillParser {
   function parse(bytes calldata args) external pure returns (address book, uint256 route, uint256 version) {
-    if (args.length != 84) revert HarborExactFill.InvalidArgumentsLength(args.length);
+    if (args.length != 84) revert HarborPricing.InvalidArgumentsLength(args.length);
     book = address(bytes20(args[:20]));
     (route, version) = abi.decode(args[20:], (uint256, uint256));
-    if (book == address(0)) revert HarborExactFill.InvalidAuthority();
+    if (book == address(0)) revert HarborPricing.InvalidAuthority();
   }
 }
 
-/// @title HarborExactFillTest
+/// @title HarborPricingTest
 /// @notice Differential decoding, instruction isolation and CALL/STATICCALL boundaries.
-contract HarborExactFillTest is Test {
-  ExactFillHarness internal h = new ExactFillHarness();
+contract HarborPricingTest is Test {
+  PricingInstructionHarness internal h = new PricingInstructionHarness();
   ReferenceFillParser internal referenceParser = new ReferenceFillParser();
   FillAuthority internal authority = new FillAuthority();
 

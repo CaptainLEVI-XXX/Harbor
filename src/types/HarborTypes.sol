@@ -66,33 +66,9 @@ struct Trade {
   uint256 amountSpecified;
   uint256 limitAmount;
   uint256 deadline;
-  uint256 nonce;
-}
-
-/// @notice Final exact-fill commitment shared by signer and policy receiver.
-/// @dev All amounts are raw token units; time is Unix seconds. No partial fills.
-struct FillTerms {
-  address vault;
-  address adapter;
-  address feeRecipient;
+  uint256 pricingVersion; // Expected reusable route publication.
+  uint256 configVersion; // Expected admission/authority epoch.
   uint256 strategyVersion;
-  uint256 adapterVersion;
-  uint256 epoch;
-  uint256 nonce;
-  uint256 portfolioVersion;
-  uint256 positionVersion;
-  uint256 valuationVersion;
-  uint256 policyVersion;
-  uint256 traderIn;
-  uint256 traderOut;
-  uint256 routerIn;
-  uint256 routerOut;
-  uint256 fee;
-  uint256 feeBps;
-  uint256 observedAt;
-  uint256 validUntil;
-  bytes32 orderHash;
-  bytes32 observationHash;
 }
 
 /// @notice Exact trader and router token amounts plus the WETH fee.

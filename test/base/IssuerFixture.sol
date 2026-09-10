@@ -20,14 +20,15 @@ abstract contract IssuerFixture is TradingFixture {
     return i == 0 ? new MockWstETH() : super._deployBase(i);
   }
 
-  function _routeAdapter(uint256 i, uint64 nonce) internal override returns (address) {
+  function _routeAdapter(uint256 i, uint64 nonce) internal virtual override returns (address) {
     return i == 0 ? vm.computeCreateAddress(address(this), nonce + 4) : super._routeAdapter(i, nonce);
   }
 
-  function _afterDeploy() internal override {
+  function _afterDeploy() internal virtual override {
     queue = new MockLidoQueue(address(bases[0]));
     adapter = new LidoAdapter(address(book), address(vault), address(bases[0]), address(weth), address(queue));
     assertEq(book.route(0).adapter, address(adapter));
+    valuation.setConversion(address(bases[0]), 1.2e18, 1e18);
     vm.deal(address(queue), 10000 ether);
   }
 

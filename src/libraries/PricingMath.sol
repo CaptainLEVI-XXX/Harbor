@@ -29,7 +29,7 @@ library PricingMath {
   }
 
   /// @notice Enforce monotonicity with room for sub-wei arithmetic error.
-  function validatePolicy(PricingPolicy memory p, PricingCurve memory c) internal pure {
+  function validatePolicy(PricingPolicy memory p, PricingCurve memory c) public pure {
     if (
       p.minDiscount < 0.5e18 || p.minDiscount > p.maxDiscount || p.maxDiscount > WAD || p.buyMargin > 0.05e18
         || p.sellMargin > 0.05e18 || p.buyCost > WAD || p.sellCost > WAD

@@ -14,7 +14,7 @@ interface IHarborFill {
   /// @param query Immutable order, participants, direction and amount mode.
   /// @param route Maker-committed route identifier.
   /// @param version Maker-committed strategy version.
-  /// @param payload Canonical ABI encoding of Trade, FillTerms and signature.
+  /// @param payload Canonical ABI encoding of Trade only; amounts are computed by Book.
   /// @return amountIn Authorized router input in tokenIn raw units.
   /// @return amountOut Authorized router output in tokenOut raw units.
   function authorizeFill(

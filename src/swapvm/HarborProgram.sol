@@ -4,12 +4,12 @@ pragma solidity 0.8.30;
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {MakerTraitsLib} from "@1inch/swap-vm/src/libs/MakerTraits.sol";
 import {Salt} from "@1inch/swap-vm/src/instructions/Controls.sol";
-import {HarborExactFill} from "src/swapvm/instructions/HarborExactFill.sol";
+import {HarborPricing} from "src/swapvm/instructions/HarborPricing.sol";
 import {HarborClaimGuard} from "src/swapvm/instructions/HarborClaimGuard.sol";
 
 /// @title HarborProgram
-/// @notice Canonical bidirectional Aqua order using the Harbor exact-fill opcode.
-/// @dev Requires HarborSwapVMRouter. Salt is upstream; exact fill is custom.
+/// @notice Canonical bidirectional Aqua order using the Harbor standing-pricing opcode.
+/// @dev Requires HarborSwapVMRouter. Salt is upstream; pricing is custom.
 /// This builder grants no registration authority. The vault publishes through Aqua.ship.
 library HarborProgram {
   /// @notice A token or authority address is zero, or the pair is degenerate.
@@ -32,7 +32,7 @@ library HarborProgram {
     return _build(vault, book, weth, base, route, version, salt, bytes(""));
   }
 
-  /// @notice Add a custody/status guard to the existing exact-fill settlement program.
+  /// @notice Add a custody/status guard to the standing-pricing settlement program.
   function claim(
     address vault,
     address book,
@@ -79,7 +79,7 @@ library HarborProgram {
     args.postTransferInTarget = book;
     args.preTransferOutTarget = book;
     args.postTransferOutTarget = book;
-    args.program = bytes.concat(Salt.build(salt), HarborExactFill.build(book, route, version), tail);
+    args.program = bytes.concat(Salt.build(salt), HarborPricing.build(book, route, version), tail);
     return MakerTraitsLib.build(args);
   }
 }

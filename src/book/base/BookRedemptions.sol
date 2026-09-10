@@ -79,7 +79,7 @@ abstract contract BookRedemptions is BookState {
     return (_routes[_route].base, _routes[_route].adapter, _cash, _state.positions[_route].shares);
   }
 
-  /// @notice Permissionless recovery independent of signer, keeper, CRE and NAV.
+  /// @notice Permissionless recovery independent of parameter publisher, keeper and NAV.
   /// @param routeId Fixed approved adapter route.
   /// @param ids One to eight strictly increasing tracked issuer IDs.
   /// @param hints Issuer proof hints, positionally aligned with ids.

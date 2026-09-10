@@ -9,15 +9,27 @@ import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {HarborBook} from "src/book/HarborBook.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {HarborExecutor} from "src/execution/HarborExecutor.sol";
-import {Trade, FillTerms, FillAmounts, RouteConfig, Side, AmountMode} from "src/types/HarborTypes.sol";
+import {Trade, FillAmounts, RouteConfig, Side, AmountMode} from "src/types/HarborTypes.sol";
 import {Amounts} from "src/libraries/Amounts.sol";
 import {Fees} from "src/libraries/Fees.sol";
-import {IHarborPolicyReceiver} from "src/interfaces/IHarborPolicyReceiver.sol";
+import {PricingPolicy, PricingParameters, PricingCurve} from "src/types/PricingTypes.sol";
+import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
 
 /// @notice Synthetic public observations; does not prove a production NAV policy.
 contract MockTradingValuation {
   uint256 public observedAt;
   bool public valid = true;
+  mapping(address => uint256) private _numerator;
+  mapping(address => uint256) private _denominator;
+
+  function setConversion(address base, uint256 n, uint256 d) external {
+    _numerator[base] = n;
+    _denominator[base] = d;
+  }
+
+  function conversion(address base) public view returns (uint256, uint256) {
+    return _denominator[base] == 0 ? (uint256(1), uint256(1)) : (_numerator[base], _denominator[base]);
+  }
 
   constructor(uint256 time) {
     observedAt = time;
@@ -40,21 +52,13 @@ contract MockTradingValuation {
     view
     returns (uint256, uint256, uint256, uint256, bytes32, bool)
   {
-    return (shares, shares, observedAt, 1, keccak256(abi.encode(base, observedAt)), valid);
-  }
-}
-
-/// @notice Synthetic permit fixture, not authenticated CRE evidence.
-contract MockTradingPolicy {
-  mapping(bytes32 => bool) public isApproved;
-
-  function approve(bytes32 hash, bool allowed) external {
-    isApproved[hash] = allowed;
+    (uint256 n, uint256 d) = conversion(base);
+    uint256 face = Math.fullMulDiv(shares, n, d);
+    return (face, face, observedAt, 1, keccak256(abi.encode(base, n, d, observedAt)), valid);
   }
 }
 
 abstract contract TradingFixture is Test {
-  uint256 internal constant QUOTE_TEST_KEY = 0x716f7465;
   address internal trader = address(0x7ade);
   address internal alice = address(0xa11ce);
   address internal bob = address(0xb0b);
@@ -67,9 +71,7 @@ abstract contract TradingFixture is Test {
   HarborVault internal vault;
   HarborExecutor internal executor;
   MockTradingValuation internal valuation;
-  IHarborPolicyReceiver internal policy;
   HarborBook.Config internal deploymentConfig;
-  uint256 private nextNonce;
 
   function setUp() public virtual {
     vm.warp(1000);
@@ -78,8 +80,7 @@ abstract contract TradingFixture is Test {
     bases[1] = _deployBase(1);
     aqua = new Aqua();
     router = new HarborSwapVMRouter(address(aqua), address(weth), address(this), "Harbor", "1");
-    valuation = new MockTradingValuation(1000);
-    policy = _deployPolicy();
+    valuation = _deployValuation();
     uint64 nonce = vm.getNonce(address(this));
     address expectedBook = vm.computeCreateAddress(address(this), nonce);
     address expectedVault = vm.computeCreateAddress(address(this), nonce + 1);
@@ -90,21 +91,21 @@ abstract contract TradingFixture is Test {
     c.weth = address(weth);
     c.aqua = address(aqua);
     c.router = address(router);
-    c.signer = vm.addr(QUOTE_TEST_KEY);
+    c.updater = address(this);
     c.governor = address(this);
     c.guardian = address(this);
     c.keeper = address(this);
-    c.receiver = address(policy);
     c.valuation = address(valuation);
     c.feeRecipient = feeRecipient;
     c.feeBps = 10;
-    c.maxQuoteAge = 60;
+    c.maxParameterAge = 60;
     c.maxMarkAge = 60;
     c.depositCap = 1000 ether;
     c.governanceDelay = 1 days;
+    c.curve = PricingCurve(1000 ether, 0.6e18, 0.0025e18);
     deploymentConfig = c;
-    RouteConfig[] memory routes = new RouteConfig[](2);
-    for (uint256 i; i < 2; ++i) {
+    RouteConfig[] memory routes = new RouteConfig[](_nativeRoutes());
+    for (uint256 i; i < routes.length; ++i) {
       routes[i] = RouteConfig(
         address(bases[i]), _routeAdapter(i, nonce), 0.99e18, 1.01e18, 0, 0, 1000 ether, 1000 ether, 10 ether, 100 ether
       );
@@ -136,67 +137,68 @@ abstract contract TradingFixture is Test {
     vault.deposit(10 ether, bob);
     vm.stopPrank();
     vault.refreshStrategy(0);
-    vault.refreshStrategy(1);
+    if (_nativeRoutes() == 2) vault.refreshStrategy(1);
+    for (uint256 i; i < _nativeRoutes(); ++i) {
+      book.configurePricing(i, PricingPolicy(0.95e18, 1e18, 0.01e18, 0.01e18, 0, 0));
+      _publish(i, 1e18);
+    }
+  }
+
+  function _publish(uint256 route, uint256 discount) internal {
+    book.publishPricing(
+      route,
+      PricingParameters(
+        discount,
+        vm.getBlockTimestamp(),
+        vm.getBlockTimestamp() + 60,
+        book.pricingParameters(route).version + 1,
+        book.configVersion()
+      )
+    );
   }
 
   function _quote(uint256 route, Side side, AmountMode mode, uint256 quantity)
     internal
-    returns (Trade memory t, FillTerms memory f, bytes memory signature, ISwapVM.Order memory order)
+    view
+    returns (Trade memory t, FillAmounts memory a)
   {
     bool buy = side == Side.BUY_BASE;
-    uint256 input = buy ? quantity : Fees.grossForNet(quantity * 101 / 100, 10);
-    uint256 output = buy ? Fees.net(quantity * 99 / 100, 10) : quantity;
+    (uint256 n, uint256 d) = valuation.conversion(address(bases[route]));
+    uint256 face = Math.fullMulDiv(quantity, n, d);
+    uint256 input = buy ? quantity : Fees.grossForNet(face * 101 / 100, 10);
+    uint256 output = buy ? Fees.net(face * 99 / 100, 10) : quantity;
+    t = _trade(route, side, mode, input, output);
+    a = Amounts.normalize(t, input, output, 10);
+  }
+
+  function _trade(uint256 route, Side side, AmountMode mode, uint256 input, uint256 output)
+    internal
+    view
+    returns (Trade memory t)
+  {
+    bool buy = side == Side.BUY_BASE;
+    address base = book.route(route).base;
     t = Trade(
       trader,
       trader,
-      buy ? address(bases[route]) : address(weth),
-      buy ? address(weth) : address(bases[route]),
+      buy ? base : address(weth),
+      buy ? address(weth) : base,
       route,
       side,
       mode,
       mode == AmountMode.EXACT_IN ? input : output,
-      mode == AmountMode.EXACT_IN ? output : input + 1 ether,
-      1060,
-      ++nextNonce
+      mode == AmountMode.EXACT_IN ? output : input,
+      vm.getBlockTimestamp() + 60,
+      book.pricingParameters(route).version,
+      book.configVersion(),
+      book.strategyVersion(route)
     );
-    FillAmounts memory a = Amounts.normalize(t, input, output, 10);
-    order = book.currentOrder(route);
-    f.vault = address(vault);
-    f.adapter = book.route(route).adapter;
-    f.feeRecipient = feeRecipient;
-    f.strategyVersion = book.strategyVersion(route);
-    f.adapterVersion = 1;
-    f.epoch = book.quoteEpoch();
-    f.nonce = nextNonce;
-    f.portfolioVersion = book.portfolioVersion();
-    f.positionVersion = book.getPosition(route).version;
-    (, f.valuationVersion,) = vault.valuationIdentity();
-    f.policyVersion = 1;
-    f.traderIn = input;
-    f.traderOut = output;
-    f.routerIn = a.routerIn;
-    f.routerOut = a.routerOut;
-    f.fee = a.fee;
-    f.feeBps = 10;
-    f.observedAt = 1000;
-    f.validUntil = 1060;
-    f.orderHash = router.hash(order);
-    f.observationHash = keccak256(abi.encode(address(bases[route]), uint256(1000)));
-    signature = _sign(t, f);
-  }
-
-  function _sign(Trade memory t, FillTerms memory f) internal returns (bytes memory signature) {
-    bytes32 digest = executor.fillDigest(t, f);
-    (uint8 v, bytes32 r, bytes32 s) = vm.sign(QUOTE_TEST_KEY, digest);
-    _approveFill(t, f, digest);
-    return abi.encodePacked(r, s, v);
   }
 
   function _buy(uint256 route, uint256 quantity) internal {
-    (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
-      _quote(route, Side.BUY_BASE, AmountMode.EXACT_IN, quantity);
+    (Trade memory t,) = _quote(route, Side.BUY_BASE, AmountMode.EXACT_IN, quantity);
     vm.prank(trader);
-    executor.execute(t, f, sig, order);
+    executor.execute(t);
     vault.checkpointValuation();
   }
 
@@ -204,16 +206,12 @@ abstract contract TradingFixture is Test {
     return new TokenMock("Synthetic WETH", "WETH");
   }
 
-  function _deployPolicy() internal virtual returns (IHarborPolicyReceiver) {
-    return IHarborPolicyReceiver(address(new MockTradingPolicy()));
+  function _deployValuation() internal virtual returns (MockTradingValuation) {
+    return new MockTradingValuation(1000);
   }
 
-  function _approveFill(Trade memory, FillTerms memory, bytes32 digest) internal virtual {
-    _setApproval(digest, true);
-  }
-
-  function _setApproval(bytes32 digest, bool allowed) internal {
-    MockTradingPolicy(address(policy)).approve(digest, allowed);
+  function _nativeRoutes() internal pure virtual returns (uint256) {
+    return 2;
   }
 
   function _deployBase(uint256 i) internal virtual returns (TokenMock) {

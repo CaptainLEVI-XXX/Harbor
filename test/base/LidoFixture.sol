@@ -22,6 +22,18 @@ contract MockWstETH is TokenMock {
   function getStETHByWstETH(uint256 amount) external view returns (uint256) {
     return amount * rate / 1e18;
   }
+
+  function stETH() external view returns (address) {
+    return address(this);
+  }
+
+  function getTotalPooledEther() external view returns (uint256) {
+    return rate;
+  }
+
+  function getTotalShares() external pure returns (uint256) {
+    return 1e18;
+  }
 }
 
 /// @notice Deliberately synthetic finalization and issuer faults, never fork evidence.
@@ -109,6 +121,22 @@ contract MockLidoQueue is Queue {
     for (uint256 i; i < ids.length; ++i) {
       require(hints[i] == 1);
       amounts[i] = _payout[ids[i]];
+    }
+  }
+
+  function getLastCheckpointIndex() external pure returns (uint256) {
+    return 1;
+  }
+
+  function findCheckpointHints(uint256[] calldata ids, uint256 first, uint256 last)
+    external
+    pure
+    returns (uint256[] memory hints)
+  {
+    require(first == 1 && last == 1);
+    hints = new uint256[](ids.length);
+    for (uint256 i; i < ids.length; ++i) {
+      hints[i] = 1;
     }
   }
 

@@ -8,10 +8,10 @@ import {Operation} from "src/types/HarborTypes.sol";
 /// @title BookClaims
 /// @notice Individually approved claim markets, custody exports and vault receipt recovery.
 /// @dev All entrypoints share the existing Book/Vault transaction lock. Prices and
-/// token settlement remain in the ordinary signed-quote executor and router.
+/// token settlement remain in the standing-pricing executor and router.
 abstract contract BookClaims is BookState {
   /// @notice Effective factory admission and exact quote invalidation epoch.
-  event ClaimIntegrationStatusChanged(address indexed factory, bool enabled, bool retired, uint256 quoteEpoch);
+  event ClaimIntegrationStatusChanged(address indexed factory, bool enabled, bool retired, uint256 configVersion);
 
   /// @notice Schedule a factory against a native issuer and immutable claim price bounds.
   /// @param source Original inventory route; all descendant markets share its risk limits.
@@ -26,7 +26,7 @@ abstract contract BookClaims is BookState {
   function activateClaimFactory(address factory) external {
     _claimAdmin();
     ClaimMarkets.activate(_claimMarkets, factory);
-    emit ClaimIntegrationStatusChanged(factory, true, false, ++quoteEpoch);
+    emit ClaimIntegrationStatusChanged(factory, true, false, ++configVersion);
   }
 
   /// @notice Irreversibly disable new exposure; existing recovery and sales remain available.
@@ -34,7 +34,7 @@ abstract contract BookClaims is BookState {
     if (msg.sender != GOVERNOR && msg.sender != GUARDIAN) revert Unauthorized();
     if (_operation != Operation.NONE) revert Busy();
     ClaimMarkets.retire(_claimMarkets, factory);
-    emit ClaimIntegrationStatusChanged(factory, false, true, ++quoteEpoch);
+    emit ClaimIntegrationStatusChanged(factory, false, true, ++configVersion);
   }
 
   /// @notice Admit one canonical pending receipt as a stable route, without acquiring it.
@@ -43,7 +43,6 @@ abstract contract BookClaims is BookState {
     _claimAdmin();
     if (stopped) revert Unauthorized();
     route = ClaimMarkets.register(_claimMarkets, _routes, factory, receipt, WETH);
-    ++quoteEpoch;
   }
 
   /// @notice Move a managed native right to one vault-owned receipt without realizing PnL.

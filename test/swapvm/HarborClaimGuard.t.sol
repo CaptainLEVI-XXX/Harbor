@@ -3,12 +3,11 @@ pragma solidity 0.8.30;
 
 import {LidoClaimFixture} from "test/base/LidoClaimFixture.sol";
 import {HarborClaimGuard} from "src/swapvm/instructions/HarborClaimGuard.sol";
-import {HarborExactFill} from "src/swapvm/instructions/HarborExactFill.sol";
+import {HarborPricing} from "src/swapvm/instructions/HarborPricing.sol";
 import {HarborSwapVMRouter} from "src/swapvm/HarborSwapVMRouter.sol";
 import {Context, ContextLib, SwapRegisters} from "@1inch/swap-vm/src/libs/VM.sol";
 import {CalldataPtrLib} from "@1inch/solidity-utils/contracts/libraries/CalldataPtr.sol";
-import {Opcode} from "@1inch/swap-vm/src/libs/OpcodeList.sol";
-import {FillAuthority} from "test/swapvm/HarborExactFill.t.sol";
+import {FillAuthority} from "test/swapvm/HarborPricing.t.sol";
 
 contract ClaimGuardHarness is HarborSwapVMRouter {
   using ContextLib for Context;
@@ -64,7 +63,7 @@ contract HarborClaimGuardTest is LidoClaimFixture {
   function test_LateGuardFailureRollsBackPrecedingAuthorization() public {
     FillAuthority authority = new FillAuthority();
     bytes memory program = bytes.concat(
-      HarborExactFill.build(address(authority), 7, 9), HarborClaimGuard.build(address(receipt), address(factory), 1)
+      HarborPricing.build(address(authority), 7, 9), HarborClaimGuard.build(address(receipt), address(factory), 1)
     );
     vm.expectRevert();
     guard.runLoop(program, hex"abcdef", address(receipt), address(weth));

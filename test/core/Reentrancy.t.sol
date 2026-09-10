@@ -7,7 +7,7 @@ import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {HarborBook} from "src/book/HarborBook.sol";
 import {HarborExecutor} from "src/execution/HarborExecutor.sol";
-import {Trade, FillTerms, Side, AmountMode} from "src/types/HarborTypes.sol";
+import {Trade, Side, AmountMode} from "src/types/HarborTypes.sol";
 import {TradingFixture} from "test/base/TradingFixture.sol";
 import {VaultState} from "src/vault/base/VaultState.sol";
 import {Test} from "forge-std/Test.sol";
@@ -28,7 +28,7 @@ contract IssuerReentrancyTest is IssuerFixture {
     queue.setFinalized(id, 1.2 ether);
     queue.setCallback(address(this));
     _claim(id);
-    assertEq(checks, 6);
+    assertEq(checks, 8);
     assertTrue(queue.callbackSucceeded()); // Probe returned normally; nested calls failed.
     assertTrue(book.getClaim(address(adapter), id).closed);
   }
@@ -51,6 +51,12 @@ contract IssuerReentrancyTest is IssuerFixture {
     assertFalse(ok);
     ++checks;
     (ok,) = address(book).call(abi.encodeCall(book.revokeKeeper, ()));
+    assertFalse(ok);
+    ++checks;
+    (ok,) = address(book).call(abi.encodeCall(book.revokeUpdater, ()));
+    assertFalse(ok);
+    ++checks;
+    (ok,) = address(book).call(abi.encodeCall(book.publishPricing, (0, book.pricingParameters(0))));
     assertFalse(ok);
     ++checks;
   }
@@ -106,12 +112,10 @@ contract TradingReentrancyTest is TradingFixture {
   }
 
   function test_RouterFeeAndTraderCallbacksRemainLocked() public {
-    (Trade memory t, FillTerms memory f, bytes memory sig, ISwapVM.Order memory order) =
-      _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
-    TradingCallbackToken(address(weth))
-      .arm(vault, book, address(executor), abi.encodeCall(executor.execute, (t, f, sig, order)));
+    (Trade memory t,) = _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
+    TradingCallbackToken(address(weth)).arm(vault, book, address(executor), abi.encodeCall(executor.execute, (t)));
     vm.prank(trader);
-    executor.execute(t, f, sig, order);
+    executor.execute(t);
     assertEq(TradingCallbackToken(address(weth)).rejected(), 21);
     vault.checkpointValuation();
     assertEq(vault.totalAssets(), 20.01 ether);

@@ -7,7 +7,7 @@ import {BookState} from "src/book/base/BookState.sol";
 /// @title BookGovernance
 /// @notice Bounded governance and emergency stops for one immutable Book mandate.
 /// @dev Stopping trading invalidates quotes and fresh NAV, not funded LP claims.
-/// Signer/resume changes are delayed; keeper revocation does not block recovery.
+/// Updater/resume changes are delayed; keeper revocation does not block recovery.
 abstract contract BookGovernance is BookState {
   /// @notice Irreversibly revoke new keeper requests; existing recovery stays open.
   function revokeKeeper() external {
@@ -25,31 +25,42 @@ abstract contract BookGovernance is BookState {
     if (_operation != Operation.NONE) revert Busy();
     stopped = true;
     resumeReadyAt = 0;
-    ++quoteEpoch;
+    ++configVersion;
     VAULT.invalidateValuation();
-    emit TradingStopped(quoteEpoch);
+    emit TradingStopped(configVersion);
   }
 
-  /// @notice Schedule a nonzero signer replacement after GOVERNANCE_DELAY.
-  /// @param signer New quote signer; no other authority or policy changes.
-  function scheduleSigner(address signer) external {
+  /// @notice Schedule a publisher replacement after GOVERNANCE_DELAY.
+  /// @param updater New parameter publisher, without valuation or treasury authority.
+  function scheduleUpdater(address updater) external {
     _governance();
-    if (signer == address(0)) revert InvalidConfiguration();
-    pendingSigner = signer;
-    signerReadyAt = block.timestamp + GOVERNANCE_DELAY;
-    emit SignerScheduled(signer, signerReadyAt);
+    if (updater == address(0)) revert InvalidConfiguration();
+    pendingUpdater = updater;
+    updaterReadyAt = block.timestamp + GOVERNANCE_DELAY;
+    emit UpdaterScheduled(updater, updaterReadyAt);
   }
 
-  /// @notice Permissionlessly apply a matured signer replacement while idle.
-  /// @dev Advancing quoteEpoch invalidates prior quotes; consumed nonces persist.
-  function applySigner() external {
+  /// @notice Immediately revoke publication and invalidate standing observations.
+  /// @dev Recovery and funded LP claims stay available. Re-enabling requires a delayed rotation.
+  function revokeUpdater() external {
+    if (msg.sender != GOVERNOR && msg.sender != GUARDIAN) revert Unauthorized();
     if (_operation != Operation.NONE) revert Busy();
-    if (signerReadyAt == 0 || block.timestamp < signerReadyAt) revert Unauthorized();
-    quoteSigner = pendingSigner;
-    pendingSigner = address(0);
-    signerReadyAt = 0;
-    ++quoteEpoch;
-    emit SignerChanged(quoteSigner, quoteEpoch);
+    parameterUpdater = address(0);
+    pendingUpdater = address(0);
+    updaterReadyAt = 0;
+    emit UpdaterChanged(address(0), ++configVersion);
+  }
+
+  /// @notice Permissionlessly apply a matured updater replacement while idle.
+  /// @dev Advancing configVersion invalidates prior quotes; consumed nonces persist.
+  function applyUpdater() external {
+    if (_operation != Operation.NONE) revert Busy();
+    if (updaterReadyAt == 0 || block.timestamp < updaterReadyAt) revert Unauthorized();
+    parameterUpdater = pendingUpdater;
+    pendingUpdater = address(0);
+    updaterReadyAt = 0;
+    ++configVersion;
+    emit UpdaterChanged(parameterUpdater, configVersion);
   }
 
   /// @notice Governor schedules resumption of an already stopped Book.
@@ -68,8 +79,8 @@ abstract contract BookGovernance is BookState {
     if (resumeReadyAt == 0 || block.timestamp < resumeReadyAt) revert Unauthorized();
     resumeReadyAt = 0;
     stopped = false;
-    ++quoteEpoch;
-    emit TradingResumed(quoteEpoch);
+    ++configVersion;
+    emit TradingResumed(configVersion);
   }
 
   /// @dev Require the governor and an idle shared operation context.
