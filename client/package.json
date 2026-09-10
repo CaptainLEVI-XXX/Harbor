@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@privy-io/react-auth": "^3.40.0",
+    "@radix-ui/react-select": "^2.3.7",
     "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8"
