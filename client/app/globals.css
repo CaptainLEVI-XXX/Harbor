@@ -45,6 +45,7 @@ canvas.layer {
   pointer-events: none;        /* the ground below stays clickable */
 }
 .fg button, .fg a { pointer-events: auto; cursor: pointer; }
+.fg input, .fg [role='combobox'], .fg [role='listbox'] { pointer-events: auto; }
 
 .nav { display: flex; align-items: center; padding: 2.2% 3.1% 0; }
 
@@ -54,7 +55,8 @@ canvas.layer {
   font-weight: 700; font-size: 1.30em;      /* 24px - guidelines wordmark */
   letter-spacing: -0.03em; line-height: 0.96;
 }
-.mark svg { flex: none; }
+.mark { color: inherit; text-decoration: none; }
+.mark svg { flex: none; filter: drop-shadow(0 3px 6px rgba(74,47,107,.26)); }
 .mark sup { font-size: 0.42em; font-weight: 500; color: #6F6689; margin-top: 0.1em; }
 
 .navlinks {
@@ -133,3 +135,232 @@ canvas.layer {
 @media (prefers-reduced-motion: reduce) {
   .stage { cursor: default; }
 }
+
+
+/* ============================================================
+   SWAP - four depths, every one derived from the lattice cell.
+   Spec: docs/superpowers/specs/2026-09-10-harbor-swap-design.md §3
+   Introduce no new material here.
+   ============================================================ */
+
+.swap-wrap {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  padding: 6px 0 26px;
+  font-size: 15px;                 /* px, not cqw: the panel is a fixed 512 */
+}
+.panel { width: 512px; }
+
+/* DEPTH 1 - raised off the lattice */
+.modal {
+  border-radius: 34px;
+  padding: 22px 22px 20px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.92) 0%, rgba(255,255,255,.62) 46%, rgba(214,199,240,.42) 100%),
+    linear-gradient(135deg, #F7F3FD, #EFE8F9);
+  border: 1px solid rgba(255,255,255,.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,1),
+    inset 0 -1px 0 rgba(116,94,166,.08),
+    0 40px 80px -32px rgba(74,47,107,.62),
+    0 12px 28px -14px rgba(74,47,107,.22),
+    0 3px 8px -4px rgba(74,47,107,.10);
+}
+
+/* DEPTH 2 - pressed into the modal */
+.well, .list {
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(226,215,244,.72), rgba(238,231,250,.55));
+  box-shadow:
+    inset 0 2px 6px rgba(88,70,110,.11),
+    inset 0 -1px 0 rgba(255,255,255,.85);
+}
+.well { padding: 15px 20px 13px; }
+.list { padding: 6px; }
+
+/* DEPTH 4 - flat on the modal face, behind a hairline */
+.sec {
+  padding: 15px 4px 3px;
+  margin-top: 14px;
+  border-top: 1px solid rgba(116,94,166,.13);
+}
+
+/* DEPTH 3 - a HOLE cut through the seam where the two wells touch.
+   Four rules make it read as carved: no outer shadow, no border, a face
+   darker than its surround, and the lip highlight below the opening.
+   The wrapper is zero-height and the button is absolutely positioned:
+   `place-items:center` on a zero-height track does NOT straddle - the track
+   sizes to content and the item renders downward, 29px low. */
+.rev { position: relative; height: 0; z-index: 3; }
+.rev button {
+  position: absolute; left: 50%; top: 0;
+  transform: translate(-50%, -50%);
+  width: 56px; height: 56px; border-radius: 30%;
+  display: grid; place-items: center;
+  font-size: 18px; color: #5F4A82; border: 0;
+  background:
+    linear-gradient(135deg, rgba(120,98,164,.22) 0%, rgba(150,130,190,.07) 42%, rgba(255,255,255,.50) 100%),
+    linear-gradient(#E4DBF3, #E9E2F6);
+  box-shadow:
+    inset 0 5px 9px -2px rgba(74,56,100,.34),      /* top wall, in shadow */
+    inset 4px 0 8px -4px rgba(74,56,100,.22),      /* left wall */
+    inset 0 -5px 8px -3px rgba(255,255,255,.90),   /* bottom wall, catching light */
+    inset -4px 0 7px -4px rgba(255,255,255,.62),   /* right wall */
+    0 1px 0 rgba(255,255,255,.95);                 /* the lip below the hole */
+  transition: box-shadow .2s cubic-bezier(.2,.8,.2,1);
+}
+.rev button:hover {           /* a hole deepens; it does not lift */
+  box-shadow:
+    inset 0 7px 12px -2px rgba(74,56,100,.42),
+    inset 5px 0 10px -4px rgba(74,56,100,.28),
+    inset 0 -5px 8px -3px rgba(255,255,255,.92),
+    inset -4px 0 7px -4px rgba(255,255,255,.66),
+    0 1px 0 rgba(255,255,255,.95);
+}
+
+/* ---------- panel head ---------- */
+.swap-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 18px; margin: 2px 2px 15px;
+}
+.swap-head h1 {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-weight: 700; font-size: 21px; letter-spacing: -.03em;
+  margin: 0 0 2px; line-height: 1.1;
+}
+.swap-head p { color: #6F6689; font-size: 12.5px; margin: 0; }
+
+.seg {
+  display: inline-flex; gap: 2px; padding: 3px; border-radius: 16px; flex: none;
+  background: linear-gradient(135deg, rgba(255,255,255,.80), rgba(255,255,255,.58) 55%, rgba(255,255,255,.46));
+  border: 1px solid rgba(255,255,255,.72);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 6px 16px -10px rgba(74,47,107,.32);
+}
+.seg button {
+  padding: 7px 16px; border-radius: 13px;
+  font-family: inherit; font-weight: 500; font-size: 13px; color: #6F6689;
+  background: none; border: 0;
+}
+.seg button[aria-pressed="true"] {
+  background: linear-gradient(135deg, #fff, rgba(255,255,255,.7));
+  color: #4A2F6B; font-weight: 600;
+  box-shadow: 0 1px 3px rgba(74,47,107,.1);
+}
+
+/* ---------- the two wells ---------- */
+.frow { display: flex; align-items: center; justify-content: space-between; }
+.flabel { font-size: 13px; color: #5B4478; }
+
+.amt { display: flex; align-items: center; gap: 16px; margin: 6px 0 5px; }
+.amt input {
+  flex: 1; min-width: 0; border: 0; background: none; padding: 0; outline: none;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 34px; font-weight: 400; letter-spacing: -.02em; color: #4A2F6B;
+}
+.amt input.out { color: #6A3FD1; }        /* the one value that moves */
+.amt input::placeholder { color: #B3A7C8; }
+
+.fmeta { display: flex; justify-content: space-between; font-size: 12px; color: #5F4A7C; }
+.fmeta button {
+  background: none; border: 0; font-family: inherit; font-size: 12px;
+  color: #5F4A7C; padding: 0; text-decoration: underline; text-underline-offset: 2px;
+}
+
+.asset {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 13px 7px 12px; border-radius: 16px;
+  font-family: inherit; font-weight: 600; font-size: 16px; color: #4A2F6B;
+  white-space: nowrap;
+  background: linear-gradient(135deg, rgba(255,255,255,.9), rgba(233,225,246,.85));
+  border: 1px solid rgba(255,255,255,.85);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.95),
+    0 6px 14px -7px rgba(74,47,107,.35),
+    0 1px 3px -1px rgba(74,47,107,.18);
+}
+.asset .caret { font-size: 10px; color: #9086A8; }
+.asset[data-state="open"] { box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 0 0 2px rgba(106,63,209,.22); }
+
+.assetmenu {
+  z-index: 40; min-width: 210px; padding: 6px; border-radius: 20px;
+  background: linear-gradient(135deg, rgba(255,255,255,.97), rgba(243,238,251,.97));
+  border: 1px solid rgba(255,255,255,.9);
+  box-shadow: 0 24px 48px -20px rgba(74,47,107,.55), 0 4px 10px -5px rgba(74,47,107,.2);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+.assetitem {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 9px 12px; border-radius: 14px; font-size: 14px; color: #4A2F6B;
+  outline: none; cursor: pointer;
+}
+.assetitem small { font-size: 11.5px; color: #6F6689; }
+.assetitem[data-highlighted] { background: rgba(255,255,255,.95); box-shadow: 0 1px 3px rgba(74,47,107,.12); }
+
+/* ---------- quote ---------- */
+.qhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 11px; }
+.qhead b { font-weight: 600; font-size: 14px; }
+.count {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums; font-size: 13px; color: #6A3FD1;
+}
+.qrow { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; padding: 4px 0; color: #6F6689; }
+.qrow > span:last-child {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums; color: #4A2F6B; white-space: nowrap;
+}
+.qrow small { color: #9086A8; margin-left: 5px; }
+.qrow > span.big { font-size: 20px; font-weight: 500; color: #6A3FD1; }
+.qnote { margin: 11px 0 0; font-size: 12px; color: #6F6689; line-height: 1.5; }
+
+/* ---------- receipts ---------- */
+.rhead, .rcpt { display: grid; grid-template-columns: 66px 1fr 84px 40px 16px; gap: 12px; align-items: center; }
+.rhead {
+  padding: 7px 15px 5px;
+  font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: #9086A8;
+}
+.rhead span:nth-child(2), .rhead span:nth-child(3), .rhead span:nth-child(4) { text-align: right; }
+.rcpt {
+  width: 100%; text-align: left; padding: 11px 15px; border-radius: 17px;
+  color: inherit; background: none; border: 0; font-family: inherit;
+  transition: background .15s;
+}
+.rcpt:hover:not([disabled]) { background: rgba(255,255,255,.55); }
+.rcpt[aria-pressed="true"] {
+  background: linear-gradient(135deg, rgba(255,255,255,.95), rgba(255,255,255,.72));
+  box-shadow: 0 1px 3px rgba(74,47,107,.14), inset 0 0 0 1px rgba(106,63,209,.28);
+}
+.rcpt[aria-pressed="true"] .chev { color: #6A3FD1; }
+.rcpt[disabled] { opacity: .5; cursor: not-allowed; }
+.rid { font-family: var(--font-mono), ui-monospace, monospace; font-size: 13px; color: #6F6689; }
+.ent {
+  font-family: var(--font-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums;
+  font-size: 14.5px; text-align: right; white-space: nowrap;
+}
+.mk {
+  font-family: var(--font-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums;
+  font-size: 13px; color: #6F6689; text-align: right; white-space: nowrap;
+}
+.qd { font-size: 12px; color: #9086A8; text-align: right; white-space: nowrap; }
+.chev { color: #9086A8; text-align: right; }
+
+/* ---------- action ---------- */
+.act {
+  width: 100%; margin-top: 16px; padding: 15px; border-radius: 20px;
+  color: #fff; font-family: inherit; font-weight: 600; font-size: 15px; border: 0;
+  background: linear-gradient(135deg, #5C3D82, #4A2F6B 52%, #402659);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.26), 0 16px 34px -16px rgba(74,47,107,.7);
+  transition: transform .18s cubic-bezier(.2,.8,.2,1), box-shadow .18s;
+}
+.act:hover:not([disabled]) {
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 20px 40px -16px rgba(74,47,107,.78);
+}
+.act[disabled] { opacity: .42; cursor: not-allowed; box-shadow: none; }
+
+.swap-foot {
+  text-align: center; margin: 13px 0 0;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px; color: #9086A8;
+}
+.dim { opacity: .45; }
