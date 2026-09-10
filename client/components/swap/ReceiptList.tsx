@@ -1,5 +1,5 @@
 import type { Receipt } from '@/lib/swap/types';
-import { formatWei } from '@/lib/swap/format';
+import { formatWeiFixed } from '@/lib/swap/format';
 
 type Props = {
   receipts: Receipt[];
@@ -27,21 +27,26 @@ export default function ReceiptList({ receipts, selectedId, onSelect }: Props) {
       </div>
 
       {receipts.map(r => {
-        const tradable = r.state === 'pending' && r.markWei !== null;
+        // a queued receipt can always be inspected, even when Harbor is not
+        // quoting it - the quote panel is where it explains why
+        const selectable = r.state === 'pending';
+        const quoted = r.markWei !== null;
         return (
           <button
             type="button"
             key={r.requestId}
             className="rcpt"
-            disabled={!tradable}
-            aria-pressed={tradable && r.requestId === selectedId}
+            disabled={!selectable}
+            aria-pressed={selectable && r.requestId === selectedId}
             onClick={() => onSelect(r.requestId)}
           >
             <span className="rid">#{r.requestId}</span>
-            <span className="ent">{formatWei(r.entitlementWei, 18)}</span>
-            <span className="mk">{r.markWei !== null ? formatWei(r.markWei, 18) : r.state}</span>
-            <span className="qd">{tradable ? `${r.queuedDays}d` : '—'}</span>
-            <span className="chev">{tradable ? '›' : '✕'}</span>
+            <span className="ent">{formatWeiFixed(r.entitlementWei, 18, 4)}</span>
+            <span className="mk">
+              {quoted ? formatWeiFixed(r.markWei as bigint, 18, 4) : selectable ? 'not quoted' : r.state}
+            </span>
+            <span className="qd">{selectable ? `${r.queuedDays}d` : '—'}</span>
+            <span className="chev">{selectable ? '›' : '✕'}</span>
           </button>
         );
       })}

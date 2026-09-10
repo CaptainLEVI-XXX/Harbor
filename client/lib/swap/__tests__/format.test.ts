@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatWei, parseWei } from '../format';
+import { formatWei, formatWeiFixed, parseWei } from '../format';
 
 describe('formatWei', () => {
   it('formats 1e18 as 1', () => {
@@ -37,5 +37,18 @@ describe('parseWei', () => {
   it('round-trips', () => {
     const v = 3937500000000000000n;
     expect(parseWei(formatWei(v, 18, 18), 18)).toBe(v);
+  });
+});
+
+describe('formatWeiFixed', () => {
+  it('pads so a column lines up on the decimal point', () => {
+    const col = [4120000000000000000n, 1800000000000000000n, 12500000000000000000n, 9000000000000000000n];
+    expect(col.map(v => formatWeiFixed(v, 18, 4))).toEqual(['4.1200', '1.8000', '12.5000', '9.0000']);
+  });
+  it('truncates rather than rounding, like formatWei', () => {
+    expect(formatWeiFixed(1184069999999999999n, 18, 4)).toBe('1.1840');
+  });
+  it('leaves zero-decimal receipts alone', () => {
+    expect(formatWeiFixed(1n, 0, 4)).toBe('1');
   });
 });

@@ -13,8 +13,11 @@ describe('ReceiptList', () => {
 
   it('puts entitlement and mark side by side so the gap between them is legible', () => {
     render(<ReceiptList receipts={RECEIPTS} selectedId={null} onSelect={() => {}} />);
-    expect(screen.getByText('4.12')).toBeInTheDocument();
+    expect(screen.getByText('4.1200')).toBeInTheDocument();
     expect(screen.getByText('3.9414')).toBeInTheDocument();
+    // every figure in the column carries the same four places, so they line up
+    expect(screen.getByText('1.8000')).toBeInTheDocument();
+    expect(screen.getByText('9.0000')).toBeInTheDocument();
   });
 
   it('disables a finalized receipt and says why in place of a mark', () => {
@@ -44,5 +47,17 @@ describe('ReceiptList', () => {
     render(<ReceiptList receipts={RECEIPTS} selectedId={18422} onSelect={() => {}} />);
     expect(screen.getByRole('button', { name: /18422/ })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: /18421/ })).toHaveAttribute('aria-pressed', 'false');
+  });
+});
+
+describe('a queued receipt Harbor is not quoting', () => {
+  it('stays selectable, so the quote panel can say why', async () => {
+    const onSelect = vi.fn();
+    render(<ReceiptList receipts={RECEIPTS} selectedId={null} onSelect={onSelect} />);
+    const row = screen.getByRole('button', { name: /18990/ });
+    expect(row).toBeEnabled();
+    expect(row).toHaveTextContent('not quoted');
+    await userEvent.click(row);
+    expect(onSelect).toHaveBeenCalledWith(18990);
   });
 });

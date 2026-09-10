@@ -40,3 +40,9 @@ export type Quote = {
 
 /** Which leg the user typed into. The contract reaches both from one surface. */
 export type TradeMode = 'exactInput' | 'exactOutput';
+
+/**
+ * Which way round the pair is. Together with TradeMode this reaches all four
+ * contract modes from one surface; the UI never uses the word "side".
+ */
+export type Direction = 'sell' | 'buy';

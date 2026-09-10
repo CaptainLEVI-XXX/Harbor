@@ -30,3 +30,22 @@ export function parseWei(input: string, decimals: number): bigint | null {
 
   return BigInt(whole || '0') * 10n ** BigInt(decimals) + BigInt(padded || '0');
 }
+
+/**
+ * Same as formatWei but pads to a fixed number of fraction digits, so a column
+ * of figures lines up on the decimal point. Tabular figures only pay off when
+ * every row has the same shape - 4.12 above 1.8 defeats them.
+ */
+export function formatWeiFixed(value: bigint, decimals: number, fractionDigits: number): string {
+  if (decimals === 0) return value.toString();
+
+  const base = 10n ** BigInt(decimals);
+  const negative = value < 0n;
+  const abs = negative ? -value : value;
+
+  const whole = abs / base;
+  const fraction = (abs % base).toString().padStart(decimals, '0').slice(0, fractionDigits);
+
+  const sign = negative ? '-' : '';
+  return fractionDigits > 0 ? `${sign}${whole}.${fraction.padEnd(fractionDigits, '0')}` : `${sign}${whole}`;
+}

@@ -1,5 +1,6 @@
-import type { Quote, TradeMode } from './types';
+import type { Quote, TradeMode, Direction } from './types';
 import { TOKEN_RATE_1E18, FEE_BPS, BOOK_LIMIT_WEI } from './fixtures';
+import { formatWei } from './format';
 
 /** A firm signed quote genuinely dies. The UI has to show it dying. */
 export const QUOTE_TTL_MS = 30_000;
@@ -19,38 +20,63 @@ const empty = (state: Quote['state'], extra: Partial<Quote> = {}): Quote => ({
   ...extra,
 });
 
-const RATE_LABEL = '1 wstETH = 1.18406 WETH';
+/**
+ * The pair as a fraction, so no step ever passes through a float.
+ * Selling wstETH pays out at the rate; buying it pays in at the same rate,
+ * inverted.
+ */
+function pair(direction: Direction) {
+  return direction === 'sell'
+    ? { num: TOKEN_RATE_1E18, den: ONE }
+    : { num: ONE, den: TOKEN_RATE_1E18 };
+}
+
+function rateLabel(direction: Direction): string {
+  return direction === 'sell'
+    ? `1 wstETH = ${formatWei(TOKEN_RATE_1E18, 18)} WETH`
+    : `1 WETH = ${formatWei((ONE * ONE) / TOKEN_RATE_1E18, 18)} wstETH`;
+}
+
+export type QuoteRequest = {
+  /** whichever leg the user typed: pay under exactInput, receive under exactOutput */
+  amountWei: bigint;
+  mode: TradeMode;
+  direction: Direction;
+  now: number;
+};
 
 /**
- * Prices the token pair.
- *
- * `amountWei` is whichever leg the user typed: the pay leg under `exactInput`,
- * the receive leg under `exactOutput`. The other leg is derived here so the
+ * Prices the token pair. The leg the user did not type is derived here, so the
  * view never does pricing arithmetic of its own.
  *
  * Rounding always favours the vault - down on what the user receives, up on
  * what the user pays - so a quoted exact output is never short.
  */
-export function quoteTokens(amountWei: bigint, mode: TradeMode, now: number): Quote {
+export function quoteTokens({ amountWei, mode, direction, now }: QuoteRequest): Quote {
   if (amountWei <= 0n) return empty('idle');
+
+  const { num, den } = pair(direction);
 
   let payWei: bigint;
   let receiveWei: bigint;
   let feeWei: bigint;
+  let grossWei: bigint;
 
   if (mode === 'exactInput') {
     payWei = amountWei;
-    const gross = (payWei * TOKEN_RATE_1E18) / ONE;
-    feeWei = (gross * FEE_BPS) / BPS;
-    receiveWei = gross - feeWei;
+    grossWei = (payWei * num) / den;
+    feeWei = (grossWei * FEE_BPS) / BPS;
+    receiveWei = grossWei - feeWei;
   } else {
     receiveWei = amountWei;
-    const gross = divUp(receiveWei * BPS, BPS - FEE_BPS);
-    feeWei = gross - receiveWei;
-    payWei = divUp(gross * ONE, TOKEN_RATE_1E18);
+    grossWei = divUp(receiveWei * BPS, BPS - FEE_BPS);
+    feeWei = grossWei - receiveWei;
+    payWei = divUp(grossWei * den, num);
   }
 
-  if (payWei > BOOK_LIMIT_WEI) {
+  // the book limit is measured on the wstETH leg, whichever side that is
+  const wstethWei = direction === 'sell' ? payWei : grossWei;
+  if (wstethWei > BOOK_LIMIT_WEI) {
     return empty('wontfill', { payWei, limitWei: BOOK_LIMIT_WEI });
   }
 
@@ -59,7 +85,7 @@ export function quoteTokens(amountWei: bigint, mode: TradeMode, now: number): Qu
     payWei,
     receiveWei,
     feeWei,
-    rate: RATE_LABEL,
+    rate: rateLabel(direction),
     expiresAt: now + QUOTE_TTL_MS,
   };
 }
