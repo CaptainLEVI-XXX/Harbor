@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { AllocationPoint } from '@/lib/earn/derive';
 import type { Strategy } from '@/lib/earn/types';
 import { ASSET_DECIMALS } from '@/lib/earn/types';
-import { formatWeiFixed } from '@/lib/format';
+import { formatWeiFixed, group } from '@/lib/format';
 import { PLOT, linear, evenTicks, linePath, bandPath, indexAt } from '@/lib/charts/scale';
 import { fullDate, shortDate } from '@/lib/charts/dates';
 
@@ -71,19 +71,31 @@ export default function AllocationChart({ points, strategies, focus, onFocus }: 
     return { strategy, d: bandPath(top, bottom) };
   });
 
-  const current = shown[hover ?? shown.length - 1];
+  /** Same rule as the yield chart: the header names the chart at rest, and
+   *  becomes the readout on hover. Its total already appears in the hero. */
+  const hovered = hover === null ? null : shown[hover];
+  const first = shown[0];
+  const last = shown[shown.length - 1];
   const labelEvery = Math.ceil(shown.length / 5);
   const outline: [number, number][] = shown.map((p, i) => [x(i), y(eth(p.totalWei))]);
 
   return (
     <div className="chart well">
       <div className="chead">
-        <div>
-          <div className="when">{current ? fullDate(current.at) : ''}</div>
-          <div className="now">
-            {current ? formatWeiFixed(current.totalWei, ASSET_DECIMALS, 3) : '0.000'}
-            <small>WETH</small>
+        <div className="clabel">
+          <div className="when">
+            {hovered ? fullDate(hovered.at) : split ? 'Split across strategies' : 'Total value'}
           </div>
+          {hovered ? (
+            <div className="now">
+              {group(formatWeiFixed(hovered.totalWei, ASSET_DECIMALS, 3))}
+              <small>WETH</small>
+            </div>
+          ) : (
+            <div className="now rest">
+              {first && last ? `${shortDate(first.at)} – ${shortDate(last.at)}` : ''}
+            </div>
+          )}
         </div>
         <div className="ctools">
           <div className="seg glass" role="group" aria-label="Chart mode">
@@ -185,7 +197,15 @@ export default function AllocationChart({ points, strategies, focus, onFocus }: 
 
         {shown.map((p, i) =>
           i % labelEvery || i > shown.length - labelEvery / 2 ? null : (
-            <text key={p.at} className="xtick" x={x(i)} y={HEIGHT - 7} textAnchor="middle">
+            <text
+              key={p.at}
+              className="xtick"
+              x={x(i)}
+              y={HEIGHT - 7}
+              /* a centred label at the plot's edge falls half outside the
+                 viewBox and is clipped - the first one read "Aug" */
+              textAnchor={i === 0 ? 'start' : i === shown.length - 1 ? 'end' : 'middle'}
+            >
               {shortDate(p.at)}
             </text>
           ),

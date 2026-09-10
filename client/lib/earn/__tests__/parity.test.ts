@@ -87,11 +87,19 @@ describe('earn page parity', () => {
   });
 
   it('caps the two lists so they scroll instead of stretching the card', () => {
-    expect(earnCss).toMatch(/\.earn \.scroller \{[^}]*max-height:/);
     expect(earnCss).toMatch(/\.earn \.scroller \{[^}]*overflow-y: auto/);
-    // the totals row must stay outside the scroll - a total that scrolls away
-    // is not a total
-    expect(earnCss).toMatch(/\.earn \.shdr \{[^}]*position: sticky/);
+    // the cap is a multiple of a FIXED row height, so it always lands on half
+    // a row: that half row is the affordance. A content-sized row clips at an
+    // arbitrary point and reads as a rendering bug.
+    expect(earnCss).toMatch(/max-height: calc\(var\(--row\) \* 5\.5\)/);
+    expect(earnCss).toMatch(/\.earn \.srow \{ height: 48px/);
+    expect(earnCss).toMatch(/\.earn \.act-row \{ height: 40px/);
+    expect(earnCss).toMatch(/\.earn \.list \.scroller \{ --row: 48px; \}/);
+    expect(earnCss).toMatch(/\.earn \.acts \.scroller \{ --row: 40px; \}/);
+    // scrolling the rows must not scroll the page with them
+    expect(earnCss).toMatch(/overscroll-behavior: contain/);
+    // and the cut edge fades, so the half row reads as "more" not as clipping
+    expect(earnCss).toMatch(/\.earn \.scrollwrap::after \{/);
   });
 
 

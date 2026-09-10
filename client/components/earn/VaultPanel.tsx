@@ -6,7 +6,7 @@ import { actionDisabled, actionLabel, panelState, type Tab } from '@/lib/earn/pa
 import type { ExitLiquidity, ExitTicket } from '@/lib/earn/types';
 import { ASSET_DECIMALS, SHARE_DECIMALS } from '@/lib/earn/types';
 import { WALLET } from '@/lib/earn/fixtures';
-import { formatWeiFixed, parseWei } from '@/lib/format';
+import { formatWeiFixed, group, parseWei } from '@/lib/format';
 
 const WAD = 10n ** 18n;
 /** HarborVault._decimalsOffset(): shares carry six MORE decimals than assets. */
@@ -130,11 +130,11 @@ export default function VaultPanel({
           <>
             <div className="qrow">
               <span>Ready to pay now</span>
-              <span>{formatWeiFixed(liquidity.readyWei, ASSET_DECIMALS, 2)} WETH</span>
+              <span>{group(formatWeiFixed(liquidity.readyWei, ASSET_DECIMALS, 2))} WETH</span>
             </div>
             <div className="qrow">
               <span>Queued ahead of you</span>
-              <span>{formatWeiFixed(liquidity.queuedAheadWei, ASSET_DECIMALS, 2)} WETH</span>
+              <span>{group(formatWeiFixed(liquidity.queuedAheadWei, ASSET_DECIMALS, 2))} WETH</span>
             </div>
           </>
         )}

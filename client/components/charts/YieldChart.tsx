@@ -37,19 +37,32 @@ export default function YieldChart({ points }: { points: YieldPoint[] }) {
   const y = linear([0, max], [PLOT.top + plotHeight, PLOT.top]);
   const centre = (i: number) => PLOT.left + step * i + step / 2;
 
-  const active = hover ?? shown.length - 1;
-  const current = shown[active];
+  /**
+   * At rest the header names the chart; the figures belong to the hover. The
+   * headline APY is already the largest thing on the page, and repeating it
+   * here read as a second, competing headline of the same number.
+   */
+  const hovered = hover === null ? null : shown[hover];
+  const first = shown[0];
+  const last = shown[shown.length - 1];
   const line: [number, number][] = shown.map((p, i) => [centre(i), y(p.trailingPct)]);
   const labelEvery = Math.ceil(shown.length / 6);
 
   return (
     <div className="chart well">
       <div className="chead">
-        <div>
-          <div className="when">{current ? fullDate(current.at) : ''}</div>
-          <div className="now">
-            {current ? current.trailingPct.toFixed(2) : '0.00'}%<small>30-day average</small>
-          </div>
+        <div className="clabel">
+          <div className="when">{hovered ? fullDate(hovered.at) : 'Daily yield'}</div>
+          {hovered ? (
+            <div className="now">
+              {hovered.dailyPct.toFixed(2)}%
+              <small>on the day · {hovered.trailingPct.toFixed(2)}% average</small>
+            </div>
+          ) : (
+            <div className="now rest">
+              {first && last ? `${shortDate(first.at)} – ${shortDate(last.at)}` : ''}
+            </div>
+          )}
         </div>
         <div className="seg glass" role="group" aria-label="Yield range">
           {RANGES.map(r => (
@@ -141,7 +154,8 @@ export default function YieldChart({ points }: { points: YieldPoint[] }) {
               className="xtick"
               x={centre(i)}
               y={HEIGHT - 7}
-              textAnchor="middle"
+              /* see AllocationChart: an edge label anchored middle gets clipped */
+              textAnchor={i === 0 ? 'start' : 'middle'}
             >
               {shortDate(p.at)}
             </text>

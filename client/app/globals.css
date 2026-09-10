@@ -418,7 +418,7 @@ canvas.layer {
 /* ---------- page ---------- */
 .earn{position:relative;z-index:2;
       width:100%;max-width:calc(1204px + 88px);
-      margin:0 auto;padding:6px 44px 96px;
+      margin:0 auto;padding:30px 44px 96px;
       display:grid;grid-template-columns:minmax(0,760px) 420px;gap:24px;
       align-items:start;justify-content:center}
 /* a grid child's default min-width is auto, so a wide table would push the
@@ -636,7 +636,10 @@ canvas.layer {
    The rows scroll inside a fixed frame; the column header and the totals row
    stay put, because a total that scrolls away is not a total. */
 .earn .scroller {
-  max-height: 292px;
+  /* Rows are a fixed height so the cap lands on exactly half a row - that
+     half row is the affordance. A content-sized row clips at an arbitrary
+     point and reads as a rendering bug rather than as "there is more". */
+  max-height: calc(var(--row) * 5.5);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -651,25 +654,88 @@ canvas.layer {
   background-clip: content-box;
 }
 .earn .scroller::-webkit-scrollbar-thumb:hover { background: rgba(116, 94, 166, .42); background-clip: content-box; }
-.earn .acts .scroller { max-height: 232px; }
+.earn .list .scroller { --row: 48px; }
+.earn .acts .scroller { --row: 40px; }
 
-/* the header sits above the scroll, on the well's own ground */
-.earn .shdr {
-  position: sticky; top: 0; z-index: 1;
-  background: linear-gradient(rgba(235, 227, 249, .96), rgba(235, 227, 249, .82));
-  backdrop-filter: blur(3px);
-}
+/* The header and the totals row sit OUTSIDE the scroll, so both are always
+   visible however far the rows are scrolled. (An earlier pass made .shdr
+   sticky, which did nothing: it was never inside the scroll container.) */
 
 /* ---------- tighter rows ----------
    The two-line holding cell was making every row 76px tall. */
-.earn .srow { padding: 9px 14px; }
-.earn .hold { gap: 1px; }
-.earn .hold .pct { font-size: 10.5px; line-height: 1.25; }
+.earn .srow { height: 48px; padding: 0 14px; }
+.earn .act-row { height: 40px; padding: 0 14px; font-size: 13px; }
+.earn .hold { gap: 0; }
+.earn .hold .pct { font-size: 10px; line-height: 1.3; opacity: .8; }
 .earn .srow .num { font-size: 13px; }
 .earn .pair { font-size: 13.5px; }
 .earn .sw { height: 20px; width: 8px; }
-.earn .act-row { padding: 8px 14px; font-size: 13px; }
+
+/* the strategy name deserves the room; the holding figure does not need 168px */
+.earn .cols { grid-template-columns: 1fr 152px 94px 86px 84px; }
+
+/* the note lines up with the row text inside the well above it, not with the
+   well's outer edge - otherwise it reads as a different column */
+.earn .note { padding: 15px 20px 0; }
 
 /* ---------- the duo reads better with the prose given the width it needs */
 .earn .duo { grid-template-columns: 250px 1fr; gap: 30px; }
 .earn .prose { max-width: 58ch; }
+
+/* The nav is full-bleed on the locked routes, where the content is a single
+   centred modal and alignment does not read. On a wide data page it does: the
+   wordmark should share a left edge with the first card, and Connect should
+   share a right edge with the panel. */
+.stage--scroll .nav {
+  width: 100%;
+  max-width: calc(1204px + 88px);
+  margin: 0 auto;
+  padding: 26px 44px 0;
+}
+
+/* ---------- chart chrome ----------
+   The range control was competing with the figure it belongs to. */
+.earn .chart .seg button { padding: 5px 11px; font-size: 12px; }
+.earn .chart { padding: 15px 16px 8px; }
+.earn .chead { margin-bottom: 6px; }
+.earn .chead .now { font-size: 21px; }
+.earn .gtick { font-size: 9px; }
+.earn .xtick { font-size: 9.5px; }
+
+/* The half row at the cap is the "there is more" affordance, but a hard cut
+   reads as clipping. A short fade over the bottom edge makes it deliberate.
+   It stops short of the scrollbar gutter so the thumb is never dimmed. */
+.earn .scrollwrap { position: relative; }
+.earn .scrollwrap::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 10px; bottom: 0;
+  height: 30px;
+  pointer-events: none;
+  background: linear-gradient(rgba(235, 227, 249, 0), rgba(235, 227, 249, .96));
+  border-bottom-left-radius: 18px;
+  border-bottom-right-radius: 18px;
+}
+
+/* the contract links close the card rather than trailing one column */
+.earn .duo + .links {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(116, 94, 166, .13);
+}
+
+/* ---------- chart header ----------
+   At rest the header names the chart; the figures belong to the hover. Both
+   states are the same height, so moving the pointer over a chart never nudges
+   the layout. */
+.earn .chead { align-items: center; }
+.earn .clabel { min-height: 44px; display: flex; flex-direction: column; justify-content: center; }
+.earn .chead .when { font-weight: 500; color: #5B4478; }
+.earn .chead .now.rest {
+  font-size: 14px;
+  font-weight: 400;
+  color: #6F6689;
+  letter-spacing: 0;
+}
+/* the stats row needs to clear its descenders before the well starts */
+.earn .chart { margin-top: 24px; }

@@ -5,7 +5,7 @@
  */
 
 /** The plot box shared by both charts, in viewBox units. */
-export const PLOT = { width: 680, left: 8, right: 52, top: 10, bottom: 24 } as const;
+export const PLOT = { width: 680, left: 6, right: 40, top: 10, bottom: 22 } as const;
 
 export function linear(
   domain: [number, number],

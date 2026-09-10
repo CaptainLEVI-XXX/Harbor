@@ -54,10 +54,17 @@ describe('AllocationChart', () => {
     expect(container.querySelector('path[data-total]')).toBeTruthy();
   });
 
-  it('heads the card with the latest total', () => {
+  it('names the chart at rest rather than repeating the hero total', async () => {
     const { container } = render(
       <AllocationChart points={points} strategies={strategies} focus={null} onFocus={() => {}} />,
     );
-    expect(container.querySelector('.now')!.textContent).toContain('100.000');
+    expect(container.querySelector('.when')!.textContent).toBe('Split across strategies');
+    // 40 points in the fixture, but the default range shows the last 30
+    expect(container.querySelector('.now')!.textContent).toContain('12 Aug – 10 Sep');
+    // the hero already carries this figure as "Total value"
+    expect(container.querySelector('.chead')!.textContent).not.toContain('100.000');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Total' }));
+    expect(container.querySelector('.when')!.textContent).toBe('Total value');
   });
 });

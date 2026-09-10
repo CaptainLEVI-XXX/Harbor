@@ -12,11 +12,13 @@ const points: YieldPoint[] = Array.from({ length: 60 }, (_, i) => ({
 }));
 
 describe('YieldChart', () => {
-  it('heads the card with the latest trailing figure, not a blank', () => {
+  it('names the chart and the window it covers, rather than repeating the headline', () => {
     const { container } = render(<YieldChart points={points} />);
-    // the figure and its qualifier share one node, so match on the node
-    expect(container.querySelector('.now')!.textContent).toContain('4.59%');
-    expect(screen.getByText('10 Sep 2026')).toBeInTheDocument();
+    expect(container.querySelector('.when')!.textContent).toBe('Daily yield');
+    expect(container.querySelector('.now')!.textContent).toContain('12 Aug – 10 Sep');
+    // the trailing average is already the page's headline; a second copy of it
+    // here read as a competing headline of the same number
+    expect(container.querySelector('.chead')!.textContent).not.toContain('4.59');
   });
 
   it('draws one bar per day in the chosen range', () => {
@@ -28,7 +30,7 @@ describe('YieldChart', () => {
     const { container } = render(<YieldChart points={points} />);
     await userEvent.click(screen.getByRole('button', { name: '1W' }));
     expect(container.querySelectorAll('rect[data-bar]')).toHaveLength(7);
-    expect(container.querySelector('.now')!.textContent).toContain('4.59%');
+    expect(container.querySelector('.now')!.textContent).toContain('04 Sep – 10 Sep');
   });
 
   it('marks the chosen range as pressed, and only that one', () => {

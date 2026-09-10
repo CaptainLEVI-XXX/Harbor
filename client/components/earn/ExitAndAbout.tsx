@@ -1,6 +1,6 @@
 import type { ExitLiquidity } from '@/lib/earn/types';
 import { ASSET_DECIMALS } from '@/lib/earn/types';
-import { formatWeiFixed } from '@/lib/format';
+import { formatWeiFixed, group } from '@/lib/format';
 
 /**
  * Two subjects in one card because they are one argument: the mechanism, and
@@ -18,11 +18,11 @@ export default function ExitAndAbout({ liquidity }: { liquidity: ExitLiquidity }
           <div className="liq">
             <div>
               <span>Ready to pay now</span>
-              <b className="num">{formatWeiFixed(liquidity.readyWei, ASSET_DECIMALS, 2)} WETH</b>
+              <b className="num">{group(formatWeiFixed(liquidity.readyWei, ASSET_DECIMALS, 2))} WETH</b>
             </div>
             <div>
               <span>Already queued</span>
-              <b className="num">{formatWeiFixed(liquidity.queuedAheadWei, ASSET_DECIMALS, 2)} WETH</b>
+              <b className="num">{group(formatWeiFixed(liquidity.queuedAheadWei, ASSET_DECIMALS, 2))} WETH</b>
             </div>
             <div>
               <span>Recent exits took</span>
@@ -54,13 +54,17 @@ export default function ExitAndAbout({ liquidity }: { liquidity: ExitLiquidity }
               hWETH is your share of that pot. It pays nothing out; it is worth more WETH over time.
             </p>
           </div>
-          <div className="links">
-            <a href="#">Vault contract</a>
-            <a href="#">Book contract</a>
-            <a href="#">Audit</a>
-            <a href="#">Docs</a>
-          </div>
         </div>
+      </div>
+
+      {/* the links belong to the vault, not to the prose column - as a footer
+          they close the card's bottom edge instead of leaving the left column
+          ending in dead space */}
+      <div className="links">
+        <a href="#">Vault contract</a>
+        <a href="#">Book contract</a>
+        <a href="#">Audit</a>
+        <a href="#">Docs</a>
       </div>
     </section>
   );

@@ -1,7 +1,7 @@
 import YieldChart from '@/components/charts/YieldChart';
 import type { YieldPoint } from '@/lib/earn/derive';
 import { ASSET_DECIMALS } from '@/lib/earn/types';
-import { formatWeiFixed } from '@/lib/format';
+import { formatWeiFixed, group } from '@/lib/format';
 
 type Props = {
   apyPct: number;
@@ -12,13 +12,6 @@ type Props = {
   priceWad: bigint;
   points: YieldPoint[];
 };
-
-/** Thousands separators on the whole part, fraction left alone. */
-function grouped(value: string): string {
-  const [whole, fraction] = value.split('.');
-  const separated = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return fraction ? `${separated}.${fraction}` : separated;
-}
 
 /**
  * Name, headline, three stats and the yield chart share ONE modal. They are one
@@ -49,7 +42,7 @@ export default function VaultHero({ apyPct, deltaPct, navWei, volume30dWei, pric
       <div className="stats">
         <div className="stat">
           <span>Total value</span>
-          <b>{grouped(formatWeiFixed(navWei, ASSET_DECIMALS, 3))}</b>
+          <b>{group(formatWeiFixed(navWei, ASSET_DECIMALS, 3))}</b>
           <i>WETH</i>
         </div>
         <div className="stat">
