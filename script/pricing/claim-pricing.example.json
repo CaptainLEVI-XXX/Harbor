@@ -1,11 +1,24 @@
 {
   "annual_funding_rate": "0.08",
-  "operating_costs_weth": "0.0005",
-  "risk_buffer_weth": "0.005",
-  "capacity_charge_weth": "0.001",
-  "minimum_profit_weth": "0.002",
+  "nominal_entitlement_weth": "1",
+  "exposure_weth": "750",
+  "capacity_weth": "1000",
+  "target_utilization": "0.6",
+  "kappa": "0.0025",
+  "buy_margin": "0.002",
+  "sell_margin": "0.002",
+  "buy_cost_weth": "0.0005",
+  "sell_cost_weth": "0.0005",
   "scenarios": [
-    {"probability": "0.8", "recovery_weth": "1", "remaining_days": "7"},
-    {"probability": "0.2", "recovery_weth": "0.98", "remaining_days": "30"}
+    {
+      "probability": "0.8",
+      "recovery_fraction": "1",
+      "remaining_days": "7"
+    },
+    {
+      "probability": "0.2",
+      "recovery_fraction": "0.98",
+      "remaining_days": "30"
+    }
   ]
 }
