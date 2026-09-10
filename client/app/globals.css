@@ -402,3 +402,221 @@ canvas.layer {
   font-size: 11px; color: #9086A8;
 }
 .dim { opacity: .45; }
+
+
+/* ================= earn =================
+   Ported from client/design/earn-v2.html, scoped under .earn so the swap
+   page's .modal/.well/.sec/.list/.act rules in this file cannot collide.
+   Two rules from the spec are load-bearing here:
+     - a chart is a WELL (depth 2), never a new surface
+     - .gain/.loss are STATE, defined once at the top of this file, and
+       appear only on a signed figure
+   ========================================= */
+/* ---------- page ---------- */
+.earn{position:relative;z-index:2;width:calc(760px + 420px + 24px);
+      margin:0 auto;padding:6px 0 96px;
+      display:grid;grid-template-columns:760px 420px;gap:24px;align-items:start}
+.earn .col{display:flex;flex-direction:column;gap:20px;min-width:0}
+.earn .rail{position:sticky;top:84px;display:flex;flex-direction:column;gap:14px}
+
+/* DEPTH 1 - the modal */
+.earn .modal{border-radius:34px;padding:22px;
+  background:
+    linear-gradient(135deg,rgba(255,255,255,.92) 0%,rgba(255,255,255,.62) 46%,rgba(214,199,240,.42) 100%),
+    linear-gradient(135deg,#F7F3FD,#EFE8F9);
+  border:1px solid rgba(255,255,255,.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,1),
+    inset 0 -1px 0 rgba(116,94,166,.08),
+    0 40px 80px -32px rgba(74,47,107,.62),
+    0 12px 28px -14px rgba(74,47,107,.22),
+    0 3px 8px -4px rgba(74,47,107,.10)}
+/* DEPTH 2 - wells. A CHART IS A WELL. */
+.earn .well{border-radius:24px;
+  background:linear-gradient(135deg,rgba(226,215,244,.72),rgba(238,231,250,.55));
+  box-shadow:inset 0 2px 6px rgba(88,70,110,.11),inset 0 -1px 0 rgba(255,255,255,.85)}
+/* DEPTH 4 - flat, hairline-divided */
+.earn .sec{padding-top:16px;margin-top:16px;border-top:1px solid rgba(116,94,166,.13)}
+
+.earn .glass{background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.58) 55%,rgba(255,255,255,.46));
+  border:1px solid rgba(255,255,255,.72);
+  box-shadow:0 1px 0 rgba(255,255,255,.9) inset,0 10px 26px -18px rgba(74,47,107,.34)}
+.earn .seg{display:inline-flex;gap:2px;padding:3px;border-radius:16px;flex:none}
+.earn .seg button{padding:6px 13px;border-radius:13px;font-weight:500;color:#6F6689;font-size:12.5px;
+            transition:color .15s}
+.earn .seg button:hover{color:#4A2F6B}
+.earn .seg button[aria-pressed=true]{background:linear-gradient(135deg,#fff,rgba(255,255,255,.72));
+  color:#4A2F6B;font-weight:600;box-shadow:0 1px 3px rgba(74,47,107,.1)}
+
+/* ---------- hero ---------- */
+.earn .ident{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}
+.earn .vname{display:flex;align-items:flex-start;gap:13px;padding-top:2px}
+.earn .vname .badge{width:44px;height:44px;border-radius:30%;display:grid;place-items:center;flex:none;
+  font-family:var(--font-mono), ui-monospace, monospace;font-size:13px;font-weight:500;color:#fff;letter-spacing:-.02em;
+  background:linear-gradient(135deg,#6A4A96,#4A2F6B 60%,#3B2456);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.32),0 8px 18px -8px rgba(74,47,107,.6)}
+.earn .vname h1{font-family:var(--font-display), system-ui, sans-serif;font-weight:700;font-size:27px;letter-spacing:-.03em;line-height:1.06}
+.earn .vname p{margin:5px 0 0;color:#6F6689;font-size:12.5px;line-height:1.45}
+.earn .hero-apy{text-align:right;line-height:1;flex:none}
+.earn .hero-apy b{display:block;font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;
+            font-size:47px;font-weight:400;letter-spacing:-.035em;color:#6A3FD1;line-height:.92}
+.earn .hero-apy .lab{display:block;margin-top:9px;color:#6F6689;font-size:12.5px}
+.earn .hero-apy .delta{display:block;margin-top:4px;font-size:12px;font-family:var(--font-mono), ui-monospace, monospace;
+                 font-variant-numeric:tabular-nums}
+
+.earn .stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:19px;border-top:1px solid rgba(116,94,166,.13);padding-top:16px}
+.earn .stat{padding-right:22px}
+.earn .stat + .stat{border-left:1px solid rgba(116,94,166,.09);padding-left:22px}
+.earn .stat span{display:block;color:#6F6689;font-size:12.5px;margin-bottom:6px}
+.earn .stat b{font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;font-size:19px;font-weight:500;letter-spacing:-.015em}
+.earn .stat i{font-style:normal;font-size:13px;color:#9086A8;margin-left:5px}
+
+/* ---------- charts ---------- */
+.earn .chart{padding:16px 18px 10px}
+.earn .chart + .list{margin-top:16px}
+.earn .chead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:8px}
+.earn .chead .when{font-size:12px;color:#6F6689;letter-spacing:.005em}
+.earn .chead .now{font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;font-size:22px;font-weight:500;
+            letter-spacing:-.02em;margin-top:4px;line-height:1}
+.earn .chead .now small{font-size:12px;font-weight:400;color:#9086A8;margin-left:7px;font-family:var(--font-body), system-ui, sans-serif;
+                  letter-spacing:0}
+.earn .ctools{display:flex;align-items:center;gap:9px}
+.earn .chart svg{display:block;width:100%;height:auto;touch-action:none}
+.earn .gtick{fill:#9086A8;font-family:var(--font-mono), ui-monospace, monospace;font-size:9.5px}
+.earn .xtick{fill:#9086A8;font-family:var(--font-body), system-ui, sans-serif;font-size:10px}
+.earn .band{transition:opacity .16s}
+
+/* ---------- section head ---------- */
+.earn .shead{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:15px}
+.earn .shead h2{font-family:var(--font-display), system-ui, sans-serif;font-weight:600;font-size:17.5px;letter-spacing:-.02em}
+.earn .shead .aside{font-size:12.5px;color:#6F6689}
+
+/* ---------- strategies: the chart's legend IS the table ---------- */
+.earn .list{padding:6px}
+.earn .cols{grid-template-columns:1fr 168px 100px 96px 92px}
+.earn .shdr, .earn .srow, .earn .stot{display:grid;gap:14px;align-items:center}
+.earn .shdr{padding:8px 14px 7px;font-size:10.5px;letter-spacing:.045em;text-transform:uppercase;color:#9086A8}
+.earn .srow{padding:11px 14px;border-radius:17px;width:100%;text-align:left;color:inherit;transition:background .15s}
+.earn .shdr span:not(:first-child), .earn .srow>:not(:first-child), .earn .stot>:not(:first-child){text-align:right}
+.earn .srow:hover{background:rgba(255,255,255,.6)}
+.earn .pair{display:flex;align-items:center;gap:10px;font-weight:500;font-size:14px;min-width:0}
+.earn .sw{width:9px;height:22px;border-radius:4px;flex:none;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 1px 2px rgba(74,47,107,.18)}
+.earn .pair .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.earn .pair .who i{font-style:normal;color:#9086A8;font-weight:400}
+.earn .srow .num{font-size:13.5px}
+.earn .num.sub{color:#6F6689;font-size:13px}
+.earn .num.none{color:#9086A8}
+.earn .hold{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.earn .hold .pct{font-size:11px;color:#9086A8;font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums}
+.earn .stot{padding:13px 14px 5px;margin-top:5px;border-top:1px solid rgba(116,94,166,.13);font-size:12.5px;color:#6F6689}
+.earn .stot .num{font-size:13.5px}
+
+/* ---------- duo ---------- */
+.earn .duo{display:grid;grid-template-columns:262px 1fr;gap:28px}
+.earn .duo .rule{border-left:1px solid rgba(116,94,166,.13);padding-left:28px}
+.earn .liq{display:flex;flex-direction:column;gap:12px}
+.earn .liq div{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.earn .liq span{font-size:13px;color:#6F6689}
+.earn .liq .num{font-size:14px;font-weight:500}
+.earn .prose{font-size:13.5px;line-height:1.64;color:#5B4478;max-width:62ch}
+.earn .prose p{margin:0 0 12px}
+.earn .prose p:last-child{margin-bottom:0}
+.earn .prose b{font-weight:600;color:#4A2F6B}
+.earn .links{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.earn .links a{padding:7px 13px;border-radius:14px;font-size:12.5px;font-weight:500;color:#6F6689;
+         text-decoration:none;background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.8);
+         transition:color .15s,background .15s}
+.earn .links a:hover{color:#4A2F6B;background:rgba(255,255,255,.9)}
+.earn .note{font-size:12px;color:#6F6689;line-height:1.55}
+
+/* ---------- activity ---------- */
+.earn .act-row{display:grid;grid-template-columns:60px 1fr 104px;align-items:center;gap:12px;
+         padding:10px 14px;border-radius:17px;font-size:13.5px;transition:background .15s}
+.earn .act-row:hover{background:rgba(255,255,255,.6)}
+.earn .act-row .t{font-family:var(--font-mono), ui-monospace, monospace;font-size:12px;color:#9086A8}
+.earn .act-row .r{font-size:11.5px;color:#6F6689;text-align:right}
+.earn .act-row em{font-style:normal;font-weight:500}
+.earn .act-row .num{font-size:13.5px}
+
+/* ---------- rail ---------- */
+.earn .pos{padding:16px 19px 15px;border-radius:26px}
+.earn .pos .top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.earn .pos .lab{font-size:12.5px;color:#6F6689}
+.earn .pos .big{font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;font-size:22px;font-weight:500;letter-spacing:-.02em}
+.earn .pos .big i{font-style:normal;font-size:13px;color:#9086A8;margin-left:4px}
+.earn .pos .bot{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:7px;
+          font-size:12.5px;color:#6F6689}
+.earn .pos .bot b{font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;font-weight:500}
+
+.earn .tabs{display:flex;gap:2px;padding:3px;border-radius:18px;margin-bottom:15px}
+.earn .tabs button{flex:1;padding:9px 0;border-radius:15px;font-weight:500;font-size:14px;color:#6F6689;
+             transition:color .15s}
+.earn .tabs button:hover{color:#4A2F6B}
+.earn .tabs button[aria-pressed=true]{background:linear-gradient(135deg,#fff,rgba(255,255,255,.72));
+  color:#4A2F6B;font-weight:600;box-shadow:0 1px 3px rgba(74,47,107,.1)}
+
+.earn .field{padding:15px 20px 13px}
+.earn .frow{display:flex;align-items:center;justify-content:space-between}
+.earn .flabel{font-size:13px;color:#5B4478}
+.earn .amt{display:flex;align-items:center;gap:14px;margin:7px 0 6px}
+.earn .amt input{flex:1;min-width:0;border:0;background:none;padding:0;caret-color:#6A3FD1;
+  font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;
+  font-size:34px;font-weight:400;letter-spacing:-.025em;color:#4A2F6B}
+.earn .amt input::placeholder{color:rgba(144,134,168,.65)}
+.earn .asset{display:flex;align-items:center;gap:8px;padding:7px 13px 7px 8px;border-radius:16px;
+  font-weight:600;font-size:15px;white-space:nowrap;
+  background:linear-gradient(135deg,rgba(255,255,255,.9),rgba(233,225,246,.85));
+  border:1px solid rgba(255,255,255,.85);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.95),
+             0 6px 14px -7px rgba(74,47,107,.35),0 1px 3px -1px rgba(74,47,107,.18)}
+.earn .asset i{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
+         font-size:9px;font-style:normal;font-family:var(--font-mono), ui-monospace, monospace;color:#fff;
+         box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+.earn .fmeta{display:flex;justify-content:space-between;font-size:12px;color:#5F4A7C}
+.earn .fmeta .num{font-size:12px}
+
+.earn .qrow{display:flex;justify-content:space-between;font-size:13px;padding:4.5px 0;color:#6F6689}
+.earn .qrow span:last-child{font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;color:#4A2F6B;font-size:13px}
+.earn .qrow .big{font-size:19px;font-weight:500;color:#6A3FD1}
+.earn .qrow:has(.big){padding:6px 0 9px;align-items:baseline}
+
+.earn .act{width:100%;margin-top:15px;padding:15px;border-radius:20px;color:#fff;font-weight:600;font-size:15px;
+  background:linear-gradient(135deg,#5C3D82,#4A2F6B 52%,#402659);
+  box-shadow:0 1px 0 rgba(255,255,255,.26) inset,0 16px 34px -16px rgba(74,47,107,.7);
+  transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s}
+.earn .act:hover:not([disabled]){transform:translateY(-1px);
+  box-shadow:0 1px 0 rgba(255,255,255,.3) inset,0 20px 40px -16px rgba(74,47,107,.78)}
+.earn .act:active:not([disabled]){transform:translateY(0);
+  box-shadow:0 1px 0 rgba(255,255,255,.2) inset,0 8px 18px -12px rgba(74,47,107,.6)}
+.earn .act[disabled]{opacity:.4;cursor:not-allowed;box-shadow:none}
+.earn .foot{text-align:center;font-size:11.5px;color:#9086A8;margin-top:13px;line-height:1.4}
+
+/* ---------- exit tracker ---------- */
+.earn .track{margin-top:15px;padding:15px 18px 14px}
+.earn .track h3{font-size:12.5px;font-weight:600;color:#4A2F6B;margin-bottom:14px}
+.earn .rail-line{position:relative;height:11px;margin:0 6px 10px}
+.earn .rail-line .bar{position:absolute;left:5px;right:5px;top:5px;height:1.5px;
+                background:repeating-linear-gradient(90deg,rgba(116,94,166,.42) 0 4px,transparent 4px 8px)}
+.earn .rail-line .fill{position:absolute;left:5px;top:5px;height:1.5px;background:#4A2F6B}
+.earn .node{position:absolute;top:0;width:11px;height:11px;border-radius:50%;transform:translateX(-50%);
+      background:#EFE8F9;box-shadow:inset 0 0 0 1.5px rgba(116,94,166,.45)}
+.earn .node.on{background:#4A2F6B;box-shadow:0 0 0 2.5px rgba(239,232,249,.95)}
+.earn .tlabs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11.5px;color:#6F6689}
+.earn .tlabs>div:nth-child(2){text-align:center}
+.earn .tlabs>div:nth-child(3){text-align:right}
+.earn .tlabs b{display:block;font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;
+         font-size:13px;font-weight:500;color:#4A2F6B;margin-top:4px}
+.earn .tlabs .idle, .earn .tlabs .idle b{color:#9086A8;font-weight:400}
+
+
+/* the components emit these instead of an inline gradient */
+.earn .asset i.tok-weth  { background: linear-gradient(135deg, #7C63A8, #4A2F6B); }
+.earn .asset i.tok-hweth { background: linear-gradient(135deg, #8E6FC8, #6A3FD1); }
+
+/* the prototype did this in JS; the table does it with a data attribute */
+.earn .srow[data-focused] { background: rgba(255, 255, 255, .72); }
+
+/* px, not cqw: every measurement above is px at a 15px base, and .fg sets
+   1.30cqw. .swap-wrap already does this for the same reason. */
+.earn { font-size: 15px; }

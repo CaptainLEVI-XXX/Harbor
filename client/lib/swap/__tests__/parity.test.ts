@@ -5,6 +5,15 @@ import { DESIGN } from '@/lib/design';
 
 const css = readFileSync(join(process.cwd(), 'app/globals.css'), 'utf8');
 
+/**
+ * globals.css now carries more than one page. These checks are about the swap
+ * surface's discipline, so they read only the swap block - the earn block has
+ * its own equivalents in lib/earn/__tests__/parity.test.ts.
+ */
+const SWAP_START = css.indexOf('/* ============================================================\n   SWAP');
+const EARN_START = css.indexOf('/* ================= earn =================');
+const swapCss = css.slice(SWAP_START, EARN_START === -1 ? undefined : EARN_START);
+
 /** Spec §13 - the parts of landing-page parity a test can hold. */
 describe('landing page parity', () => {
   it('shares the landing page ink values', () => {
@@ -14,8 +23,7 @@ describe('landing page parity', () => {
   });
 
   it('uses no ink outside those three, plus the one accent', () => {
-    const swap = css.slice(css.indexOf('/* ============================================================\n   SWAP'));
-    const colours = new Set((swap.match(/#[0-9A-Fa-f]{6}/g) ?? []).map(c => c.toUpperCase()));
+    const colours = new Set((swapCss.match(/#[0-9A-Fa-f]{6}/g) ?? []).map(c => c.toUpperCase()));
     const allowed = new Set([
       '#4A2F6B', '#6F6689', '#9086A8',              // the three inks
       '#6A3FD1',                                     // exit violet
@@ -40,7 +48,10 @@ describe('landing page parity', () => {
 
   it('spends Exit Violet as ink on nothing but the value that moves and the countdown', () => {
     // every rule that paints text in the accent, by selector
-    const inked = [...css.matchAll(/([^{}]+)\{[^{}]*color:\s*#6A3FD1[^{}]*\}/g)].map(m => m[1].trim());
+    // the leading boundary matters: without it this also matches `caret-color`
+    const inked = [...swapCss.matchAll(/([^{}]+)\{[^{}]*[;{\s]color:\s*#6A3FD1[^{}]*\}/g)].map(m =>
+      m[1].trim(),
+    );
     expect(inked.sort()).toEqual([
       '.amt input.out',       // the derived leg, in the well
       '.count',               // the expiry countdown
