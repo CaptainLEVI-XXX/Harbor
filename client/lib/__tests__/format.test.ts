@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatSigned, formatWei, formatWeiFixed, parseWei } from '../format';
+import { formatSigned, formatWei, formatWeiFixed, group, parseWei } from '../format';
 
 describe('formatWei', () => {
   it('formats 1e18 as 1', () => {
@@ -80,5 +80,20 @@ describe('formatSigned', () => {
 
   it('gives zero no sign at all', () => {
     expect(formatSigned(0n, 18, 2)).toBe('0.00');
+  });
+});
+
+describe('group', () => {
+  it('separates thousands and leaves the fraction alone', () => {
+    expect(group('3279.579')).toBe('3,279.579');
+    expect(group('1383.98')).toBe('1,383.98');
+  });
+
+  it('leaves a short figure untouched', () => {
+    expect(group('84.59')).toBe('84.59');
+  });
+
+  it('keeps a real minus outside the grouping', () => {
+    expect(group('−1234.5')).toBe('−1,234.5');
   });
 });

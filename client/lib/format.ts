@@ -62,3 +62,17 @@ export function formatSigned(value: bigint, decimals: number, fractionDigits: nu
   const body = formatWeiFixed(value < 0n ? -value : value, decimals, fractionDigits);
   return `${value < 0n ? '−' : '+'}${body}`;
 }
+
+/**
+ * Thousands separators on the whole part, fraction untouched.
+ *
+ * Applied at the render edge like every other formatter here - a grouped
+ * string is for reading, never for parsing back.
+ */
+export function group(value: string): string {
+  const [whole, fraction] = value.split('.');
+  const sign = whole.startsWith('−') || whole.startsWith('-') ? whole[0] : '';
+  const digits = sign ? whole.slice(1) : whole;
+  const separated = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return fraction ? `${sign}${separated}.${fraction}` : `${sign}${separated}`;
+}
