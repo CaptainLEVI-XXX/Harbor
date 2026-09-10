@@ -3,21 +3,54 @@
 html, body {
   margin: 0;
   padding: 0;
-  height: 100%;
-  overflow: hidden;           /* the page is exactly one viewport. nothing scrolls. */
   background: #FAF9FE;
 }
+html { height: 100%; }
+body { min-height: 100%; }
+
+::selection { background: rgba(106, 63, 209, .17); }
+
+/* Every figure on every page. Tabular so a live value never shimmers and a
+   column of them lines up on the decimal point. */
+.num {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+  white-space: nowrap;
+}
+/* STATE, not accent: these appear only on a signed figure, never on a control,
+   a label, a border, a background or a chart band. Exit Violet stays the only
+   accent. */
+.gain { color: #2F7355; }
+.loss { color: #A83C56; }
 
 .stage {
   position: relative;
   width: 100vw;
   height: 100dvh;
-  overflow: hidden;
+  overflow: hidden;            /* locked routes are exactly one viewport */
   isolation: isolate;
   container-type: inline-size; /* every type size below is cqw/em off this */
   user-select: none;
   cursor: default;             /* a plain arrow - no ring cursor */
 }
+
+/* The one route that scrolls. The lock lives here, not on html/body, so a
+   single route can release it without any other route noticing. */
+.stage--scroll {
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
+  user-select: text;           /* a page of figures people will copy */
+}
+.stage--scroll .fg { height: auto; }
+
+/* The ground's sizing and pointer box. Absolute on locked routes, fixed on the
+   scrolling one, so the lattice stays put while content scrolls over it.
+   It exists on EVERY route: a conditional wrapper would change element type
+   across navigation and remount the canvas, losing every popped cell. */
+.groundbox { position: absolute; inset: 0; z-index: 0; }
+.stage--scroll .groundbox { position: fixed; }
 
 .layer {
   position: absolute;

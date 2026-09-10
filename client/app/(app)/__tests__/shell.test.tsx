@@ -42,3 +42,34 @@ describe('the shared shell', () => {
     expect(layout).not.toContain('FloatingCoins');
   });
 });
+
+describe('the scrolling route', () => {
+  it('wraps Ground in a box on every route, so navigation never remounts it', () => {
+    const layout = readFileSync(join(process.cwd(), 'app/(app)/layout.tsx'), 'utf8');
+    expect(layout).toContain('className="groundbox"');
+    // one unconditional wrapper - a conditional one would change element type
+    // between routes and remount the canvas, losing every popped cell
+    expect(layout).not.toMatch(/\?\s*<div className="groundbox">/);
+  });
+
+  it('releases the viewport lock only on /earn', () => {
+    const layout = readFileSync(join(process.cwd(), 'app/(app)/layout.tsx'), 'utf8');
+    expect(layout).toContain("'/earn'");
+    expect(layout).toContain('stage--scroll');
+
+    const css = readFileSync(join(process.cwd(), 'app/globals.css'), 'utf8');
+    // the lock lives on .stage now, not on html/body
+    expect(css).not.toMatch(/html,\s*body\s*\{[^}]*overflow:\s*hidden/);
+    expect(css).toMatch(/\.stage\s*\{[^}]*overflow:\s*hidden/);
+    expect(css).toContain('.stage--scroll');
+    // the ground stays put while content scrolls over it
+    expect(css).toMatch(/\.stage--scroll \.groundbox\s*\{[^}]*position:\s*fixed/);
+  });
+
+  it('points the Earn nav link at the route', () => {
+    const { getByText } = render(<Nav onConnect={() => {}} connectLabel="Connect wallet" active="Earn" />);
+    const link = getByText('Earn');
+    expect(link).toHaveAttribute('href', '/earn');
+    expect(link).toHaveAttribute('aria-current', 'page');
+  });
+});

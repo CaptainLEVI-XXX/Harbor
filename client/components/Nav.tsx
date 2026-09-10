@@ -5,10 +5,10 @@ import HarborMark from './HarborMark';
 type Props = { onConnect: () => void; connectLabel: string; active?: string };
 
 /**
- * Only Swap is built. The rest stay dead links rather than routes that 404 -
+ * Portfolio, Analytics and Docs stay dead links rather than routes that 404 -
  * see the spec's out-of-scope list.
  */
-const HREF: Record<string, string> = { Swap: '/swap' };
+const HREF: Record<string, string> = { Swap: '/swap', Earn: '/earn' };
 
 export default function Nav({ onConnect, connectLabel, active }: Props) {
   return (
