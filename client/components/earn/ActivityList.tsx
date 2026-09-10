@@ -9,22 +9,24 @@ export default function ActivityList({ fills }: { fills: Fill[] }) {
         <h2>Recent activity</h2>
         <span className="aside">last 24 hours</span>
       </div>
-      <div className="list well">
-        {fills.map(fill => (
-          <div className="act-row" key={`${fill.at}-${fill.subject}`}>
-            <span className="t">{timeOfDay(fill.at)}</span>
-            <span>
-              <em>{fill.action}</em> <span className="num">{fill.subject}</span> {fill.detail}
-              {fill.counter && (
-                <>
-                  {' '}
-                  <span className="num">{fill.counter}</span>
-                </>
-              )}
-            </span>
-            <span className="r">{fill.issuer}</span>
-          </div>
-        ))}
+      <div className="list well acts">
+        <div className="scroller">
+          {fills.map(fill => (
+            <div className="act-row" key={`${fill.at}-${fill.subject}`}>
+              <span className="t">{timeOfDay(fill.at)}</span>
+              <span>
+                <em>{fill.action}</em> <span className="num">{fill.subject}</span> {fill.detail}
+                {fill.counter && (
+                  <>
+                    {' '}
+                    <span className="num">{fill.counter}</span>
+                  </>
+                )}
+              </span>
+              <span className="r">{fill.issuer}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );

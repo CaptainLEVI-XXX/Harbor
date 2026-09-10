@@ -73,7 +73,9 @@ describe('ActivityList', () => {
   it('names the issuer rather than a ticker', () => {
     render(<ActivityList fills={FILLS} />);
     expect(screen.getAllByText('Lido').length).toBeGreaterThan(0);
-    expect(screen.getByText('Ethena')).toBeInTheDocument();
+    expect(screen.getAllByText('Ethena').length).toBeGreaterThan(0);
+    // a ticker would be wrong here - the row is evidence for a strategy above
+    expect(screen.queryByText('wstETH')).toBeNull();
   });
 
   it('renders one row per fill', () => {

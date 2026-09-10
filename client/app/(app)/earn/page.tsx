@@ -37,7 +37,7 @@ export default function EarnPage() {
 
   return (
     <div className="earn">
-      <div className="col">
+      <div className="stack">
         <VaultHero
           apyPct={apyPct}
           deltaPct={apyPct - monthAgo}

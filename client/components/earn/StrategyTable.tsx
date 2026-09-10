@@ -44,42 +44,44 @@ export default function StrategyTable({ strategies, rows, focus, onFocus }: Prop
         <span>in queue</span>
       </div>
 
-      {strategies.map(s => {
-        const row = byId.get(s.id);
-        const sign = s.earnedWei === null ? 'none' : s.earnedWei < 0n ? 'loss' : 'gain';
-        return (
-          <div
-            key={s.id}
-            className="srow cols"
-            data-row={s.id}
-            data-focused={focus === s.id ? '' : undefined}
-            onPointerEnter={() => onFocus(s.id)}
-            onPointerLeave={() => onFocus(null)}
-          >
-            <span className="pair">
-              <i className="sw" style={{ background: s.colour }} />
-              <span className="who">
-                {s.issuer} <i>· {s.asset}</i>
+      <div className="scroller">
+        {strategies.map(s => {
+          const row = byId.get(s.id);
+          const sign = s.earnedWei === null ? 'none' : s.earnedWei < 0n ? 'loss' : 'gain';
+          return (
+            <div
+              key={s.id}
+              className="srow cols"
+              data-row={s.id}
+              data-focused={focus === s.id ? '' : undefined}
+              onPointerEnter={() => onFocus(s.id)}
+              onPointerLeave={() => onFocus(null)}
+            >
+              <span className="pair">
+                <i className="sw" style={{ background: s.colour }} />
+                <span className="who">
+                  {s.issuer} <i>· {s.asset}</i>
+                </span>
               </span>
-            </span>
-            <span className="hold">
-              <span className="num sub">{s.holding}</span>
-              <span className="pct">
-                {row
-                  ? `${formatWeiFixed(row.valueWei, ASSET_DECIMALS, 2)} WETH · ${row.pct.toFixed(1)}%`
-                  : '—'}
+              <span className="hold">
+                <span className="num sub">{s.holding}</span>
+                <span className="pct">
+                  {row
+                    ? `${formatWeiFixed(row.valueWei, ASSET_DECIMALS, 2)} WETH · ${row.pct.toFixed(1)}%`
+                    : '—'}
+                </span>
               </span>
-            </span>
-            <span className="num sub">{volume(s.volume30dWei)}</span>
-            <span className={`num ${sign}`}>
-              {s.earnedWei === null ? '—' : formatSigned(s.earnedWei, ASSET_DECIMALS, 1)}
-            </span>
-            <span className={`num ${s.inQueueWei > 0n ? 'sub' : 'none'}`}>
-              {s.inQueueWei > 0n ? formatWeiFixed(s.inQueueWei, ASSET_DECIMALS, 1) : '—'}
-            </span>
-          </div>
-        );
-      })}
+              <span className="num sub">{volume(s.volume30dWei)}</span>
+              <span className={`num ${sign}`}>
+                {s.earnedWei === null ? '—' : formatSigned(s.earnedWei, ASSET_DECIMALS, 1)}
+              </span>
+              <span className={`num ${s.inQueueWei > 0n ? 'sub' : 'none'}`}>
+                {s.inQueueWei > 0n ? formatWeiFixed(s.inQueueWei, ASSET_DECIMALS, 1) : '—'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
 
       <div className="stot cols">
         <span>Across all strategies</span>

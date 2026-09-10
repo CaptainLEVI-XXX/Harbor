@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { STRATEGIES } from '../fixtures';
 
@@ -72,9 +72,58 @@ describe('earn page parity', () => {
     expect(rule).not.toContain('box-shadow');
   });
 
-  it('sizes the page at 760 + 24 + 420', () => {
-    expect(earnCss).toContain('grid-template-columns:760px 420px');
+  it('caps the content column but lets it shrink, and keeps a gutter', () => {
+    // a fixed 760px track plus a grid child's default min-width:auto is what
+    // let the strategy table push the page wider than the viewport
+    expect(earnCss).toContain('grid-template-columns:minmax(0,760px) 420px');
+    // sized off its own box, never the viewport: 100vw counts the scrollbar
+    expect(earnCss).toContain('max-width:calc(1204px + 88px)');
+    expect(earnCss).not.toContain('100vw');
     expect(earnCss).toContain('gap:24px');
+  });
+
+  it('stops any card from pushing its track open', () => {
+    expect(earnCss).toMatch(/\.earn \.stack > \*\{min-width:0;max-width:100%\}/);
+  });
+
+  it('caps the two lists so they scroll instead of stretching the card', () => {
+    expect(earnCss).toMatch(/\.earn \.scroller \{[^}]*max-height:/);
+    expect(earnCss).toMatch(/\.earn \.scroller \{[^}]*overflow-y: auto/);
+    // the totals row must stay outside the scroll - a total that scrolls away
+    // is not a total
+    expect(earnCss).toMatch(/\.earn \.shdr \{[^}]*position: sticky/);
+  });
+
+
+  it('never reuses a layout class that an unscoped rule already owns', () => {
+    // The landing page owns `.col` with align-items/text-align: center. A
+    // scoped `.earn .col` rule ADDS to that, it does not replace it, so the
+    // centring leaked in: cards sized to their content instead of stretching,
+    // prose rendered centred, and the wide strategy table overflowed its track.
+    const shared = css.slice(0, css.indexOf('/* ================= earn ================='));
+    const ownedElsewhere = new Set<string>();
+    for (const m of shared.matchAll(/(?:^|\})\s*([^{@}]+?)\s*\{/g)) {
+      for (const part of m[1].split(',')) {
+        const name = part.trim().match(/^\.([A-Za-z][\w-]*)$/);
+        if (name) ownedElsewhere.add(name[1]);
+      }
+    }
+
+    // material vocabulary is shared on purpose - swap reuses it too
+    const material = new Set(['well', 'list', 'act', 'amt', 'asset', 'qrow', 'seg', 'fmeta', 'flabel', 'modal', 'sec', 'glass', 'foot', 'note', 'panel']);
+
+    const markup = ['components/earn', 'components/charts']
+      .flatMap(dir => readdirSync(join(process.cwd(), dir)).filter(f => f.endsWith('.tsx')).map(f => readFileSync(join(process.cwd(), dir, f), 'utf8')))
+      .concat(readFileSync(join(process.cwd(), 'app/(app)/earn/page.tsx'), 'utf8'))
+      .join('\n');
+
+    const used = new Set<string>();
+    for (const m of markup.matchAll(/className=[{"`\']+([^"`\'{}]+)/g)) {
+      for (const c of m[1].split(/\s+/)) if (c) used.add(c);
+    }
+
+    const layoutCollisions = [...used].filter(c => ownedElsewhere.has(c) && !material.has(c));
+    expect(layoutCollisions).toEqual([]);
   });
 
   it('sets its own px base, because .fg sets cqw', () => {
