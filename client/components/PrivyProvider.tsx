@@ -30,7 +30,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
           walletList: ['detected_wallets', 'metamask', 'coinbase_wallet', 'wallet_connect'],
         },
         loginMethods: ['wallet', 'email'],
-        defaultChain: chain,
+        // no defaultChain: setting it makes Privy force a chain switch on connect,
+        // which races the sign-in signature. The first supported chain is the default.
         supportedChains: [chain],
         embeddedWallets: {
           ethereum: { createOnLogin: 'users-without-wallets' },
