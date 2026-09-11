@@ -2,6 +2,7 @@
 
 import { PrivyProvider, usePrivy } from '@privy-io/react-auth';
 import { DESIGN } from '@/lib/design';
+import { chain } from '@/lib/chain';
 
 const APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
@@ -28,7 +29,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
           walletList: ['detected_wallets', 'metamask', 'coinbase_wallet', 'wallet_connect'],
         },
         loginMethods: ['wallet', 'email'],
-        embeddedWallets: { ethereum: { createOnLogin: 'users-without-wallets' } },
+        defaultChain: chain,
+        supportedChains: [chain],
+        embeddedWallets: {
+          ethereum: { createOnLogin: 'users-without-wallets' },
+          // the Swap button is the confirmation - no second modal on top of it
+          showWalletUIs: false,
+        },
       }}
     >
       {children}
