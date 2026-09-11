@@ -1,0 +1,81 @@
+{
+  "status": "HARBOR_DEPLOYED_NOT_CONFIGURED",
+  "chainId": 560048,
+  "network": "hoodi",
+  "evmVersion": "cancun",
+  "rpcEnvironmentVariable": "HOODI_RPC_URL",
+  "privateKeyEnvironmentVariable": "HOODI_PRIVATE_KEY",
+  "routerContract": "lib/swap-vm/src/routers/AquaSwapVMRouter.sol:AquaSwapVMRouter",
+  "routerConstructor": {
+    "aqua": "0xf40826aFd0de1078bc4b39b77E87E42d3b35Fe6A",
+    "wrappedNative": "0xE0decAa66aED871ac9eb924443D1Bf333Fdb062E",
+    "owner": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+    "name": "Harbor",
+    "version": "2"
+  },
+  "lido": {
+    "addressSource": "https://docs.lido.fi/deployed-contracts/hoodi/",
+    "stETH": "0x3508A952176b3c15387C97BE809eaffB1982176a",
+    "wstETH": "0x7E99eE3C66636DE415D2d7C880938F2f40f94De4",
+    "withdrawalQueue": "0xfe56573178f1bcdf53F01A6E9977670dcBBD9186",
+    "runtimeVerified": false
+  },
+  "harborContractsDeployed": true,
+  "harborDeploymentManifest": "script/harbor-hoodi.deployment.json",
+  "sponsorEligibilityConfirmed": false,
+  "sourceRevisions": {
+    "aqua": "9c5c42e5840e8741fba3597c48456c9510212b66",
+    "swapVM": "f09a41e689240adc645934f965c8061749397cd2"
+  },
+  "compiler": {
+    "version": "0.8.30",
+    "optimizerRuns": 700,
+    "viaIR": true,
+    "evmVersion": "cancun"
+  },
+  "wethChecks": {
+    "existingUserSelectedContract": true,
+    "decimals": 18,
+    "symbol": "WETH",
+    "forkWrapTransferApproveUnwrapPassed": true,
+    "explorerSourceVerificationConfirmed": false
+  },
+  "verification": {
+    "chainId": 560048,
+    "contracts": [
+      {
+        "name": "Aqua",
+        "address": "0xf40826aFd0de1078bc4b39b77E87E42d3b35Fe6A",
+        "runtimeBytes": 2678,
+        "runtimeSha256": "706c1d4144d97a2b44f2c6ed15f0844d8c5b9f4ca9cb6496e889506ade128260",
+        "compiledRuntimeMatched": true,
+        "creationInputMatched": true,
+        "transactionHash": "0x457e35f35b4827de4f57b6a4435333256e891f9ff012be195bdf3fdf6ee2fdc2",
+        "blockNumber": 3602226,
+        "blockHash": "0xddffdc661b47141f6cf40bc834189633806352dc1ee8e12d10d61fd63e931cab",
+        "gasUsed": "631746",
+        "feeWei": "614306763489042"
+      },
+      {
+        "name": "AquaSwapVMRouter",
+        "address": "0x63C78337758eA9c98b4Ce6Cc9988E72e2D8F3303",
+        "runtimeBytes": 20376,
+        "runtimeSha256": "3dc8de1feb9cad7f43a5c47d146b4974e71df2f13e61b7d5b8fc43e67a524237",
+        "compiledRuntimeMatched": true,
+        "creationInputMatched": true,
+        "transactionHash": "0x6987c8469c08a67818ad67881f6333c42d07e8f78cf6a5eb818cd8ffbaa22725",
+        "blockNumber": 3602255,
+        "blockHash": "0xd3d86d71926e44cb8a18fc80b52b19afefc0cd607980223fec3f854daf170fd6",
+        "gasUsed": "4502910",
+        "feeWei": "4981745180641320"
+      }
+    ],
+    "bindings": {
+      "AQUA()": "0xf40826afd0de1078bc4b39b77e87e42d3b35fe6a",
+      "WETH()": "0xe0decaa66aed871ac9eb924443d1bf333fdb062e",
+      "owner()": "0x41363507931dd8963f5eb836e299d74272d0ccb0"
+    },
+    "explorerSourcePublicationCompleted": false,
+    "confirmation": "SUCCESSFUL_RECEIPTS_NOT_A_FINALITY_ATTESTATION"
+  }
+}
