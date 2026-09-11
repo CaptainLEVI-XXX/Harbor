@@ -47,6 +47,9 @@ no_match_path = "test/invariant/**"
 [profile.gas]
 match_path = "test/gas/**/*.t.sol"
 
+[rpc_endpoints]
+hoodi = "${HOODI_RPC_URL}"
+
 [fmt]
 tab_width = 2
 

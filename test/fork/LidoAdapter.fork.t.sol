@@ -1,25 +1,19 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {Test} from "forge-std/Test.sol";
+import {HoodiFork, ILidoQueueHistory} from "test/base/HoodiFork.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {LidoAdapter} from "src/adapters/LidoAdapter.sol";
 import {LidoViews} from "src/adapters/lido/LidoViews.sol";
 import {HarborClaimFactory} from "src/claims/HarborClaimFactory.sol";
+import {HarborClaimReceipt} from "src/claims/HarborClaimReceipt.sol";
+import {IHarborClaim} from "src/interfaces/IHarborClaim.sol";
+import {AdapterBase} from "src/adapters/base/AdapterBase.sol";
 import {IssuerClaimLedger} from "src/libraries/IssuerClaimLedger.sol";
 import {ClaimDomain, ClaimStage} from "src/types/ClaimTypes.sol";
 import {IHarborAdapter} from "src/interfaces/IHarborAdapter.sol";
 import {ILidoWithdrawalQueue as Queue, IWstETHConversion} from "src/interfaces/ILidoWithdrawalQueue.sol";
-
-interface ILidoQueueHistory {
-  function proxy__getImplementation() external view returns (address);
-  function getLastCheckpointIndex() external view returns (uint256);
-  function findCheckpointHints(uint256[] calldata ids, uint256 first, uint256 last)
-    external
-    view
-    returns (uint256[] memory hints);
-}
 
 /// @notice TEST ONLY: isolates production claim code against a historical mature NFT.
 /// @dev This setup is absent from the production adapter. It does not prove a new
@@ -51,32 +45,8 @@ contract HistoricalLidoHarness is LidoAdapter {
   }
 }
 
-contract LidoAdapterForkTest is Test {
-  /// @dev Isolated adapter fixture; the full market fork uses the actual Router.
-  function ROUTER() external view returns (address) {
-    return address(this);
-  }
-
-  function WETH() external pure returns (address) {
-    return ASSET;
-  }
-  uint256 private constant FORK_BLOCK = 25_924_311;
-  address private constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
-  address private constant ASSET = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-  address private constant QUEUE = 0x889edC2eDab5f40e902b864aD4d7AdE8E412F9B1;
-  address private constant IMPLEMENTATION = 0xE42C659Dc09109566720EA8b2De186c2Be7D94D9;
+contract LidoAdapterForkTest is HoodiFork {
   address private constant VAULT = address(0x484152424f52);
-  uint256 private constant HISTORICAL_ID = 134_829;
-
-  function setUp() public {
-    string memory rpc = vm.envOr("HARBOR_MAINNET_RPC_URL", string("https://ethereum-rpc.publicnode.com"));
-    vm.createSelectFork(rpc, FORK_BLOCK);
-    assertEq(block.chainid, 1);
-    assertEq(block.number, FORK_BLOCK);
-    assertEq(Queue(QUEUE).WSTETH(), WSTETH);
-    assertEq(ILidoQueueHistory(QUEUE).proxy__getImplementation(), IMPLEMENTATION);
-    assertGt(IMPLEMENTATION.code.length, 0);
-  }
 
   function test_ForkRealWrappedRequestCreatesAdapterOwnedRight() public {
     HarborClaimFactory factory = new HarborClaimFactory(ASSET, address(this), 1 days);
@@ -126,7 +96,7 @@ contract LidoAdapterForkTest is Test {
     Queue.WithdrawalRequestStatus memory status = Queue(QUEUE).getWithdrawalStatus(ids)[0];
     assertTrue(status.isFinalized);
     assertFalse(status.isClaimed);
-    assertEq(status.owner, 0x8C309B2a7296AD96C1d6A1B64B74102d8e2e17DF);
+    assertEq(status.owner, HISTORICAL_OWNER);
     // Fork-only NFT transfer from its actual owner, then explicit harness ledger setup.
     // No finalizer impersonation, oracle/storage edits, or ETH injection into issuer.
     vm.prank(status.owner);
@@ -148,6 +118,54 @@ contract LidoAdapterForkTest is Test {
     assertEq(address(adapter).balance, adapterEthBefore);
     assertEq(IERC20(ASSET).balanceOf(address(adapter)), adapterWethBefore);
     assertTrue(Queue(QUEUE).getWithdrawalStatus(ids)[0].isClaimed);
+    vm.expectRevert(AdapterBase.InvalidRequest.selector);
+    adapter.claim(HISTORICAL_ID, hints[0]);
     emit log_named_uint("actual_issuer_recovery_wei", cash);
+    _historicalReceiptRecovery(factory, adapter);
+  }
+
+  /// @dev A second already-finalized right, not the new request from the other test.
+  /// Only ledger bootstrap/export is synthetic; issuer finalization and ETH are real.
+  function _historicalReceiptRecovery(HarborClaimFactory factory, HistoricalLidoHarness adapter) private {
+    uint256[] memory ids = new uint256[](1);
+    ids[0] = 4990;
+    Queue.WithdrawalRequestStatus memory s = Queue(QUEUE).getWithdrawalStatus(ids)[0];
+    assertTrue(s.isFinalized);
+    assertFalse(s.isClaimed);
+    factory.schedule(address(adapter));
+    vm.warp(vm.getBlockTimestamp() + 1 days);
+    factory.activate(address(adapter));
+    vm.prank(s.owner);
+    IERC721(QUEUE).transferFrom(s.owner, address(adapter), ids[0]);
+    adapter.seedHistoricalRight(ids[0]);
+    HarborClaimReceipt receipt = HarborClaimReceipt(adapter.exportHistoricalRight(ids[0]));
+    uint256[] memory hints =
+      ILidoQueueHistory(QUEUE).findCheckpointHints(ids, 1, ILidoQueueHistory(QUEUE).getLastCheckpointIndex());
+    uint256 expected = Queue(QUEUE).getClaimableEther(ids, hints)[0];
+    assertGt(expected, 0);
+    address holder = address(0xa11ce);
+    receipt.transfer(holder, 1);
+    uint256 beforeIssuer = QUEUE.balance;
+    uint256 beforeOwner = IERC20(ASSET).balanceOf(holder);
+    uint256 beforeVault = IERC20(ASSET).balanceOf(VAULT);
+    assertEq(receipt.recover(abi.encode(hints[0])), expected);
+    assertEq(IERC20(ASSET).balanceOf(holder), beforeOwner);
+    assertEq(adapter.totalClaimCash(), expected);
+    assertEq(receipt.recovered(), expected);
+    vm.expectRevert(HarborClaimReceipt.InvalidState.selector);
+    receipt.redeem(address(this)); // Recovery caller does not own the payout.
+    vm.prank(holder);
+    assertEq(receipt.redeem(holder), expected);
+    assertEq(QUEUE.balance, beforeIssuer - expected);
+    assertEq(IERC20(ASSET).balanceOf(holder), beforeOwner + expected);
+    assertEq(IERC20(ASSET).balanceOf(VAULT), beforeVault);
+    assertEq(receipt.totalSupply(), 0);
+    assertEq(adapter.totalClaimCash(), 0);
+    assertEq(uint256(receipt.status()), uint256(IHarborClaim.Status.CLOSED));
+    vm.expectRevert(HarborClaimReceipt.InvalidState.selector);
+    vm.prank(holder);
+    receipt.redeem(holder);
+    vm.expectRevert(AdapterBase.InvalidRequest.selector);
+    receipt.recover(abi.encode(hints[0]));
   }
 }

@@ -9,6 +9,6 @@ forge test --match-contract HarborSettlementTest \
   --match-test testFuzz_DepositPurchaseClaimRecoveryAndLpPayout --fuzz-runs 1 -vvvv
 
 if [[ "${1:-}" == "--fork" ]]; then
-  # Requires an archive-capable Ethereum RPC in HARBOR_MAINNET_RPC_URL.
-  FOUNDRY_PROFILE=fork forge test --match-contract RedemptionMarketForkTest -vvvv
+  # Requires pinned Hoodi state through HOODI_RPC_URL. Reads only; no broadcast.
+  FOUNDRY_PROFILE=fork forge test -vvvv
 fi
