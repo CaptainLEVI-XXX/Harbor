@@ -58,8 +58,9 @@ abstract contract LidoViews is AdapterBase, IHarborValuation {
     AdapterBase(book, vault, base, weth, issuer, c.factory)
   {
     if (
-      c.governor == address(0) || c.publisher == address(0) || c.maxAge == 0 || c.maxAge > 1 days
-        || c.governanceDelay < 1 days || c.governanceDelay > 30 days || Queue(issuer).WSTETH() != base
+      c.governor == address(0) || c.publisher == address(0) || c.maxAge == 0
+        || c.maxAge > (block.chainid == 560048 ? 100 days : 1 days) || c.governanceDelay < 1 days
+        || c.governanceDelay > 30 days || Queue(issuer).WSTETH() != base
         || address(SwapVM(payable(IHarborBook(book).ROUTER())).WETH()) != weth
     ) revert InvalidConfiguration();
     STETH = ILidoWrappedShares(base).stETH();

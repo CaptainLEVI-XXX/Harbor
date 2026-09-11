@@ -236,9 +236,9 @@ abstract contract BookState is IHarborBook {
         || c.executor == address(this) || c.asset.code.length == 0 || c.aqua.code.length == 0
         || c.router.code.length == 0 || c.updater == address(0) || c.governor == address(0) || c.guardian == address(0)
         || c.feeRecipient == address(0) || c.feeRecipient == address(this) || c.feeRecipient == c.router
-        || c.feeRecipient == c.aqua || c.feeBps > 100 || c.maxParameterAge == 0 || c.maxParameterAge > 1 days
-        || routes.length == 0 || routes.length > 2 || c.governanceDelay < 1 days || c.governanceDelay > 30 days
-        || c.keeper == address(0)
+        || c.feeRecipient == c.aqua || c.feeBps > 100 || c.maxParameterAge == 0
+        || c.maxParameterAge > (block.chainid == 560048 ? 100 days : 1 days) || routes.length == 0 || routes.length > 2
+        || c.governanceDelay < 1 days || c.governanceDelay > 30 days || c.keeper == address(0)
     ) revert InvalidConfiguration();
     if (address(SwapVM(payable(c.router)).AQUA()) != c.aqua) {
       revert InvalidConfiguration();

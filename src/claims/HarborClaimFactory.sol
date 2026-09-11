@@ -36,7 +36,10 @@ contract HarborClaimFactory is ReentrancyGuardTransient {
   );
 
   constructor(address cashAsset, address governor, uint256 delay) {
-    if (cashAsset.code.length == 0 || governor == address(0) || delay < 1 days || delay > 30 days) {
+    if (
+      cashAsset.code.length == 0 || governor == address(0)
+        || (delay < 1 days && !(block.chainid == 560048 && delay == 0)) || delay > 30 days
+    ) {
       revert InvalidConfiguration();
     }
     ASSET = cashAsset;
@@ -53,7 +56,8 @@ contract HarborClaimFactory is ReentrancyGuardTransient {
     return admissions[adapter].version;
   }
 
-  /// @notice Governor proposes reciprocal factory/ASSET bindings; no immediate mint permission.
+  /// @notice Governor proposes reciprocal factory/ASSET bindings; activation remains explicit.
+  /// @dev Controlled Hoodi demo admissions have no waiting period. Other chains retain the configured delay.
   function schedule(address adapter) external {
     if (msg.sender != GOVERNOR) revert Unauthorized();
     Admission storage a = admissions[adapter];
@@ -61,7 +65,7 @@ contract HarborClaimFactory is ReentrancyGuardTransient {
       a.retired || a.enabled || a.readyAt != 0 || IHarborClaimAdapter(adapter).FACTORY() != address(this)
         || IHarborClaimAdapter(adapter).ASSET() != ASSET
     ) revert InvalidConfiguration();
-    uint256 readyAt = block.timestamp + GOVERNANCE_DELAY;
+    uint256 readyAt = block.timestamp + (block.chainid == 560048 ? 0 : GOVERNANCE_DELAY);
     if (readyAt > type(uint64).max) revert InvalidConfiguration();
     a.readyAt = uint64(readyAt);
     emit AdapterScheduled(adapter, a.readyAt);

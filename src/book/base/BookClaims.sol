@@ -24,7 +24,9 @@ abstract contract BookClaims is BookState {
   /// @param ask Minimum sale multiplier on public mark, scaled by 1e18, between bid and one.
   function scheduleClaimFactory(address factory, uint256 source, uint256 bid, uint256 ask) external {
     _claimAdmin();
-    ClaimMarkets.schedule(_claimMarkets, _routes, factory, source, bid, ask, GOVERNANCE_DELAY, address(VAULT), ASSET);
+    // Only receipt admission is immediate on Hoodi; updater/resume delays are unchanged.
+    uint256 delay = block.chainid == 560048 ? 0 : GOVERNANCE_DELAY;
+    ClaimMarkets.schedule(_claimMarkets, _routes, factory, source, bid, ask, delay, address(VAULT), ASSET);
   }
 
   /// @notice Enable a reviewed configuration after its governance delay.

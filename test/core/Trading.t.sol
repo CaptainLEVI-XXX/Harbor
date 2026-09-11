@@ -8,6 +8,7 @@ import {PricingParameters} from "src/types/PricingTypes.sol";
 import {TradingFixture} from "test/base/TradingFixture.sol";
 import {RealizationLogs} from "test/base/RealizationLogs.sol";
 import {DirectSettlementChecks} from "test/base/DirectSettlementChecks.sol";
+import {HoodiDemoChecks} from "test/base/HoodiDemoChecks.sol";
 
 /// @notice Actual Aqua/SwapVM settlement with reusable, bounded route parameters.
 contract StandingTradingTest is TradingFixture {
@@ -49,6 +50,9 @@ contract StandingTradingTest is TradingFixture {
   }
 
   function test_PublicationIsBoundedVersionedAndIndependentOfNav() public {
+    uint256 beforeDemo = vm.snapshotState();
+    new HoodiDemoChecks().check();
+    vm.revertToState(beforeDemo);
     PricingParameters memory p = book.pricingParameters(0);
     ++p.version;
     vm.prank(trader);
