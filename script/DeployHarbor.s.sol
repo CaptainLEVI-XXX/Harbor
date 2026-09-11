@@ -101,7 +101,7 @@ contract DeployHarbor is Script {
     RouteConfig[] memory routes,
     uint256 minSeed,
     uint256 minRequest
-  ) private returns (HarborBook book, HarborVault vault, HarborExecutor executor) {
+  ) internal returns (HarborBook book, HarborVault vault, HarborExecutor executor) {
     if (config.executor == address(0)) {
       config.executor = address(new HarborExecutor(config.router, config.governor));
     }
