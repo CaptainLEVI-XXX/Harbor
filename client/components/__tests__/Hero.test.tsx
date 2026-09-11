@@ -8,7 +8,7 @@ import { DESIGN } from '@/lib/design';
 describe('Nav', () => {
   it('renders the wordmark, all five destinations and the connect button', () => {
     render(<Nav onConnect={() => {}} connectLabel={DESIGN.copy.connect} />);
-    expect(screen.getByText('Harbor')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Harbor' })).toBeInTheDocument();
     for (const item of DESIGN.copy.nav) expect(screen.getByText(item)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: DESIGN.copy.connect })).toBeInTheDocument();
   });

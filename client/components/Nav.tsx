@@ -13,9 +13,9 @@ const HREF: Record<string, string> = { Swap: '/swap', Earn: '/earn' };
 export default function Nav({ onConnect, connectLabel, active }: Props) {
   return (
     <nav className="nav">
-      <Link href="/" className="mark">
-        <HarborMark />
-        Harbor<sup>beta</sup>
+      {/* the wordmark: the symbol is its "o" */}
+      <Link href="/" className="mark" aria-label="Harbor">
+        harb<HarborMark />r<sup>beta</sup>
       </Link>
 
       <div className="navlinks">
