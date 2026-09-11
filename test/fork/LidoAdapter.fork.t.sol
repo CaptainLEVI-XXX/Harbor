@@ -5,6 +5,10 @@ import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {LidoAdapter} from "src/adapters/LidoAdapter.sol";
+import {LidoViews} from "src/adapters/lido/LidoViews.sol";
+import {HarborClaimFactory} from "src/claims/HarborClaimFactory.sol";
+import {IssuerClaimLedger} from "src/libraries/IssuerClaimLedger.sol";
+import {ClaimDomain, ClaimStage} from "src/types/ClaimTypes.sol";
 import {IHarborAdapter} from "src/interfaces/IHarborAdapter.sol";
 import {ILidoWithdrawalQueue as Queue, IWstETHConversion} from "src/interfaces/ILidoWithdrawalQueue.sol";
 
@@ -21,21 +25,44 @@ interface ILidoQueueHistory {
 /// @dev This setup is absent from the production adapter. It does not prove a new
 /// Harbor request matures, nor authorize importing pre-existing rights into a vault.
 contract HistoricalLidoHarness is LidoAdapter {
-  constructor(address book, address vault, address base, address weth, address queue)
-    LidoAdapter(book, vault, base, weth, queue)
+  constructor(address book, address vault, address base, address weth, address queue, LidoViews.Config memory config)
+    LidoAdapter(book, vault, base, weth, queue, config)
   {}
 
   function seedHistoricalRight(uint256 id) external onlyBook {
     require(Queue(ISSUER).ownerOf(id) == address(this));
-    require(!accepted[id]);
-    accepted[id] = true;
+    bytes32 key = nativeClaimId(id);
+    require(_claims.claims[key].stage == ClaimStage.NONE);
+    uint256[] memory ids = new uint256[](1);
+    ids[0] = id;
+    uint256 nominal = Queue(ISSUER).getWithdrawalStatus(ids)[0].amountOfStETH;
+    _claims.claims[key] =
+      IssuerClaimLedger.Claim(id, nominal, 0, address(0), ClaimDomain.NATIVE_VAULT, ClaimStage.PENDING);
+  }
+
+  /// @dev Test-only finalized export to exercise the generic receipt against an old real NFT.
+  function exportHistoricalRight(uint256 id) external onlyBook returns (address receipt) {
+    bytes32 key = nativeClaimId(id);
+    IssuerClaimLedger.Claim storage c = _claims.claims[key];
+    require(c.domain == ClaimDomain.NATIVE_VAULT && c.stage == ClaimStage.PENDING);
+    c.domain = ClaimDomain.TOKENIZED;
+    receipt = HarborClaimFactory(FACTORY).exportClaim(key, BOOK);
+    c.receipt = receipt;
   }
 }
 
 contract LidoAdapterForkTest is Test {
+  /// @dev Isolated adapter fixture; the full market fork uses the actual Router.
+  function ROUTER() external view returns (address) {
+    return address(this);
+  }
+
+  function WETH() external pure returns (address) {
+    return ASSET;
+  }
   uint256 private constant FORK_BLOCK = 25_924_311;
   address private constant WSTETH = 0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0;
-  address private constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+  address private constant ASSET = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
   address private constant QUEUE = 0x889edC2eDab5f40e902b864aD4d7AdE8E412F9B1;
   address private constant IMPLEMENTATION = 0xE42C659Dc09109566720EA8b2De186c2Be7D94D9;
   address private constant VAULT = address(0x484152424f52);
@@ -52,7 +79,15 @@ contract LidoAdapterForkTest is Test {
   }
 
   function test_ForkRealWrappedRequestCreatesAdapterOwnedRight() public {
-    LidoAdapter adapter = new LidoAdapter(address(this), VAULT, WSTETH, WETH, QUEUE);
+    HarborClaimFactory factory = new HarborClaimFactory(ASSET, address(this), 1 days);
+    LidoAdapter adapter = new LidoAdapter(
+      address(this),
+      VAULT,
+      WSTETH,
+      ASSET,
+      QUEUE,
+      LidoViews.Config(address(factory), address(this), address(this), 60, 1 days)
+    );
     vm.deal(address(this), 2 ether); // Test ETH only; issuer/token storage is untouched.
     (bool ok,) = WSTETH.call{value: 2 ether}("");
     assertTrue(ok);
@@ -68,7 +103,7 @@ contract LidoAdapterForkTest is Test {
     assertEq(Queue(QUEUE).ownerOf(requests[0].id), address(adapter));
     assertEq(IERC20(WSTETH).allowance(address(adapter), QUEUE), 0);
     assertEq(IERC20(WSTETH).balanceOf(address(adapter)), 0);
-    assertEq(IERC20(WETH).balanceOf(VAULT), 0);
+    assertEq(IERC20(ASSET).balanceOf(VAULT), 0);
     uint256[] memory ids = new uint256[](1);
     ids[0] = requests[0].id;
     assertFalse(Queue(QUEUE).getWithdrawalStatus(ids)[0].isFinalized);
@@ -77,7 +112,15 @@ contract LidoAdapterForkTest is Test {
   }
 
   function test_ForkHistoricalMatureRightUsesActualIssuerETH() public {
-    HistoricalLidoHarness adapter = new HistoricalLidoHarness(address(this), VAULT, WSTETH, WETH, QUEUE);
+    HarborClaimFactory factory = new HarborClaimFactory(ASSET, address(this), 1 days);
+    HistoricalLidoHarness adapter = new HistoricalLidoHarness(
+      address(this),
+      VAULT,
+      WSTETH,
+      ASSET,
+      QUEUE,
+      LidoViews.Config(address(factory), address(this), address(this), 60, 1 days)
+    );
     uint256[] memory ids = new uint256[](1);
     ids[0] = HISTORICAL_ID;
     Queue.WithdrawalRequestStatus memory status = Queue(QUEUE).getWithdrawalStatus(ids)[0];
@@ -94,16 +137,16 @@ contract LidoAdapterForkTest is Test {
     uint256 expected = Queue(QUEUE).getClaimableEther(ids, hints)[0];
     assertGt(expected, 0);
     uint256 issuerBefore = QUEUE.balance;
-    uint256 vaultBefore = IERC20(WETH).balanceOf(VAULT);
+    uint256 vaultBefore = IERC20(ASSET).balanceOf(VAULT);
     uint256 adapterEthBefore = address(adapter).balance;
-    uint256 adapterWethBefore = IERC20(WETH).balanceOf(address(adapter));
+    uint256 adapterWethBefore = IERC20(ASSET).balanceOf(address(adapter));
     (uint256 cash, uint256 remaining) = adapter.claim(HISTORICAL_ID, hints[0]);
     assertEq(cash, expected);
     assertEq(remaining, 0);
     assertEq(QUEUE.balance, issuerBefore - cash);
-    assertEq(IERC20(WETH).balanceOf(VAULT), vaultBefore + cash);
+    assertEq(IERC20(ASSET).balanceOf(VAULT), vaultBefore + cash);
     assertEq(address(adapter).balance, adapterEthBefore);
-    assertEq(IERC20(WETH).balanceOf(address(adapter)), adapterWethBefore);
+    assertEq(IERC20(ASSET).balanceOf(address(adapter)), adapterWethBefore);
     assertTrue(Queue(QUEUE).getWithdrawalStatus(ids)[0].isClaimed);
     emit log_named_uint("actual_issuer_recovery_wei", cash);
   }

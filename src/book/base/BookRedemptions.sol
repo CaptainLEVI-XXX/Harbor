@@ -31,7 +31,7 @@ abstract contract BookRedemptions is BookState {
     return _redemptions.usedNonce[epoch][nonce];
   }
 
-  /// @notice Current UTC-day request usage in WETH-denominated entitlement wei.
+  /// @notice Current UTC-day request usage in settlement-asset-denominated entitlement wei.
   function redemptionUsedToday(uint256 route) external view returns (uint256) {
     if (route >= INVENTORY_ROUTES) revert InvalidConfiguration();
     return _redemptions.usedToday(route);
@@ -62,7 +62,7 @@ abstract contract BookRedemptions is BookState {
     _open(context, Operation.REDEMPTION);
     _route = intent.route;
     _cash = intent.shares;
-    requests = IssuerOperations.request(_state, _redemptions, r, intent, amounts, address(VAULT), WETH, context);
+    requests = IssuerOperations.request(_state, _redemptions, r, intent, amounts, address(VAULT), ASSET, context);
     VAULT.settleIssuer(context, 0);
     _release();
   }
@@ -88,7 +88,7 @@ abstract contract BookRedemptions is BookState {
     if (ids.length == 0 || ids.length > 8 || ids.length != hints.length) revert InvalidConfiguration();
     address adapter = _routes[routeId].adapter;
     _open(keccak256(abi.encode(msg.sender, routeId, ids, hints)), Operation.RECOVERY);
-    uint256 total = IssuerOperations.recover(_state, adapter, routeId, ids, hints, address(VAULT), WETH);
+    uint256 total = IssuerOperations.recover(_state, adapter, routeId, ids, hints, address(VAULT), ASSET);
     VAULT.settleIssuer(_context, total);
     _release();
   }

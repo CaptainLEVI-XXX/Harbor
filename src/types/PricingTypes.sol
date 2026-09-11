@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-/// @notice Governance-owned route policy. Factors use 1e18; costs are WETH wei.
+/// @notice Governance-owned route policy. Factors use 1e18; costs are settlement-asset raw units.
 /// @dev Immutable after route configuration. Updaters can publish discounts only.
 struct PricingPolicy {
   uint256 minDiscount;
@@ -22,7 +22,7 @@ struct PricingParameters {
   uint256 configVersion;
 }
 
-/// @notice Fixed vault-wide FACE curve; capacity uses WETH wei, factors use 1e18.
+/// @notice Fixed vault-wide FACE curve; capacity uses settlement-asset raw units, factors use 1e18.
 struct PricingCurve {
   uint256 capacity;
   uint256 target;

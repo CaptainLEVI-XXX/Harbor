@@ -1,25 +1,27 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
+import {InventoryObservation, ClaimObservation} from "src/types/ClaimTypes.sol";
 
 /// @title IHarborValuation
 /// @notice Public observation provider, fixed at deployment and independent of quotes.
-/// @dev Implementations must prove provenance, issuer conversion and executable marks.
+/// @dev Implementations verify provenance/conversion and separately authorized estimates.
 interface IHarborValuation {
-  /// @notice Exact protocol-native nominal conversion, independent of marking estimates.
-  /// @dev Approved inventory uses 18 decimals. Neither value is a rounded one-token price.
-  function conversion(address base) external view returns (uint256 numerator, uint256 denominator);
-  /// @notice Public value of a tracked residual right; never a spendable balance.
-  function claim(address adapter, uint256 id, uint256 remaining)
+  /// @notice One exact inventory observation and an ordered batch of known, unique claims.
+  /// @dev At most 64 IDs. Cash is attributable credit, not automatically Vault liquidity.
+  function observePortfolio(address base, uint256 quantity, bytes32[] calldata ids)
     external
     view
-    returns (uint256 mark, uint256 observedAt, uint256 policyVersion, bool valid);
-  /// @notice Values the exact non-rebasing token quantity in WETH wei.
+    returns (InventoryObservation memory inventoryValue, ClaimObservation[] memory claims);
+  /// @notice Exact protocol-native nominal conversion, independent of marking estimates.
+  /// @dev Raw base units convert to raw settlement-asset units. Neither value is a rounded one-token price.
+  function conversion(address base) external view returns (uint256 numerator, uint256 denominator);
+  /// @notice Values the exact non-rebasing token quantity in settlement-asset raw units.
   /// @return entitlement Verified issuer conversion, not a cash guarantee.
   /// @return mark Public-policy LP inventory mark for these units.
   /// @return observedAt Oldest required observation timestamp.
   /// @return policyVersion Immutable/public marking policy version.
   /// @return observationHash Commitment to the public observations used.
-  /// @return valid Includes data validity and the real-capital launch gate.
+  /// @return valid Issuer evidence and estimate freshness are valid; not a launch or audit approval.
   function inventory(address base, uint256 shares)
     external
     view

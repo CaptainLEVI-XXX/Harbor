@@ -2,27 +2,53 @@
 pragma solidity 0.8.30;
 
 import {SafeTransferLib as SafeTransfer} from "solady/utils/SafeTransferLib.sol";
-import {AdapterBase} from "src/adapters/base/AdapterBase.sol";
+import {LidoViews} from "src/adapters/lido/LidoViews.sol";
+import {LidoClaims} from "src/adapters/lido/LidoClaims.sol";
+import {IssuerClaimLedger} from "src/libraries/IssuerClaimLedger.sol";
+import {ClaimImport, ClaimDomain, ClaimStage, CollateralKind} from "src/types/ClaimTypes.sol";
+import {IHarborClaim} from "src/interfaces/IHarborClaim.sol";
+import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import {IWETH} from "@1inch/solidity-utils/contracts/interfaces/IWETH.sol";
 import {ILidoWithdrawalQueue as Queue, IWstETHConversion} from "src/interfaces/ILidoWithdrawalQueue.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import {IHarborClaimFactory} from "src/interfaces/IHarborClaim.sol";
+import {IHarborClaimFactory} from "src/interfaces/IHarborClaimFactory.sol";
 
-/// @notice Bounded wstETH requests and adapter-owned unstETH recovery to one vault.
-/// @dev Reviewed Lido minting does not call onERC721Received. No NFT receiver is
-/// exposed: unsolicited safe transfers fail; unsafe transfers never become tracked.
-contract LidoAdapter is AdapterBase {
-  mapping(uint256 => bool) public accepted;
-  mapping(uint256 => bool) public closed;
-  /// @notice A transferred native right can never be recovered by this adapter again.
+/// @notice Pool-bound Lido custody, valuation and claim-attributed ASSET recovery.
+/// @dev Native claims pay the fixed Vault; tokenized claims pay their receipt holder.
+/// NFT callbacks are accepted only during a factory-authenticated import. Unsolicited
+/// safe transfers fail; unsafe transfers never become tracked obligations.
+contract LidoAdapter is LidoViews, IERC721Receiver {
+  uint256 private transient _importId;
+  address private transient _importOwner;
+  bool private transient _importAccepted;
 
   event Requested(uint256 indexed id, uint256 wrappedAmount, uint256 entitlement);
   event Recovered(uint256 indexed id, uint256 wethAmount);
   event ClaimExported(uint256 indexed id, address indexed receipt);
+  event ClaimImported(
+    bytes32 indexed claimId, uint256 indexed issuerId, address indexed receipt, address owner, uint256 nominal
+  );
+  event ClaimCashCollected(bytes32 indexed claimId, uint256 cash);
+  event ClaimPaid(bytes32 indexed claimId, address indexed receiver, uint256 cash);
 
-  constructor(address book, address vault, address wsteth, address weth, address queue)
-    AdapterBase(book, vault, wsteth, weth, queue)
-  {
-    if (Queue(queue).WSTETH() != wsteth) revert InvalidConfiguration();
+  constructor(address book, address vault, address wsteth, address weth, address queue, Config memory c)
+    LidoViews(book, vault, wsteth, weth, queue, c)
+  {}
+
+  function nativeClaimId(uint256 id) public view returns (bytes32) {
+    return LidoClaims.identity(ISSUER, id);
+  }
+
+  /// @notice Permanent recognition of a requested or imported issuer right, including after payout.
+  function accepted(uint256 id) external view returns (bool) {
+    return _claims.claims[nativeClaimId(id)].domain != ClaimDomain.NONE;
+  }
+
+  /// @notice Whether the native payout path is retired by settlement or tokenization.
+  /// @dev Tokenization does not settle the holder's right; use claimState for that lifecycle.
+  function closed(uint256 id) external view returns (bool) {
+    IssuerClaimLedger.Claim storage c = _claims.claims[nativeClaimId(id)];
+    return c.stage == ClaimStage.CLOSED || c.domain == ClaimDomain.TOKENIZED;
   }
 
   function request(uint256[] calldata amounts, uint256 previousBalance)
@@ -52,60 +78,172 @@ contract LidoAdapter is AdapterBase {
     requests = new Request[](ids.length);
     for (uint256 i; i < ids.length; ++i) {
       Queue.WithdrawalRequestStatus memory s = statuses[i];
+      bytes32 key = nativeClaimId(ids[i]);
       if (
-        ids[i] == 0 || accepted[ids[i]] || s.owner != address(this) || s.isClaimed || s.isFinalized
-          || s.timestamp != block.timestamp || s.amountOfStETH == 0 || s.amountOfShares == 0
+        ids[i] == 0 || _claims.claims[key].stage != ClaimStage.NONE || s.owner != address(this) || s.isClaimed
+          || s.isFinalized || s.timestamp != block.timestamp || s.amountOfStETH == 0 || s.amountOfShares == 0
           || s.amountOfStETH != IWstETHConversion(BASE).getStETHByWstETH(amounts[i])
           || Queue(ISSUER).ownerOf(ids[i]) != address(this)
       ) revert InvalidRequest();
-      accepted[ids[i]] = true;
+      _claims.claims[key] =
+        IssuerClaimLedger.Claim(ids[i], s.amountOfStETH, 0, address(0), ClaimDomain.NATIVE_VAULT, ClaimStage.PENDING);
       requests[i] = Request(ids[i], amounts[i], s.amountOfStETH);
       emit Requested(ids[i], amounts[i], s.amountOfStETH);
     }
   }
 
+  /// @notice Native recovery is Book-only and always pays the fixed Vault.
   function claim(uint256 id, uint256 hint) external onlyBook nonReentrant returns (uint256 cash, uint256 remaining) {
-    if (!accepted[id] || closed[id]) revert InvalidRequest();
+    bytes32 key = nativeClaimId(id);
+    IssuerClaimLedger.Claim storage c = _claims.claims[key];
+    if (c.domain != ClaimDomain.NATIVE_VAULT || c.stage != ClaimStage.PENDING) revert InvalidRequest();
+    _busyClaim = key;
+    cash = _collect(c, hint);
+    c.stage = ClaimStage.CLOSED;
+    _transferCash(VAULT, cash);
+    _busyClaim = bytes32(0);
+    emit Recovered(id, cash);
+    return (cash, 0);
+  }
+
+  /// @notice Export changes representation, never custody, face, basis or beneficiary.
+  function exportClaim(uint256 id, address factory) external onlyBook nonReentrant returns (address receipt) {
+    bytes32 key = nativeClaimId(id);
+    IssuerClaimLedger.Claim storage c = _claims.claims[key];
+    if (
+      factory != FACTORY || c.domain != ClaimDomain.NATIVE_VAULT || c.stage != ClaimStage.PENDING
+        || claimState(key).status != IHarborClaim.Status.PENDING
+    ) revert InvalidRequest();
+    c.domain = ClaimDomain.TOKENIZED;
+    receipt = IHarborClaimFactory(FACTORY).exportClaim(key, VAULT);
+    c.receipt = receipt;
+    if (SafeTransfer.balanceOf(receipt, VAULT) != 1) revert ReceiptMismatch();
+    emit ClaimExported(id, receipt);
+  }
+
+  /// @notice Identity preview only. Import independently verifies exact collateral.
+  function claimId(ClaimImport calldata input) public view returns (bytes32) {
+    if (
+      input.kind != CollateralKind.ERC721 || input.asset != ISSUER || input.tokenId == 0 || input.amount != 1
+        || input.data.length != 0
+    ) revert InvalidRequest();
+    return nativeClaimId(input.tokenId);
+  }
+
+  function importClaim(address owner, ClaimImport calldata input, address receipt)
+    external
+    nonReentrant
+    returns (bytes32 key, uint256 nominal)
+  {
+    if (msg.sender != FACTORY) revert Unauthorized();
+    _idle();
+    key = claimId(input);
+    if (
+      IHarborClaimFactory(FACTORY).receiptOf(address(this), key) != receipt
+        || _claims.claims[key].stage != ClaimStage.NONE || owner == address(0)
+        || Queue(ISSUER).ownerOf(input.tokenId) != owner
+    ) revert InvalidRequest();
+    _importId = input.tokenId;
+    _importOwner = owner;
+    IERC721(ISSUER).safeTransferFrom(owner, address(this), input.tokenId);
+    if (!_importAccepted || Queue(ISSUER).ownerOf(input.tokenId) != address(this)) revert ReceiptMismatch();
+    uint256[] memory ids = new uint256[](1);
+    ids[0] = input.tokenId;
+    Queue.WithdrawalRequestStatus[] memory s = Queue(ISSUER).getWithdrawalStatus(ids);
+    if (
+      s.length != 1 || s[0].isFinalized || s[0].isClaimed || s[0].owner != address(this) || s[0].amountOfStETH == 0
+        || s[0].amountOfShares == 0
+    ) revert InvalidRequest();
+    nominal = s[0].amountOfStETH;
+    _claims.claims[key] =
+      IssuerClaimLedger.Claim(input.tokenId, nominal, 0, receipt, ClaimDomain.TOKENIZED, ClaimStage.PENDING);
+    _importId = 0;
+    _importOwner = address(0);
+    _importAccepted = false;
+    emit ClaimImported(key, input.tokenId, receipt, owner, nominal);
+  }
+
+  function onERC721Received(address operator, address from, uint256 id, bytes calldata data) external returns (bytes4) {
+    if (
+      msg.sender != ISSUER || operator != address(this) || from != _importOwner || id == 0 || id != _importId
+        || data.length != 0 || _importAccepted
+    ) revert Unauthorized();
+    _importAccepted = true;
+    return IERC721Receiver.onERC721Received.selector;
+  }
+
+  /// @notice Anyone may collect cash; the recovery caller cannot select its owner.
+  function recoverTokenized(bytes32 id, bytes calldata data) external nonReentrant returns (uint256 cash) {
+    _claimOperation(id);
+    IssuerClaimLedger.Claim storage c = _claims.claims[id];
+    if (c.domain != ClaimDomain.TOKENIZED || c.stage != ClaimStage.PENDING || data.length != 32) {
+      revert InvalidRequest();
+    }
+    _busyClaim = id;
+    cash = _collect(c, abi.decode(data, (uint256)));
+    c.cash = cash;
+    c.stage = ClaimStage.CASH_READY;
+    _claims.totalCash += cash;
+    _busyClaim = bytes32(0);
+    emit ClaimCashCollected(id, cash);
+  }
+
+  /// @notice Canonical receipt only, after its holder's atomic burn.
+  function redeemTokenized(bytes32 id, address receiver) external nonReentrant returns (uint256 cash) {
+    _claimOperation(id);
+    IssuerClaimLedger.Claim storage c = _claims.claims[id];
+    if (
+      c.domain != ClaimDomain.TOKENIZED || c.stage != ClaimStage.CASH_READY || msg.sender != c.receipt
+        || IHarborClaimFactory(FACTORY).receiptOf(address(this), id) != msg.sender
+    ) revert Unauthorized();
+    if (receiver == address(0) || receiver == address(this)) revert InvalidRequest();
+    _busyClaim = id;
+    cash = c.cash;
+    c.cash = 0;
+    c.stage = ClaimStage.CLOSED;
+    _claims.totalCash -= cash;
+    // No external call intervenes: _transferCash checks remaining credits + this
+    // payout against physical cash, exactly the aggregate before this debit.
+    _transferCash(receiver, cash);
+    _busyClaim = bytes32(0);
+    emit ClaimPaid(id, receiver, cash);
+  }
+
+  /// @dev One call per right makes ETH attribution unambiguous. Donations stay excluded.
+  function _collect(IssuerClaimLedger.Claim storage c, uint256 hint) private returns (uint256 cash) {
     uint256[] memory ids = new uint256[](1);
     uint256[] memory hints = new uint256[](1);
-    ids[0] = id;
+    ids[0] = c.issuerId;
     hints[0] = hint;
-    Queue.WithdrawalRequestStatus[] memory statuses = Queue(ISSUER).getWithdrawalStatus(ids);
+    Queue.WithdrawalRequestStatus[] memory s = Queue(ISSUER).getWithdrawalStatus(ids);
     if (
-      statuses.length != 1 || !statuses[0].isFinalized || statuses[0].isClaimed || statuses[0].owner != address(this)
-        || Queue(ISSUER).ownerOf(id) != address(this)
+      s.length != 1 || !s[0].isFinalized || s[0].isClaimed || s[0].owner != address(this)
+        || s[0].amountOfStETH != c.nominal || Queue(ISSUER).ownerOf(c.issuerId) != address(this)
     ) revert InvalidRequest();
-    uint256[] memory claimable = Queue(ISSUER).getClaimableEther(ids, hints);
-    if (claimable.length != 1 || claimable[0] > statuses[0].amountOfStETH) revert ReceiptMismatch();
-    closed[id] = true;
+    uint256[] memory amounts = Queue(ISSUER).getClaimableEther(ids, hints);
+    if (amounts.length != 1 || amounts[0] > c.nominal) revert ReceiptMismatch();
     _receiving = true;
     Queue(ISSUER).claimWithdrawals(ids, hints);
     _receiving = false;
-    statuses = Queue(ISSUER).getWithdrawalStatus(ids);
-    if (statuses.length != 1 || !statuses[0].isClaimed) revert ReceiptMismatch();
-    cash = _payVault(claimable[0]);
-    // Lido burns the entire right on claim; partial receipt support is not implied.
-    remaining = 0;
-    emit Recovered(id, cash);
+    cash = _received;
+    _received = 0;
+    s = Queue(ISSUER).getWithdrawalStatus(ids);
+    if (cash != amounts[0] || s.length != 1 || !s[0].isClaimed) revert ReceiptMismatch();
+    uint256 beforeBalance = SafeTransfer.balanceOf(ASSET, address(this));
+    if (cash != 0) IWETH(ASSET).deposit{value: cash}();
+    if (SafeTransfer.balanceOf(ASSET, address(this)) != beforeBalance + cash) revert ReceiptMismatch();
   }
 
-  /// @notice Convert an accepted pending NFT into one receipt delivered to the fixed vault.
-  /// @dev Book approves the integration and moves basis in the same transaction.
-  /// NFT approval is specific to this ID and cleared by the issuer on transfer.
-  function exportClaim(uint256 id, address factory) external onlyBook nonReentrant returns (address receipt) {
-    if (!accepted[id] || closed[id]) revert InvalidRequest();
-    IHarborClaimFactory f = IHarborClaimFactory(factory);
-    if (f.ISSUER() != ISSUER || f.WETH() != WETH) revert InvalidConfiguration();
-    closed[id] = true;
-    IERC721(ISSUER).approve(factory, id);
-    receipt = f.wrap(id);
-    if (SafeTransfer.balanceOf(receipt, address(this)) != 1 || SafeTransfer.balanceOf(receipt, VAULT) != 0) {
-      revert ReceiptMismatch();
-    }
-    SafeTransfer.safeTransfer(receipt, VAULT, 1);
-    if (SafeTransfer.balanceOf(receipt, address(this)) != 0 || SafeTransfer.balanceOf(receipt, VAULT) != 1) {
-      revert ReceiptMismatch();
-    }
-    emit ClaimExported(id, receipt);
+  /// @dev Tokenized callers debit totalCash first; native cash was never in that total.
+  /// Preserve every other unpaid credit and exclude donations from the measured payout.
+  function _transferCash(address receiver, uint256 cash) private {
+    uint256 beforeSelf = SafeTransfer.balanceOf(ASSET, address(this));
+    if (beforeSelf < _claims.totalCash + cash) revert ReceiptMismatch();
+    uint256 beforeReceiver = SafeTransfer.balanceOf(ASSET, receiver);
+    if (cash != 0) SafeTransfer.safeTransfer(ASSET, receiver, cash);
+    if (
+      SafeTransfer.balanceOf(ASSET, address(this)) != beforeSelf - cash
+        || SafeTransfer.balanceOf(ASSET, receiver) != beforeReceiver + cash
+    ) revert ReceiptMismatch();
   }
 }

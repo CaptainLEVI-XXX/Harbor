@@ -7,7 +7,11 @@ import {BookAccounting as Accounting} from "src/libraries/BookAccounting.sol";
 import {ClaimAccounting} from "src/libraries/ClaimAccounting.sol";
 import {ClaimMarkets} from "src/libraries/ClaimMarkets.sol";
 import {IHarborClaim} from "src/interfaces/IHarborClaim.sol";
+import {IHarborAdapter} from "src/interfaces/IHarborAdapter.sol";
+import {IHarborClaimAdapter} from "src/interfaces/IHarborClaimAdapter.sol";
+import {InventoryObservation, ClaimObservation, ClaimDomain} from "src/types/ClaimTypes.sol";
 import {IHarborValuation} from "src/interfaces/IHarborValuation.sol";
+import {IHarborPool} from "src/interfaces/IHarborPool.sol";
 import {HarborClaimGuard} from "src/swapvm/instructions/HarborClaimGuard.sol";
 import {RouteConfig} from "src/types/HarborTypes.sol";
 
@@ -15,6 +19,30 @@ import {RouteConfig} from "src/types/HarborTypes.sol";
 /// @notice Bounded public valuation and shared issuer capacity for inventory and receipts.
 /// @dev Historical receipt routes never appear in unbounded portfolio loops.
 library BookPortfolio {
+  error SettlementMismatch();
+
+  /// @notice Revalidate the traded right after all token callbacks, without repricing.
+  /// @dev Fixed linked code reads the Book's ledgers. Receipt custody/admission
+  /// and the exact-quantity issuer observation must still match authorization.
+  /// No state changes, caller-selected targets, or cached NAV authority.
+  function checkSettlement(
+    ClaimMarkets.State storage markets,
+    RouteConfig[] storage routes,
+    uint256 id,
+    bool buy,
+    uint256 quantity,
+    uint256 cash,
+    uint256 factoryVersion,
+    address cashAsset,
+    bytes32 expectedEvidence
+  ) public view {
+    if (markets.markets[id].factory != address(0)) {
+      receiptCheck(markets, id, buy, quantity, cash, factoryVersion, cashAsset);
+    }
+    (,,,, bytes32 evidence, bool valid) = observation(markets, routes, id, quantity);
+    if (!valid || evidence != expectedEvidence) revert SettlementMismatch();
+  }
+
   error CapacityExceeded();
   error InvalidQuote();
   /// @notice Cursor exceeds the live set or page size is not 1..32.
@@ -26,9 +54,9 @@ library BookPortfolio {
     uint256 route;
     address adapter;
     uint256 issuerId;
-    uint256 basis; // WETH wei, retained until final settlement.
-    uint256 remaining; // WETH-denominated entitlement, not cash.
-    uint256 received; // Attributable cumulative WETH wei.
+    uint256 basis; // settlement-asset raw units, retained until final settlement.
+    uint256 remaining; // settlement-asset-denominated entitlement, not cash.
+    uint256 received; // Attributable cumulative settlement-asset raw units.
   }
 
   /// @notice Read up to 32 live native rights; no issuer, token or valuation calls.
@@ -56,7 +84,7 @@ library BookPortfolio {
     uint256 inventory;
     uint256 claims;
     uint256 observedAt;
-    uint256 policy;
+    bytes32 evidence;
     bool valid;
   }
 
@@ -68,17 +96,17 @@ library BookPortfolio {
     uint256 quantity,
     uint256 cash,
     uint256 version,
-    address weth
+    address cashAsset
   ) public view {
     ClaimMarkets.Market storage m = markets.markets[route];
-    if (buy && !markets.integrations[m.factory].enabled) revert InvalidQuote();
+    if (buy && !markets.integrations[m.factory][m.adapter].enabled) revert InvalidQuote();
     address receipt = m.receipt;
     HarborClaimGuard.check(
       receipt,
       m.factory,
       version,
-      buy ? receipt : weth,
-      buy ? weth : receipt,
+      buy ? receipt : cashAsset,
+      buy ? cashAsset : receipt,
       buy ? quantity : cash,
       buy ? cash : quantity
     );
@@ -135,19 +163,22 @@ library BookPortfolio {
   function observation(
     ClaimMarkets.State storage markets,
     RouteConfig[] storage routes,
-    IHarborValuation provider,
     uint256 route,
     uint256 quantity
   ) public view returns (uint256 entitlement, uint256 mark, uint256 time, uint256 policy, bytes32 hash, bool valid) {
     ClaimMarkets.Market storage m = markets.markets[route];
-    if (m.factory == address(0)) return provider.inventory(routes[route].base, quantity);
+    if (m.factory == address(0)) {
+      return IHarborValuation(routes[route].adapter).inventory(routes[route].base, quantity);
+    }
     if (quantity != 1) revert InvalidQuote();
-    IHarborClaim c = IHarborClaim(m.receipt);
-    uint256 requested = c.entitlement();
-    (mark, time, policy, valid) = provider.claim(routes[m.sourceRoute].adapter, m.requestId, requested);
-    valid = valid && mark <= requested;
-    entitlement = requested;
-    hash = keccak256(abi.encode(m.factory, address(c), c.ISSUER(), m.requestId, requested, mark, time, policy));
+    // Canonical receipt/adapter/id bindings are immutable after registration.
+    // The receipt's entitlement getter calls this same adapter again; read one
+    // coherent live observation instead. Neither mark nor status is cached here.
+    ClaimObservation memory o = IHarborClaimAdapter(m.adapter).claimState(m.claimId);
+    (mark, time, policy, valid) = (o.mark, o.observedAt, 1, o.valid);
+    entitlement = o.entitlement;
+    valid = valid && entitlement == m.nominal && mark <= entitlement;
+    hash = keccak256(abi.encode(m.factory, m.receipt, m.adapter, m.claimId, entitlement, mark, time, policy));
   }
 
   /// @notice Mark native inventory, native claims and held receipts exactly once.
@@ -155,62 +186,112 @@ library BookPortfolio {
     Accounting.State storage book,
     ClaimMarkets.State storage markets,
     RouteConfig[] storage routes,
-    IHarborValuation provider,
     uint256 nativeRoutes,
     address vault,
     bool stopped
   ) public view returns (Value memory v) {
     v.observedAt = block.timestamp;
     v.valid = !stopped;
-    for (uint256 i; i < nativeRoutes; ++i) {
-      (uint256 entitlement, uint256 mark, uint256 time, uint256 policy,, bool ok) =
-        provider.inventory(routes[i].base, book.positions[i].shares);
-      if (i == 0) v.policy = policy;
-      v.inventory += mark;
-      _merge(v, time, policy, ok && mark <= entitlement);
-    }
-    for (uint256 i; i < book.claims.active.length; ++i) {
-      bytes32 key = book.claims.active[i];
-      ClaimAccounting.Claim storage c = book.claims.claims[key];
-      (uint256 mark, uint256 time, uint256 policy, bool ok) =
-        provider.claim(routes[c.route].adapter, book.protocolIds[key], c.remaining);
-      v.claims += mark;
-      _merge(v, time, policy, ok && mark <= c.remaining);
-    }
-    for (uint256 i; i < markets.active.length; ++i) {
-      uint256 route = markets.active[i];
-      ClaimMarkets.Market storage m = markets.markets[route];
-      IHarborClaim c = IHarborClaim(m.receipt);
-      if (book.positions[route].shares != 1 || SafeTransfer.balanceOf(address(c), vault) != 1) {
-        v.valid = false;
+    address asset = IHarborPool(address(this)).ASSET();
+    for (uint256 route; route < nativeRoutes; ++route) {
+      address adapter = routes[route].adapter;
+      if (IHarborClaimAdapter(adapter).ASSET() != asset) revert InvalidQuote();
+      bytes32[] memory ids = _claimIds(book, markets, route, adapter);
+      (InventoryObservation memory inv, ClaimObservation[] memory claims) =
+        IHarborValuation(adapter).observePortfolio(routes[route].base, book.positions[route].shares, ids);
+      if (claims.length != ids.length) revert InvalidQuote();
+      v.evidence = keccak256(abi.encode(v.evidence, route, inv.observationHash, book.positions[route].shares));
+      for (uint256 i; i < claims.length; ++i) {
+        ClaimObservation memory o = claims[i];
+        v.evidence = keccak256(abi.encode(v.evidence, ids[i], o.domain, o.status, o.entitlement, o.mark, o.cash));
       }
-      IHarborClaim.Status status = c.status();
-      if (status == IHarborClaim.Status.CASH_READY) {
-        uint256 cash = c.recovered();
-        v.claims += cash;
-        v.valid = v.valid && SafeTransfer.balanceOf(c.WETH(), address(c)) >= cash;
-      } else {
-        (uint256 mark, uint256 time, uint256 policy, bool ok) =
-          provider.claim(routes[m.sourceRoute].adapter, m.requestId, c.entitlement());
-        v.claims += mark;
-        _merge(
-          v,
-          time,
-          policy,
-          ok && mark <= c.entitlement()
-            && (status == IHarborClaim.Status.PENDING || status == IHarborClaim.Status.FINALIZED)
-        );
-      }
+      v.inventory += inv.mark;
+      _merge(
+        v,
+        inv.observedAt,
+        inv.valid && inv.mark <= inv.entitlement
+          && SafeTransfer.balanceOf(routes[route].base, vault) >= book.positions[route].shares
+      );
+      _mergeClaims(v, book, markets, route, vault, claims);
     }
   }
 
-  function _merge(Value memory v, uint256 time, uint256 policy, bool valid) private pure {
+  /// @dev Native claims precede held receipts, each in its live-set order. Book
+  /// caps their combined count at 64. Only static calls occur while using these IDs.
+  function _claimIds(Accounting.State storage book, ClaimMarkets.State storage markets, uint256 route, address adapter)
+    private
+    view
+    returns (bytes32[] memory ids)
+  {
+    uint256 count;
+    for (uint256 i; i < book.claims.active.length; ++i) {
+      if (book.claims.claims[book.claims.active[i]].route == route) ++count;
+    }
+    for (uint256 i; i < markets.active.length; ++i) {
+      if (markets.markets[markets.active[i]].sourceRoute == route) ++count;
+    }
+    ids = new bytes32[](count);
+    uint256 cursor;
+    for (uint256 i; i < book.claims.active.length; ++i) {
+      bytes32 key = book.claims.active[i];
+      if (book.claims.claims[key].route == route) {
+        ids[cursor++] = IHarborAdapter(adapter).nativeClaimId(book.protocolIds[key]);
+      }
+    }
+    for (uint256 i; i < markets.active.length; ++i) {
+      ClaimMarkets.Market storage m = markets.markets[markets.active[i]];
+      if (m.sourceRoute == route) ids[cursor++] = m.claimId;
+    }
+  }
+
+  /// @dev Consume observations in _claimIds order. Native and tokenized domains
+  /// have distinct ownership proofs; an adapter-wide credit is never a pool asset.
+  function _mergeClaims(
+    Value memory v,
+    Accounting.State storage book,
+    ClaimMarkets.State storage markets,
+    uint256 route,
+    address vault,
+    ClaimObservation[] memory claims
+  ) private view {
+    uint256 cursor;
+    for (uint256 i; i < book.claims.active.length; ++i) {
+      ClaimAccounting.Claim storage c = book.claims.claims[book.claims.active[i]];
+      if (c.route != route) continue;
+      ClaimObservation memory o = claims[cursor++];
+      v.claims += o.mark;
+      _merge(
+        v,
+        o.observedAt,
+        o.valid && o.domain == ClaimDomain.NATIVE_VAULT && o.entitlement == c.remaining && o.mark <= c.remaining
+          && (o.status == IHarborClaim.Status.PENDING || o.status == IHarborClaim.Status.FINALIZED)
+      );
+    }
+    for (uint256 i; i < markets.active.length; ++i) {
+      uint256 receiptRoute = markets.active[i];
+      ClaimMarkets.Market storage m = markets.markets[receiptRoute];
+      if (m.sourceRoute != route) continue;
+      ClaimObservation memory o = claims[cursor++];
+      v.claims += o.mark;
+      _merge(
+        v,
+        o.observedAt,
+        o.valid && o.domain == ClaimDomain.TOKENIZED && o.entitlement == m.nominal && o.mark <= m.nominal
+          && o.status != IHarborClaim.Status.CLOSED && book.positions[receiptRoute].shares == 1
+          && SafeTransfer.balanceOf(m.receipt, vault) == 1
+      );
+    }
+  }
+
+  /// @dev The marking schema is fixed at admission, not supplied as a per-call policy flag.
+  function _merge(Value memory v, uint256 time, bool valid) private pure {
     if (time < v.observedAt) v.observedAt = time;
-    v.valid = v.valid && valid && policy == v.policy;
+    v.valid = v.valid && valid;
   }
 
   /// @notice Live nominal FACE, independent of acquisition cost and discounted NAV.
-  /// @dev At most two inventory conversions plus 64 live native/receipt rights.
+  /// @dev At most two live inventory conversions plus maintained native/receipt FACE totals;
+  /// no per-claim issuer reads or historical scan is needed for this capacity view.
   /// Request/export move the same right between sets. Loss settlement removes
   /// extinguished rights even when recovered cash is zero. CASH_READY receipts
   /// retain their FACE allocation until their cash reaches the vault.
@@ -218,34 +299,16 @@ library BookPortfolio {
     Accounting.State storage book,
     ClaimMarkets.State storage markets,
     RouteConfig[] storage routes,
-    IHarborValuation provider,
     uint256 nativeRoutes,
     address vault
   ) public view returns (uint256 total) {
     for (uint256 i; i < nativeRoutes; ++i) {
       uint256 quantity = book.positions[i].shares;
       if (SafeTransfer.balanceOf(routes[i].base, vault) < quantity) revert InvalidQuote();
-      (uint256 numerator, uint256 denominator) = provider.conversion(routes[i].base);
+      (uint256 numerator, uint256 denominator) = IHarborValuation(routes[i].adapter).conversion(routes[i].base);
       if (numerator == 0 || denominator == 0) revert InvalidQuote();
       total += Math.fullMulDiv(quantity, numerator, denominator);
     }
-    for (uint256 i; i < book.claims.active.length; ++i) {
-      total += book.claims.claims[book.claims.active[i]].remaining;
-    }
-    for (uint256 i; i < markets.active.length; ++i) {
-      IHarborClaim c = IHarborClaim(markets.markets[markets.active[i]].receipt);
-      if (SafeTransfer.balanceOf(address(c), vault) != 1) revert InvalidQuote();
-      total += c.entitlement();
-    }
-  }
-
-  /// @notice Detect issuer finalization or permissionless receipt recovery between NAV checkpoints.
-  /// @dev Zero for no held receipts. Invalid custody reverts; callers treat this as stale.
-  function receiptState(ClaimMarkets.State storage markets, address vault) public view returns (bytes32 hash) {
-    for (uint256 i; i < markets.active.length; ++i) {
-      IHarborClaim c = IHarborClaim(markets.markets[markets.active[i]].receipt);
-      hash =
-        keccak256(abi.encode(hash, address(c), c.status(), c.recovered(), SafeTransfer.balanceOf(address(c), vault)));
-    }
+    total += book.nativeClaimsFace + markets.heldFace;
   }
 }

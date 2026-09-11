@@ -9,7 +9,7 @@ import {Fees} from "src/libraries/Fees.sol";
 
 /// @title PricingMath
 /// @notice Standing bid/ask pricing with a convex FACE inventory penalty.
-/// @dev Work at 1e36 utilization precision and WETH-wei * 1e18 price precision,
+/// @dev Work at 1e36 utilization precision and cash raw units * 1e18 price precision,
 /// then round once at the cash boundary. Potential bounds include intermediate
 /// rounding; subtracting separately rounded wei potentials is not conservative.
 library PricingMath {
@@ -23,7 +23,9 @@ library PricingMath {
 
   /// @notice Validate fixed curve bounds; at most 100 bisections cover MAX_AMOUNT.
   function validateCurve(PricingCurve memory c) internal pure {
-    if (c.capacity < WAD || c.capacity > MAX_AMOUNT || c.target > 0.9e18 || c.kappa > 0.01e18) {
+    // Capacity is raw settlement units, not a fixed-point factor. Book enforces
+    // at least one whole asset; the kernel only requires a positive denominator.
+    if (c.capacity == 0 || c.capacity > MAX_AMOUNT || c.target > 0.9e18 || c.kappa > 0.01e18) {
       revert InvalidPricingDomain();
     }
   }
@@ -37,7 +39,7 @@ library PricingMath {
     ) revert InvalidPricingDomain();
   }
 
-  /// @notice Calculate all four customer amount modes, including external fees.
+  /// @notice Calculate all four customer modes with native VM fee rounding.
   /// @dev Cash-specified receipt modes must equal the one-unit standing price.
   /// Exact-output chooses the least input; exact-input chooses the most output.
   function quote(Trade memory t, PricingCurve memory c, PricingMarket memory m, uint256 feeBps)
@@ -45,40 +47,64 @@ library PricingMath {
     pure
     returns (FillAmounts memory a)
   {
+    bool buy = t.side == Side.BUY_BASE;
+    bool exactIn = t.mode == AmountMode.EXACT_IN;
+    uint256 specified = t.amountSpecified;
+    if (buy && !exactIn) specified = Fees.grossForNet(specified, feeBps);
+    if (!buy && exactIn) specified = Fees.net(specified, feeBps);
+    (uint256 input, uint256 output) = quoteCore(buy, exactIn, specified, c, m);
+    uint256 coreCash = buy ? output : input;
+    if (buy) output = Fees.net(output, feeBps);
+    else input = exactIn ? t.amountSpecified : Fees.grossForNet(input, feeBps);
+    if (m.receipt && buy && !exactIn && output != t.amountSpecified) revert UnfillableAmount();
+    if (m.receipt && !buy && exactIn && Fees.grossForNet(coreCash, feeBps) != input) revert UnfillableAmount();
+    a = Amounts.normalize(t, input, output);
+    if (buy) {
+      a.routerOut = coreCash;
+      a.fee = coreCash - output;
+    } else {
+      a.routerIn = coreCash;
+      a.fee = input - coreCash;
+    }
+  }
+
+  /// @notice Price VM registers after FeeProtocol has normalized the specified amount.
+  /// @dev No fee calculation or customer-limit check occurs here. The canonical
+  /// program and executor enforce those after the native fee instruction unwinds.
+  /// Receipt cash modes return the whole lot's canonical pair; the instruction
+  /// must validate that pair against the actual specified register and intent.
+  function quoteCore(bool buy, bool exactIn, uint256 specified, PricingCurve memory c, PricingMarket memory m)
+    public
+    pure
+    returns (uint256 input, uint256 output)
+  {
     validateCurve(c);
     validatePolicy(m.policy, c);
-    bool buy = t.side == Side.BUY_BASE;
     if (
       m.discount < m.policy.minDiscount || m.discount > m.policy.maxDiscount || m.numerator == 0 || m.denominator == 0
         || m.maxQuantity == 0 || m.maxQuantity > MAX_AMOUNT || m.exposure > 2 * c.capacity
         || (buy && m.exposure >= c.capacity)
         || (!buy && m.discount + m.policy.sellMargin < _slope(c, m.exposure) + MIN_SLOPE)
     ) revert InvalidPricingDomain();
-    if (t.amountSpecified == 0 || (m.receipt && m.maxQuantity != 1)) revert UnfillableAmount();
-    uint256 input;
-    uint256 output;
+    if (specified == 0 || (m.receipt && m.maxQuantity != 1)) revert UnfillableAmount();
     if (buy) {
-      if (t.mode == AmountMode.EXACT_IN) {
-        input = t.amountSpecified;
-        output = Fees.net(cash(c, m, input, true), feeBps);
+      if (exactIn) {
+        input = specified;
+        output = cash(c, m, input, true);
       } else {
-        output = t.amountSpecified;
-        uint256 gross = Fees.grossForNet(output, feeBps);
-        input = _quantity(c, m, gross, true);
-        if (m.receipt && Fees.net(cash(c, m, 1, true), feeBps) != output) revert UnfillableAmount();
+        output = m.receipt ? cash(c, m, 1, true) : specified;
+        input = m.receipt ? 1 : _quantity(c, m, output, true);
       }
     } else {
-      if (t.mode == AmountMode.EXACT_OUT) {
-        output = t.amountSpecified;
-        input = Fees.grossForNet(cash(c, m, output, false), feeBps);
+      if (!exactIn) {
+        output = specified;
+        input = cash(c, m, output, false);
       } else {
-        input = t.amountSpecified;
-        uint256 net = Fees.net(input, feeBps);
-        output = _quantity(c, m, net, false);
-        if (m.receipt && Fees.grossForNet(cash(c, m, 1, false), feeBps) != input) revert UnfillableAmount();
+        input = m.receipt ? cash(c, m, 1, false) : specified;
+        output = m.receipt ? 1 : _quantity(c, m, input, false);
       }
     }
-    a = Amounts.normalize(t, input, output, feeBps);
+    if (input == 0 || output == 0) revert UnfillableAmount();
   }
 
   /// @notice Gross vault buy debit or net sell receipt for exact raw base units.
@@ -111,7 +137,7 @@ library PricingMath {
     return Math.divUp(value - penalty, WAD);
   }
 
-  /// @notice Lower/upper bounds on Phi(x), in WETH wei * 1e18.
+  /// @notice Lower/upper bounds on Phi(x), in settlement-asset raw units * 1e18.
   /// @dev x <= 2K, K <= 1e27 and target <= .9 bound every intermediate. At
   /// these bounds the interval is far below one wei; a >= .1 unit slope keeps
   /// integer cash functions nondecreasing despite the approximation interval.

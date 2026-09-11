@@ -8,7 +8,7 @@ library RedemptionAccounting {
   /// @notice Only the current UTC day's usage affects future request authorization.
   struct DailyUsage {
     uint256 day; // block.timestamp / 1 days at the last successful request.
-    uint256 used; // WETH-denominated issuer entitlement consumed that day.
+    uint256 used; // settlement-asset-denominated issuer entitlement consumed that day.
   }
 
   struct State {
@@ -55,7 +55,7 @@ library RedemptionAccounting {
     usage.used = total;
   }
 
-  /// @notice Current-day entitlement consumed, in WETH wei; expired days read as zero.
+  /// @notice Current-day entitlement consumed, in settlement-asset raw units; expired days read as zero.
   function usedToday(State storage self, uint256 route) internal view returns (uint256) {
     DailyUsage storage usage = self.dailyUsage[route];
     return usage.day == block.timestamp / 1 days ? usage.used : 0;

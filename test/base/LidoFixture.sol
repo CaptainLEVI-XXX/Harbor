@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
+import {LidoViews} from "src/adapters/lido/LidoViews.sol";
 
 import {Test} from "forge-std/Test.sol";
 import {TokenMock} from "@1inch/solidity-utils/contracts/mocks/TokenMock.sol";
 import {ILidoWithdrawalQueue as Queue} from "src/interfaces/ILidoWithdrawalQueue.sol";
 import {LidoAdapter} from "src/adapters/LidoAdapter.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import {HarborClaimFactory} from "src/claims/HarborClaimFactory.sol";
 
 contract MockWrappedEther is TokenMock {
-  constructor() TokenMock("Synthetic WETH", "WETH") {}
+  constructor() TokenMock("Synthetic ASSET", "ASSET") {}
 
   function deposit() external payable {
     _mint(msg.sender, msg.value);
@@ -156,10 +158,19 @@ contract MockLidoQueue is Queue {
 }
 
 abstract contract LidoFixture is Test {
+  /// @dev Isolated adapter tests model only the Book/Router wrapped-native binding.
+  function ROUTER() external view returns (address) {
+    return address(this);
+  }
+
+  function WETH() external view returns (address) {
+    return address(weth);
+  }
   MockWrappedEther internal weth;
   MockWstETH internal base;
   MockLidoQueue internal queue;
   LidoAdapter internal adapter;
+  HarborClaimFactory internal factory;
   address internal vault = address(0x123456);
 
   function setUp() public virtual {
@@ -167,8 +178,20 @@ abstract contract LidoFixture is Test {
     weth = new MockWrappedEther();
     base = new MockWstETH();
     queue = new MockLidoQueue(address(base));
-    adapter = new LidoAdapter(address(this), vault, address(base), address(weth), address(queue));
+    factory = new HarborClaimFactory(address(weth), address(this), 1 days);
+    adapter = new LidoAdapter(
+      address(this),
+      vault,
+      address(base),
+      address(weth),
+      address(queue),
+      LidoViews.Config(address(factory), address(this), address(this), 60, 1 days)
+    );
     vm.deal(address(queue), 10000 ether);
+  }
+
+  function isIdle() external pure returns (bool) {
+    return true;
   }
 
   function _request(uint256 amount) internal returns (uint256 id) {

@@ -11,9 +11,9 @@ library ClaimAccounting {
   /// @dev Closure clears the payload; completed cost and proceeds belong in events.
   struct Claim {
     uint256 route;
-    uint256 basis; // Assigned WETH wei, fixed at request.
-    uint256 remaining; // Verified WETH-denominated entitlement, not spendable cash.
-    uint256 received; // Cumulative attributable WETH wei actually recovered.
+    uint256 basis; // Assigned settlement-asset raw units, fixed at request.
+    uint256 remaining; // Verified settlement-asset-denominated entitlement, not spendable cash.
+    uint256 received; // Cumulative attributable settlement-asset raw units actually recovered.
     bool exists;
     bool closed;
   }

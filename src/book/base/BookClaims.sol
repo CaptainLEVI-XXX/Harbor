@@ -4,6 +4,7 @@ pragma solidity 0.8.30;
 import {BookState} from "src/book/base/BookState.sol";
 import {ClaimMarkets} from "src/libraries/ClaimMarkets.sol";
 import {Operation} from "src/types/HarborTypes.sol";
+import {IHarborAdapter} from "src/interfaces/IHarborAdapter.sol";
 
 /// @title BookClaims
 /// @notice Individually approved claim markets, custody exports and vault receipt recovery.
@@ -11,7 +12,9 @@ import {Operation} from "src/types/HarborTypes.sol";
 /// token settlement remain in the standing-pricing executor and router.
 abstract contract BookClaims is BookState {
   /// @notice Effective factory admission and exact quote invalidation epoch.
-  event ClaimIntegrationStatusChanged(address indexed factory, bool enabled, bool retired, uint256 configVersion);
+  event ClaimIntegrationStatusChanged(
+    address indexed factory, address indexed adapter, bool enabled, bool retired, uint256 configVersion
+  );
 
   /// @notice Schedule a factory against a native issuer and immutable claim price bounds.
   /// @param source Original inventory route; all descendant markets share its risk limits.
@@ -19,22 +22,22 @@ abstract contract BookClaims is BookState {
   /// @param ask Minimum sale multiplier on public mark, scaled by 1e18, between bid and one.
   function scheduleClaimFactory(address factory, uint256 source, uint256 bid, uint256 ask) external {
     _claimAdmin();
-    ClaimMarkets.schedule(_claimMarkets, _routes, factory, source, bid, ask, GOVERNANCE_DELAY, address(VAULT), WETH);
+    ClaimMarkets.schedule(_claimMarkets, _routes, factory, source, bid, ask, GOVERNANCE_DELAY, address(VAULT), ASSET);
   }
 
   /// @notice Enable a reviewed configuration after its governance delay.
-  function activateClaimFactory(address factory) external {
+  function activateClaimFactory(address factory, address adapter) external {
     _claimAdmin();
-    ClaimMarkets.activate(_claimMarkets, factory);
-    emit ClaimIntegrationStatusChanged(factory, true, false, ++configVersion);
+    ClaimMarkets.activate(_claimMarkets, factory, adapter);
+    emit ClaimIntegrationStatusChanged(factory, adapter, true, false, ++configVersion);
   }
 
   /// @notice Irreversibly disable new exposure; existing recovery and sales remain available.
-  function retireClaimFactory(address factory) external {
+  function retireClaimFactory(address factory, address adapter) external {
     if (msg.sender != GOVERNOR && msg.sender != GUARDIAN) revert Unauthorized();
     if (_operation != Operation.NONE) revert Busy();
-    ClaimMarkets.retire(_claimMarkets, factory);
-    emit ClaimIntegrationStatusChanged(factory, false, true, ++configVersion);
+    ClaimMarkets.retire(_claimMarkets, factory, adapter);
+    emit ClaimIntegrationStatusChanged(factory, adapter, false, true, ++configVersion);
   }
 
   /// @notice Admit one canonical pending receipt as a stable route, without acquiring it.
@@ -42,7 +45,7 @@ abstract contract BookClaims is BookState {
   function registerClaimMarket(address factory, address receipt) external returns (uint256 route) {
     _claimAdmin();
     if (stopped) revert Unauthorized();
-    route = ClaimMarkets.register(_claimMarkets, _routes, factory, receipt, WETH);
+    route = ClaimMarkets.register(_claimMarkets, _routes, factory, receipt, ASSET);
   }
 
   /// @notice Move a managed native right to one vault-owned receipt without realizing PnL.
@@ -51,20 +54,24 @@ abstract contract BookClaims is BookState {
     _claimAdmin();
     if (stopped) revert Unauthorized();
     _open(keccak256(abi.encode(msg.sender, source, id, factory)), Operation.RECOVERY);
-    route = ClaimMarkets.exportRight(_claimMarkets, _state, _routes, source, id, factory, address(VAULT), WETH);
+    _claimAdapter = _routes[source].adapter;
+    _claimId = IHarborAdapter(_claimAdapter).nativeClaimId(id);
+    route = ClaimMarkets.exportRight(_claimMarkets, _state, _routes, source, id, factory, address(VAULT), ASSET);
     VAULT.settleIssuer(_context, 0);
     _release();
   }
 
   /// @notice Recover and redeem a held receipt even if quotes, marks or admission are unavailable.
   /// @param route Stable receipt route; the vault must hold its managed one-unit position.
-  /// @param hint Protocol-specific recovery proof; ignored if cash was already collected.
-  function recoverClaim(uint256 route, uint256 hint) external returns (uint256 cash) {
+  /// @param data Bounded adapter-specific recovery proof; unused once cash is collected.
+  function recoverClaim(uint256 route, bytes calldata data) external returns (uint256 cash) {
     if (_claimMarkets.markets[route].factory == address(0) || _state.positions[route].shares != 1) {
       revert InvalidConfiguration();
     }
-    _open(keccak256(abi.encode(msg.sender, route, hint)), Operation.RECOVERY);
-    cash = VAULT.recoverReceipt(_context, _claimMarkets.markets[route].receipt, hint);
+    _open(keccak256(abi.encode(msg.sender, route, data)), Operation.RECOVERY);
+    _claimAdapter = _claimMarkets.markets[route].adapter;
+    _claimId = _claimMarkets.markets[route].claimId;
+    cash = VAULT.recoverReceipt(_context, _claimMarkets.markets[route].receipt, data);
     ClaimMarkets.dispose(_claimMarkets, _state, route, cash, true);
     VAULT.settleIssuer(_context, cash);
     _release();
@@ -75,8 +82,8 @@ abstract contract BookClaims is BookState {
     return _claimMarkets.markets[route];
   }
 
-  function claimIntegration(address factory) external view returns (ClaimMarkets.Integration memory) {
-    return _claimMarkets.integrations[factory];
+  function claimIntegration(address factory, address adapter) external view returns (ClaimMarkets.Integration memory) {
+    return _claimMarkets.integrations[factory][adapter];
   }
 
   /// @notice Receipt-only totals; issuer-wide limits also include the native route position.

@@ -27,7 +27,7 @@ contract PricingTest is Test {
     t.limitAmount = mode == AmountMode.EXACT_IN ? 0 : type(uint256).max;
   }
 
-  /// @dev Exact potential difference in WETH-wei * 1e18. This reference cubes
+  /// @dev Exact potential difference in ASSET-wei * 1e18. This reference cubes
   /// unnormalized FACE with a shared rational denominator, not the kernel's path.
   function _delta(PricingCurve memory c, uint256 x, uint256 e, bool up) private pure returns (uint256) {
     uint256 threshold = c.capacity * 6 / 10;
@@ -40,9 +40,12 @@ contract PricingTest is Test {
   }
 
   function testFuzz_ConservativeCurveAndMinimalInverse(uint96 exposureSeed, uint96 quantitySeed) public pure {
-    uint256 x = bound(uint256(exposureSeed), 1 ether, 999_998 ether);
+    uint256 unit = exposureSeed % 2 == 0 ? 1e6 : 1e18;
+    uint256 x = bound(uint256(exposureSeed), unit, 999_998 * unit);
     (PricingCurve memory c, PricingMarket memory m) = _market(x);
-    uint256 q = bound(uint256(quantitySeed), 1 ether, c.capacity - x);
+    c.capacity = 1_000_000 * unit;
+    m.maxQuantity = c.capacity - x;
+    uint256 q = bound(uint256(quantitySeed), unit, c.capacity - x);
     uint256 bid = PricingMath.cash(c, m, q, true);
     uint256 referenceBid = (q * 0.988e18 - _delta(c, x, q, true)) / 1e18;
     assertLe(bid, referenceBid);

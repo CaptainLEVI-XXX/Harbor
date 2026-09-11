@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {VaultState} from "src/vault/base/VaultState.sol";
+import {VaultCore} from "src/vault/base/VaultCore.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {VaultFixture} from "test/base/VaultFixture.sol";
 
@@ -20,7 +20,7 @@ contract ERC4626DepositTest is VaultFixture {
     uint256 shares = expected / 3 + 1;
     uint256 numerator = shares * (amount + 1 ether + 1);
     uint256 denominator = expected + 1e6;
-    uint256 assets = (numerator - 1) / denominator + 1; // Required WETH rounds up.
+    uint256 assets = (numerator - 1) / denominator + 1; // Required ASSET rounds up.
     assertEq(vault.previewMint(shares), assets);
     vm.prank(bob);
     assertEq(vault.mint(shares, bob), assets);
@@ -32,7 +32,40 @@ contract ERC4626DepositTest is VaultFixture {
     assertEq(vault.totalAssets(), amount + 1 ether + assets);
   }
 
-  function test_DonationsDoNotChangeNAVOrDiluteNewDepositors() public {
+  function test_DonationsAndIndependentDepositMintLimits() public {
+    uint256 snapshot = vm.snapshotState();
+    uint256 maximum = vault.maxDeposit(alice);
+    assertEq(maximum, (type(uint256).max - 1e6 + 1) / 1e6);
+    weth.mint(alice, maximum);
+    vm.prank(alice);
+    vault.deposit(maximum, alice);
+    assertEq(vault.totalSupply(), maximum * 1e6);
+    assertEq(vault.totalAssets(), maximum);
+    // Deposit rounding cannot fit another asset wei, but an exact-share mint
+    // can consume the remaining share room for one wei. Do not couple the limits.
+    assertEq(vault.maxDeposit(alice), 0);
+    uint256 remainingShares = type(uint256).max - 1e6 - maximum * 1e6;
+    assertGt(remainingShares, 0);
+    assertEq(vault.maxMint(alice), remainingShares);
+    vm.prank(alice);
+    assertEq(vault.mint(remainingShares, alice), 1);
+    assertEq(vault.totalSupply(), type(uint256).max - 1e6);
+    assertEq(vault.totalAssets(), maximum + 1);
+    assertEq(vault.balanceOf(alice), type(uint256).max - 1e6);
+    assertEq(weth.balanceOf(address(vault)), maximum + 1);
+    assertEq(vault.maxMint(alice), 0);
+    assertEq(vault.maxDeposit(alice), 0);
+    assertTrue(vm.revertToState(snapshot));
+    maximum = vault.maxMint(alice);
+    assertEq(maximum, type(uint256).max - 1e6);
+    uint256 assets = vault.previewMint(maximum);
+    weth.mint(alice, assets);
+    vm.prank(alice);
+    vault.mint(maximum, alice);
+    assertEq(vault.totalSupply(), maximum);
+    assertEq(vault.maxMint(alice), 0);
+    assertEq(vault.maxDeposit(alice), 0);
+    assertTrue(vm.revertToState(snapshot));
     uint256 shares = _deposit(alice, 1 ether);
     weth.mint(address(vault), 1000 ether);
     assertEq(vault.totalAssets(), 1 ether);
@@ -67,7 +100,7 @@ contract ERC7540RedeemTest is VaultFixture {
     vault.requestRedeem(shares, alice, alice);
     assertEq(vault.allowance(alice, operator), 0);
     vault.fulfillWithdrawals(1);
-    vm.expectRevert(VaultState.Unauthorized.selector);
+    vm.expectRevert(VaultCore.Unauthorized.selector);
     vm.prank(operator);
     vault.withdraw(10 ether, operator, alice);
   }
@@ -78,7 +111,7 @@ contract ERC7540RedeemTest is VaultFixture {
     _request(alice, a);
     _request(bob, b);
     vault.fulfillWithdrawals(2);
-    // Synthetic loss of custody: genuine WETH is not assumed to have this power.
+    // Synthetic loss of custody: genuine ASSET is not assumed to have this power.
     deal(address(weth), address(vault), 15 ether);
     assertEq(vault.maxWithdraw(alice), 0);
     assertEq(vault.maxWithdraw(bob), 0);

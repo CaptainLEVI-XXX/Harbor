@@ -2,7 +2,9 @@
 pragma solidity 0.8.30;
 
 import {SafeTransferLib as SafeTransfer} from "solady/utils/SafeTransferLib.sol";
-import {IHarborClaim, IHarborClaimFactory, IHarborClaimExporter} from "src/interfaces/IHarborClaim.sol";
+import {IHarborClaim, IHarborClaimExporter} from "src/interfaces/IHarborClaim.sol";
+import {IHarborClaimFactory} from "src/interfaces/IHarborClaimFactory.sol";
+import {IHarborClaimAdapter} from "src/interfaces/IHarborClaimAdapter.sol";
 import {IHarborAdapter} from "src/interfaces/IHarborAdapter.sol";
 import {BookAccounting as Accounting} from "src/libraries/BookAccounting.sol";
 import {ClaimAccounting} from "src/libraries/ClaimAccounting.sol";
@@ -28,22 +30,25 @@ library ClaimMarkets {
     address factory;
     address receipt; // Canonical one-unit base token; native configuration is not copied.
     uint256 sourceRoute;
-    uint256 requestId;
+    address adapter;
+    bytes32 claimId;
+    uint256 nominal; // Fixed verified face used when removing held exposure.
   }
 
   struct Totals {
-    uint256 basis; // Current receipt cost, WETH wei, across one issuer's markets.
+    uint256 basis; // Current receipt cost, settlement-asset raw units, across one issuer's markets.
     uint256 purchases; // Lifetime additional receipt purchase debits; export adds zero.
     uint256 losses; // Lifetime realized receipt losses; gains never reset this budget.
   }
 
   struct State {
-    mapping(address => Integration) integrations;
+    mapping(address => mapping(address => Integration)) integrations;
     mapping(uint256 => Market) markets;
     mapping(address => uint256) routePlusOne;
     mapping(uint256 => Totals) totals;
     uint256[] active; // Only held receipt routes; native rights share the 64-position cap.
     mapping(uint256 => uint256) indexPlusOne;
+    uint256 heldFace; // Outstanding nominal held receipt rights, including CASH_READY.
     uint256 count; // Stable next receipt route offset; IDs are never reused after disposal.
   }
 
@@ -57,30 +62,24 @@ library ClaimMarkets {
   event ClaimIntegrationScheduled(
     address indexed factory,
     uint256 indexed sourceRoute,
-    address issuer,
-    address weth,
+    address adapter,
+    address cashAsset,
     uint256 bid,
     uint256 ask,
     uint256 readyAt
   );
-  event IntegrationActivated(address indexed factory);
-  event IntegrationRetired(address indexed factory);
-  event ClaimMarketRegistered(
-    uint256 indexed route, address indexed receipt, address indexed factory, uint256 requestId
-  );
-  /// @notice One-unit acquisition at WETH cost; version is the resulting position version, not a history counter.
-  event ReceiptAcquired(uint256 indexed route, uint256 indexed positionVersion, uint256 basisWeth, bool exported);
-  /// @notice Whole-unit disposal; WETH proceeds are net of fees, or measured recovery.
+  event IntegrationActivated(address indexed factory, address indexed adapter);
+  event IntegrationRetired(address indexed factory, address indexed adapter);
+  event ClaimMarketRegistered(uint256 indexed route, address indexed receipt, address indexed factory, bytes32 claimId);
+  /// @notice One-unit acquisition at ASSET cost; version is the resulting position version, not a history counter.
+  event ReceiptAcquired(uint256 indexed route, uint256 indexed positionVersion, uint256 basis, bool exported);
+  /// @notice Whole-unit disposal; ASSET proceeds are net of fees, or measured recovery.
   event ReceiptDisposed(
-    uint256 indexed route, uint256 indexed positionVersion, uint256 basisWeth, uint256 proceedsWeth, bool recovered
+    uint256 indexed route, uint256 indexed positionVersion, uint256 basis, uint256 proceeds, bool recovered
   );
   /// @notice Native custody becomes a receipt at the same cost, without cash or realized PnL.
   event NativeClaimExported(
-    uint256 indexed sourceRoute,
-    uint256 indexed issuerId,
-    uint256 indexed receiptRoute,
-    address receipt,
-    uint256 basisWeth
+    uint256 indexed sourceRoute, uint256 indexed issuerId, uint256 indexed receiptRoute, address receipt, uint256 basis
   );
 
   /// @notice Bounded current receipt-route discovery without reading any issuer or token.
@@ -113,9 +112,9 @@ library ClaimMarkets {
     if (m.factory == address(0)) revert InvalidReceipt();
     r = routes[m.sourceRoute];
     r.base = m.receipt;
-    r.adapter = m.factory;
-    r.bid = self.integrations[m.factory].bid;
-    r.ask = self.integrations[m.factory].ask;
+    r.adapter = m.adapter;
+    r.bid = self.integrations[m.factory][m.adapter].bid;
+    r.ask = self.integrations[m.factory][m.adapter].ask;
   }
 
   /// @notice Resolve only the token identity required for settlement or custody checks.
@@ -133,59 +132,87 @@ library ClaimMarkets {
     uint256 ask,
     uint256 delay,
     address vault,
-    address weth
+    address cashAsset
   ) public {
+    if (source >= routes.length) revert InvalidIntegration();
+    address adapter = routes[source].adapter;
     if (
-      self.integrations[factory].readyAt != 0 || source >= routes.length || factory.code.length == 0 || bid == 0
-        || bid > ask || ask > 1e18
+      self.integrations[factory][adapter].readyAt != 0 || factory.code.length == 0 || bid == 0 || bid > ask
+        || ask > 1e18
     ) revert InvalidIntegration();
     IHarborClaimFactory f = IHarborClaimFactory(factory);
     IHarborAdapter a = IHarborAdapter(routes[source].adapter);
     if (
-      a.BOOK() != address(this) || a.VAULT() != vault || a.BASE() != routes[source].base || a.WETH() != weth
-        || f.WETH() != weth || !f.active() || f.ISSUER() != IHarborClaimExporter(address(a)).ISSUER()
+      a.BOOK() != address(this) || a.VAULT() != vault || a.BASE() != routes[source].base || a.ASSET() != cashAsset
+        || f.ASSET() != cashAsset || !f.active(adapter) || IHarborClaimAdapter(adapter).FACTORY() != factory
     ) revert InvalidIntegration();
     uint256 readyAt = block.timestamp + delay;
-    self.integrations[factory] = Integration(source, readyAt, bid, ask, false, false);
-    emit ClaimIntegrationScheduled(factory, source, f.ISSUER(), weth, bid, ask, readyAt);
+    self.integrations[factory][adapter] = Integration(source, readyAt, bid, ask, false, false);
+    emit ClaimIntegrationScheduled(factory, source, adapter, cashAsset, bid, ask, readyAt);
   }
 
   /// @notice Activate after the Book's governance delay; configuration cannot be replaced.
-  function activate(State storage self, address factory) public {
-    Integration storage i = self.integrations[factory];
+  function activate(State storage self, address factory, address adapter) public {
+    Integration storage i = self.integrations[factory][adapter];
     if (
-      i.readyAt == 0 || block.timestamp < i.readyAt || i.retired || i.enabled || !IHarborClaimFactory(factory).active()
+      i.readyAt == 0 || block.timestamp < i.readyAt || i.retired || i.enabled
+        || !IHarborClaimFactory(factory).active(adapter)
     ) revert InvalidIntegration();
     i.enabled = true;
-    emit IntegrationActivated(factory);
+    emit IntegrationActivated(factory, adapter);
   }
 
-  function retire(State storage self, address factory) public {
-    Integration storage i = self.integrations[factory];
+  function retire(State storage self, address factory, address adapter) public {
+    Integration storage i = self.integrations[factory][adapter];
     if (i.readyAt == 0 || i.retired) revert InvalidIntegration();
     i.enabled = false;
     i.retired = true;
-    emit IntegrationRetired(factory);
+    emit IntegrationRetired(factory, adapter);
   }
 
   /// @notice Register a stable market ID without acquiring its receipt or assigning NAV.
-  function register(State storage self, RouteConfig[] storage routes, address factory, address receipt, address weth)
-    public
-    returns (uint256 route)
-  {
-    Integration storage i = self.integrations[factory];
-    IHarborClaimFactory f = IHarborClaimFactory(factory);
-    if (!i.enabled || !f.active() || self.routePlusOne[receipt] != 0) revert InvalidIntegration();
+  function register(
+    State storage self,
+    RouteConfig[] storage routes,
+    address factory,
+    address receipt,
+    address cashAsset
+  ) public returns (uint256 route) {
     IHarborClaim c = IHarborClaim(receipt);
+    address adapter = c.ADAPTER();
+    Integration storage i = self.integrations[factory][adapter];
+    IHarborClaimFactory f = IHarborClaimFactory(factory);
+    if (!i.enabled || !f.active(adapter) || self.routePlusOne[receipt] != 0) revert InvalidIntegration();
     if (
-      !f.isReceipt(receipt) || c.FACTORY() != factory || c.ISSUER() != f.ISSUER() || c.WETH() != weth
-        || c.CHAIN_ID() != block.chainid || f.receiptOf(c.REQUEST_ID()) != receipt
+      !f.isReceipt(receipt) || c.FACTORY() != factory || routes[i.sourceRoute].adapter != adapter
+        || c.ASSET() != cashAsset || c.CHAIN_ID() != block.chainid || f.receiptOf(adapter, c.CLAIM_ID()) != receipt
         || c.status() != IHarborClaim.Status.PENDING
     ) revert InvalidReceipt();
     route = routes.length + self.count++;
-    self.markets[route] = Market(factory, receipt, i.sourceRoute, c.REQUEST_ID());
+    self.markets[route] = Market(factory, receipt, i.sourceRoute, adapter, c.CLAIM_ID(), c.entitlement());
     self.routePlusOne[receipt] = route + 1;
-    emit ClaimMarketRegistered(route, receipt, factory, c.REQUEST_ID());
+    emit ClaimMarketRegistered(route, receipt, factory, c.CLAIM_ID());
+  }
+
+  /// @notice Record one measured trade in its native or receipt representation.
+  /// @dev Book authenticates hooks and exact balance deltas first. This fixed
+  /// linked accounting boundary does not authorize transfers or change pricing.
+  function recordTrade(
+    State storage self,
+    Accounting.State storage book,
+    uint256 route,
+    bool buy,
+    uint256 quantity,
+    uint256 cash
+  ) public {
+    if (self.markets[route].factory != address(0)) {
+      if (buy) acquire(self, book, route, cash, false);
+      else dispose(self, book, route, cash, false);
+    } else if (buy) {
+      Accounting.buy(book, route, quantity, cash);
+    } else {
+      Accounting.sell(book, route, quantity, cash);
+    }
   }
 
   /// @notice Include a newly held receipt in the shared bounded active set.
@@ -202,11 +229,11 @@ library ClaimMarkets {
     self.indexPlusOne[route] = self.active.length;
     Totals storage t = self.totals[m.sourceRoute];
     t.basis += cost;
+    self.heldFace += m.nominal;
     if (!exported) t.purchases += cost;
     p.shares = 1;
     p.basis = cost;
     ++p.version;
-    ++book.version;
     emit ReceiptAcquired(route, p.version, cost, exported);
   }
 
@@ -221,6 +248,7 @@ library ClaimMarkets {
     Market storage m = self.markets[route];
     Totals storage t = self.totals[m.sourceRoute];
     t.basis -= basis;
+    self.heldFace -= m.nominal;
     if (basis > cash) t.losses += basis - cash;
     uint256 last = self.active[self.active.length - 1];
     self.active[index - 1] = last;
@@ -230,7 +258,6 @@ library ClaimMarkets {
     p.shares = 0;
     p.basis = 0;
     ++p.version;
-    ++book.version;
     emit ReceiptDisposed(route, p.version, basis, cash, recovered);
   }
 
@@ -243,20 +270,22 @@ library ClaimMarkets {
     uint256 id,
     address factory,
     address vault,
-    address weth
+    address cashAsset
   ) public returns (uint256 route) {
-    Integration storage i = self.integrations[factory];
-    if (!i.enabled || i.sourceRoute != source) revert InvalidIntegration();
     address adapter = routes[source].adapter;
+    Integration storage i = self.integrations[factory][adapter];
+    if (!i.enabled || i.sourceRoute != source) revert InvalidIntegration();
     bytes32 key = ClaimAccounting.key(adapter, id);
     ClaimAccounting.Claim storage c = book.claims.claims[key];
     if (!c.exists || c.closed || c.route != source || c.received != 0) revert InvalidReceipt();
     address receipt = IHarborClaimExporter(adapter).exportClaim(id, factory);
     if (
-      SafeTransfer.balanceOf(receipt, vault) != 1 || IHarborClaim(receipt).REQUEST_ID() != id
+      SafeTransfer.balanceOf(receipt, vault) != 1
+        || IHarborClaim(receipt).CLAIM_ID() != IHarborAdapter(adapter).nativeClaimId(id)
         || IHarborClaim(receipt).entitlement() != c.remaining
     ) revert InvalidReceipt();
-    route = register(self, routes, factory, receipt, weth);
+    route = register(self, routes, factory, receipt, cashAsset);
+    book.nativeClaimsFace -= c.remaining;
     uint256 basis = book.claims.transferRight(key);
     delete book.protocolIds[key];
     book.positions[source].pendingBasis -= basis;

@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.30;
+
+import {PricingPolicy, PricingParameters, PricingCurve} from "src/types/PricingTypes.sol";
+import {PricingMath} from "src/libraries/PricingMath.sol";
+
+/// @title PricingState
+/// @notice Book-owned standing publications and immutable per-route publisher bounds.
+/// @dev Linked operations use explicit Book storage. The Book authenticates roles and its idle lock.
+library PricingState {
+  struct State {
+    mapping(uint256 => PricingParameters) parameters;
+    mapping(uint256 => PricingPolicy) policies;
+  }
+  error InvalidConfiguration();
+  error InvalidQuote();
+  event PricingPolicyConfigured(uint256 indexed route, PricingPolicy policy);
+  event PricingParametersPublished(
+    uint256 indexed route,
+    uint256 indexed version,
+    uint256 indexed configVersion,
+    uint256 discount,
+    uint256 observedAt,
+    uint256 validUntil
+  );
+
+  function configure(
+    State storage self,
+    uint256 route,
+    uint256 routeCount,
+    PricingPolicy memory policy,
+    PricingCurve memory curve,
+    uint256 assetUnit
+  ) public {
+    if (
+      route >= routeCount || self.policies[route].minDiscount != 0 || policy.buyCost > assetUnit
+        || policy.sellCost > assetUnit
+    ) {
+      revert InvalidConfiguration();
+    }
+    PricingMath.validatePolicy(policy, curve);
+    self.policies[route] = policy;
+    emit PricingPolicyConfigured(route, policy);
+  }
+
+  /// @notice Current observation only; history is emitted, never accumulated in storage.
+  function publish(State storage self, uint256 route, PricingParameters memory p, uint256 configVersion, uint256 maxAge)
+    public
+  {
+    PricingPolicy storage policy = self.policies[route];
+    PricingParameters storage previous = self.parameters[route];
+    if (
+      policy.minDiscount == 0 || p.discount < policy.minDiscount || p.discount > policy.maxDiscount
+        || p.configVersion != configVersion || p.version != previous.version + 1 || p.observedAt == 0
+        || p.observedAt > block.timestamp || p.validUntil < block.timestamp || p.validUntil < p.observedAt
+        || p.validUntil - p.observedAt > maxAge || p.observedAt < previous.observedAt
+    ) revert InvalidQuote();
+    self.parameters[route] = p;
+    emit PricingParametersPublished(route, p.version, p.configVersion, p.discount, p.observedAt, p.validUntil);
+  }
+}

@@ -30,3 +30,23 @@ interface ILidoWithdrawalQueue {
 interface IWstETHConversion {
   function getStETHByWstETH(uint256 amount) external view returns (uint256);
 }
+
+/// @notice Queue checkpoint lookup used to verify finalized claimable amounts.
+interface ILidoCheckpoints {
+  function getLastCheckpointIndex() external view returns (uint256);
+  function findCheckpointHints(uint256[] calldata ids, uint256 first, uint256 last)
+    external
+    view
+    returns (uint256[] memory);
+}
+
+/// @notice Exact stETH numerator/denominator, not a rounded one-token conversion.
+interface ILidoShareTotals {
+  function getTotalPooledEther() external view returns (uint256);
+  function getTotalShares() external view returns (uint256);
+}
+
+/// @notice Wrapped-share binding to the protocol's underlying share ledger.
+interface ILidoWrappedShares {
+  function stETH() external view returns (address);
+}

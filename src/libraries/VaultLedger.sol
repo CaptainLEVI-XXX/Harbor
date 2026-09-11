@@ -1,25 +1,26 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {WithdrawalQueue} from "src/libraries/WithdrawalQueue.sol";
+import {LPExitQueue} from "src/libraries/LPExitQueue.sol";
+import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
 
-/// @title VaultAccounting
+/// @title VaultLedger
 /// @notice Accounted cash, reserved liabilities and coherent valuation snapshots.
 /// @dev The vault supplies measured deltas and authenticated public observations.
-library VaultAccounting {
+library VaultLedger {
+  /// @dev Paired with one virtual asset wei; shared by conversions and numeric limits.
+  uint256 internal constant VIRTUAL_SHARES = 1e6;
+
   struct State {
-    uint256 cash; // Accounted WETH wei, including reserved exit cash.
+    uint256 cash; // Accounted settlement-asset raw units, including reserved exit cash.
     uint256 inventoryValue; // Public mark; never part of cash capacity.
     uint256 claimsValue; // Public mark of residual rights; never part of cash capacity.
     uint256 nav; // Committed share backing after reserved liabilities.
     uint256 supply; // Matching committed ERC-20 supply for conversion reads.
-    uint256 portfolioVersion;
-    uint256 markedVersion;
     uint256 observedAt;
-    uint256 policyVersion;
     bool valid;
     bool insolvent;
-    WithdrawalQueue.State withdrawals;
+    LPExitQueue.State withdrawals;
   }
 
   error CashDeficit(uint256 actual, uint256 accounted);
@@ -54,7 +55,6 @@ library VaultAccounting {
 
   /// @notice Mark a changed portfolio unavailable for new issuance or fulfillment.
   function invalidate(State storage self) internal {
-    ++self.portfolioVersion;
     self.valid = false;
   }
 
@@ -67,7 +67,6 @@ library VaultAccounting {
     uint256 claims,
     uint256 supply,
     uint256 observedAt,
-    uint256 policyVersion,
     uint256 maxAge
   ) internal {
     if (observedAt == 0 || observedAt > block.timestamp || block.timestamp - observedAt > maxAge) {
@@ -76,8 +75,6 @@ library VaultAccounting {
     self.inventoryValue = inventory;
     self.claimsValue = claims;
     self.observedAt = observedAt;
-    self.policyVersion = policyVersion;
-    self.markedVersion = self.portfolioVersion;
     self.valid = true;
     commit(self, supply);
   }
@@ -92,7 +89,36 @@ library VaultAccounting {
   }
 
   function fresh(State storage self, uint256 maxAge) internal view returns (bool) {
-    return self.valid && !self.insolvent && self.markedVersion == self.portfolioVersion
-      && self.observedAt <= block.timestamp && block.timestamp - self.observedAt <= maxAge;
+    return
+      self.valid && !self.insolvent && self.observedAt <= block.timestamp && block.timestamp - self.observedAt <= maxAge;
+  }
+
+  /// @notice Numeric headroom, not an economic deposit cap. Reserves remain in gross backing.
+  /// @dev Bound both virtualized additions and exact ERC4626 floor/ceil issuance.
+  function headroom(State storage self) internal view returns (uint256 assets, uint256 shares) {
+    (uint256 assetRoom, uint256 shareRoom) = issuanceLimits(self);
+    uint256 n = self.nav + 1;
+    uint256 d = self.supply + VIRTUAL_SHARES;
+    // floor(((shareRoom + 1) * n - 1) / d) without overflowing the product.
+    uint256 shareLimited = _mulDivCapped(shareRoom + 1, n, d);
+    if (shareLimited != type(uint256).max && mulmod(shareRoom + 1, n, d) == 0) --shareLimited;
+    assets = Math.min(assetRoom, shareLimited);
+    shares = Math.min(shareRoom, _mulDivCapped(assetRoom, d, n));
+  }
+
+  /// @notice Independent raw addition limits before applying a deposit/mint conversion.
+  /// @dev Used by both capacity views and issuance. Bound gross backing, including
+  /// reserves, so cash + marks + virtual assets and supply + virtual shares fit.
+  /// @return assets Additional settlement-token raw units that fit the ledger.
+  /// @return shares Additional LP share raw units that fit the virtualized supply.
+  function issuanceLimits(State storage self) internal view returns (uint256 assets, uint256 shares) {
+    assets = type(uint256).max - 1 - self.cash - self.inventoryValue - self.claimsValue;
+    shares = type(uint256).max - VIRTUAL_SHARES - self.supply;
+  }
+
+  function _mulDivCapped(uint256 x, uint256 y, uint256 d) private pure returns (uint256) {
+    // When y <= d, the quotient cannot exceed x. Otherwise the threshold fits.
+    if (y > d && x > Math.fullMulDiv(type(uint256).max, d, y)) return type(uint256).max;
+    return Math.fullMulDiv(x, y, d);
   }
 }

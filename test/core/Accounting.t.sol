@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import {Test} from "forge-std/Test.sol";
-import {WithdrawalQueue as Queue} from "src/libraries/WithdrawalQueue.sol";
+import {LPExitQueue as Queue} from "src/libraries/LPExitQueue.sol";
 import {BookAccounting} from "src/libraries/BookAccounting.sol";
 import {ClaimAccounting} from "src/libraries/ClaimAccounting.sol";
 import {RealizationLogs} from "test/base/RealizationLogs.sol";
@@ -42,9 +42,9 @@ contract QueueHarness {
   }
 }
 
-/// @title WithdrawalQueueTest
+/// @title LPExitQueueTest
 /// @notice Synthetic FIFO, loss credits, aggregate rates and exact rounding tests.
-contract WithdrawalQueueTest is Test {
+contract LPExitQueueTest is Test {
   QueueHarness internal h = new QueueHarness();
   address internal constant A = address(1);
   address internal constant B = address(2);

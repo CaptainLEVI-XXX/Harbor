@@ -24,7 +24,7 @@ contract MockVaultBook {
   bytes32 private transient context;
 
   constructor(address weth) {
-    VAULT = new HarborVault(weth, address(this), 60, 1_000 ether, 1e12, 1e6);
+    VAULT = new HarborVault(weth, address(this), 60, 1e12, 1e6);
   }
 
   function setMark(uint256 w, uint256 p, uint256 t, bool v) external {
@@ -38,8 +38,8 @@ contract MockVaultBook {
     failFinish = fail;
   }
 
-  function valuation() external view returns (uint256, uint256, uint256, uint256, bool) {
-    return (inventory, claims, observedAt, 1, valid);
+  function valuation() external view returns (uint256, uint256, uint256, bytes32, bool) {
+    return (inventory, claims, observedAt, keccak256(abi.encode(inventory, claims, observedAt)), valid);
   }
 
   function beginVaultOperation(bytes32 c) external {
@@ -65,7 +65,7 @@ abstract contract VaultFixture is Test {
 
   function setUp() public virtual {
     vm.warp(1000);
-    weth = new TokenMock("Synthetic WETH", "WETH");
+    weth = new TokenMock("Synthetic ASSET", "ASSET");
     book = new MockVaultBook(address(weth));
     vault = book.VAULT();
     book.setMark(0, 0, 1000, true);

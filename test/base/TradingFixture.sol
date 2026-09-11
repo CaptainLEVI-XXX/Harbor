@@ -6,17 +6,38 @@ import {TokenMock} from "@1inch/solidity-utils/contracts/mocks/TokenMock.sol";
 import {Aqua} from "@1inch/aqua/src/Aqua.sol";
 import {HarborSwapVMRouter} from "src/swapvm/HarborSwapVMRouter.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
+import {TakerTraitsLib} from "@1inch/swap-vm/src/libs/TakerTraits.sol";
 import {HarborBook} from "src/book/HarborBook.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {HarborExecutor} from "src/execution/HarborExecutor.sol";
 import {Trade, FillAmounts, RouteConfig, Side, AmountMode} from "src/types/HarborTypes.sol";
-import {Amounts} from "src/libraries/Amounts.sol";
 import {Fees} from "src/libraries/Fees.sol";
 import {PricingPolicy, PricingParameters, PricingCurve} from "src/types/PricingTypes.sol";
 import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
+import {InventoryObservation, ClaimObservation} from "src/types/ClaimTypes.sol";
+
+/// @dev Distinct route identity, sharing explicitly synthetic observation controls.
+contract MockRouteObservation {
+  address private immutable _provider;
+
+  constructor(address provider) {
+    _provider = provider;
+  }
+
+  fallback(bytes calldata input) external returns (bytes memory) {
+    (bool ok, bytes memory output) = _provider.staticcall(input);
+    require(ok);
+    return output;
+  }
+}
 
 /// @notice Synthetic public observations; does not prove a production NAV policy.
 contract MockTradingValuation {
+  address public ASSET;
+
+  function setAsset(address token) external {
+    ASSET = token;
+  }
   uint256 public observedAt;
   bool public valid = true;
   mapping(address => uint256) private _numerator;
@@ -43,12 +64,8 @@ contract MockTradingValuation {
     observedAt = time;
   }
 
-  function claim(address, uint256, uint256 remaining) external view returns (uint256, uint256, uint256, bool) {
-    return (remaining, observedAt, 1, valid);
-  }
-
   function inventory(address base, uint256 shares)
-    external
+    public
     view
     returns (uint256, uint256, uint256, uint256, bytes32, bool)
   {
@@ -56,9 +73,42 @@ contract MockTradingValuation {
     uint256 face = Math.fullMulDiv(shares, n, d);
     return (face, face, observedAt, 1, keccak256(abi.encode(base, n, d, observedAt)), valid);
   }
+
+  function observePortfolio(address base, uint256 quantity, bytes32[] calldata ids)
+    external
+    view
+    returns (InventoryObservation memory inv, ClaimObservation[] memory claims)
+  {
+    require(ids.length == 0, "mock has no issuer claims");
+    (inv.entitlement, inv.mark, inv.observedAt,, inv.observationHash, inv.valid) = inventory(base, quantity);
+    claims = new ClaimObservation[](0);
+  }
 }
 
 abstract contract TradingFixture is Test {
+  function _assertRouterQuote(Trade memory t, FillAmounts memory expected) internal {
+    TakerTraitsLib.Args memory args;
+    args.taker = address(executor);
+    args.isExactIn = t.mode == AmountMode.EXACT_IN;
+    args.isAToB = t.tokenIn < t.tokenOut;
+    args.isFirstTransferFromTaker = true;
+    args.useTransferFromAndAquaPush = true;
+    args.isStrictThresholdAmount = true;
+    args.threshold = abi.encode(args.isExactIn ? expected.traderOut : expected.traderIn);
+    args.instructionsArgs = abi.encode(t);
+    ISwapVM.Order memory order = book.currentOrder(t.route);
+    bytes memory data = TakerTraitsLib.build(args);
+    vm.prank(address(executor)); // Upstream query.taker is the actual caller, not Args.taker.
+    (bool ok, bytes memory result) =
+      address(router).staticcall(abi.encodeCall(ISwapVM.quote, (order, t.amountSpecified, data)));
+    assertTrue(ok, "actual static Router quote");
+    (uint256 input, uint256 output, bytes32 hash) = abi.decode(result, (uint256, uint256, bytes32));
+    assertEq(input, expected.traderIn);
+    assertEq(output, expected.traderOut);
+    assertEq(hash, keccak256(abi.encode(order)));
+    assertTrue(book.isIdle());
+  }
+
   address internal trader = address(0x7ade);
   address internal alice = address(0xa11ce);
   address internal bob = address(0xb0b);
@@ -71,6 +121,7 @@ abstract contract TradingFixture is Test {
   HarborVault internal vault;
   HarborExecutor internal executor;
   MockTradingValuation internal valuation;
+  MockRouteObservation internal secondObservation;
   HarborBook.Config internal deploymentConfig;
 
   function setUp() public virtual {
@@ -79,28 +130,29 @@ abstract contract TradingFixture is Test {
     bases[0] = _deployBase(0);
     bases[1] = _deployBase(1);
     aqua = new Aqua();
-    router = new HarborSwapVMRouter(address(aqua), address(weth), address(this), "Harbor", "1");
+    router = _deployRouter();
     valuation = _deployValuation();
+    secondObservation = new MockRouteObservation(address(valuation));
+    valuation.setAsset(address(weth));
+    executor = new HarborExecutor(address(router), address(this));
     uint64 nonce = vm.getNonce(address(this));
     address expectedBook = vm.computeCreateAddress(address(this), nonce);
     address expectedVault = vm.computeCreateAddress(address(this), nonce + 1);
-    address expectedExecutor = vm.computeCreateAddress(address(this), nonce + 2);
     HarborBook.Config memory c;
     c.vault = expectedVault;
-    c.executor = expectedExecutor;
-    c.weth = address(weth);
+    c.executor = address(executor);
+    c.asset = address(weth);
     c.aqua = address(aqua);
     c.router = address(router);
     c.updater = address(this);
     c.governor = address(this);
     c.guardian = address(this);
     c.keeper = address(this);
-    c.valuation = address(valuation);
     c.feeRecipient = feeRecipient;
     c.feeBps = 10;
     c.maxParameterAge = 60;
     c.maxMarkAge = 60;
-    c.depositCap = 1000 ether;
+    c.maxBasisExposure = 1000 ether;
     c.governanceDelay = 1 days;
     c.curve = PricingCurve(1000 ether, 0.6e18, 0.0025e18);
     deploymentConfig = c;
@@ -110,12 +162,11 @@ abstract contract TradingFixture is Test {
         address(bases[i]), _routeAdapter(i, nonce), 0.99e18, 1.01e18, 0, 0, 1000 ether, 1000 ether, 10 ether, 100 ether
       );
     }
-    book = new HarborBook(c, routes);
-    vault = new HarborVault(address(weth), address(book), 60, 1000 ether, 1e12, 1e6);
-    executor = new HarborExecutor(address(book), address(vault), address(router), address(weth));
+    book = _deployBook(c, routes);
+    vault = new HarborVault(address(weth), address(book), 60, 1e12, 1e6);
+    executor.registerPool(address(book));
     assertEq(address(book), expectedBook);
     assertEq(address(vault), expectedVault);
-    assertEq(address(executor), expectedExecutor);
     _afterDeploy();
     vault.checkpointValuation();
     weth.mint(alice, 10 ether);
@@ -168,7 +219,8 @@ abstract contract TradingFixture is Test {
     uint256 input = buy ? quantity : Fees.grossForNet(face * 101 / 100, 10);
     uint256 output = buy ? Fees.net(face * 99 / 100, 10) : quantity;
     t = _trade(route, side, mode, input, output);
-    a = Amounts.normalize(t, input, output, 10);
+    uint256 cash = face * (buy ? 99 : 101) / 100;
+    a = FillAmounts(input, output, buy ? input : cash, buy ? cash : output, buy ? cash - output : input - cash);
   }
 
   function _trade(uint256 route, Side side, AmountMode mode, uint256 input, uint256 output)
@@ -195,15 +247,23 @@ abstract contract TradingFixture is Test {
     );
   }
 
-  function _buy(uint256 route, uint256 quantity) internal {
+  function _buy(uint256 route, uint256 quantity) internal virtual {
     (Trade memory t,) = _quote(route, Side.BUY_BASE, AmountMode.EXACT_IN, quantity);
     vm.prank(trader);
-    executor.execute(t);
+    executor.execute(address(book), t);
     vault.checkpointValuation();
   }
 
   function _deployWeth() internal virtual returns (TokenMock) {
-    return new TokenMock("Synthetic WETH", "WETH");
+    return new TokenMock("Synthetic ASSET", "ASSET");
+  }
+
+  function _deployRouter() internal virtual returns (HarborSwapVMRouter) {
+    return new HarborSwapVMRouter(address(aqua), address(weth), address(this), "Harbor", "1");
+  }
+
+  function _deployBook(HarborBook.Config memory c, RouteConfig[] memory routes) internal virtual returns (HarborBook) {
+    return new HarborBook(c, routes);
   }
 
   function _deployValuation() internal virtual returns (MockTradingValuation) {
@@ -219,7 +279,7 @@ abstract contract TradingFixture is Test {
   }
 
   function _routeAdapter(uint256 i, uint64) internal virtual returns (address) {
-    return address(uint160(100 + i));
+    return i == 0 ? address(valuation) : address(secondObservation);
   }
   function _afterDeploy() internal virtual {}
 }

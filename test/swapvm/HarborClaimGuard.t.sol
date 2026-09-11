@@ -8,6 +8,23 @@ import {HarborSwapVMRouter} from "src/swapvm/HarborSwapVMRouter.sol";
 import {Context, ContextLib, SwapRegisters} from "@1inch/swap-vm/src/libs/VM.sol";
 import {CalldataPtrLib} from "@1inch/solidity-utils/contracts/libraries/CalldataPtr.sol";
 import {FillAuthority} from "test/swapvm/HarborPricing.t.sol";
+import {Extruction, IExtruction} from "@1inch/swap-vm/src/instructions/Extruction.sol";
+import {SwapQuery} from "@1inch/swap-vm/src/libs/VM.sol";
+
+contract ClaimGuardTarget is IExtruction {
+  function extruction(
+    bool,
+    uint256 pc,
+    SwapQuery calldata q,
+    SwapRegisters calldata s,
+    bytes calldata args,
+    bytes calldata
+  ) external view returns (uint256, uint256, SwapRegisters memory) {
+    (address receipt, address factory, uint256 version) = abi.decode(args, (address, address, uint256));
+    HarborClaimGuard.check(receipt, factory, version, q.tokenIn, q.tokenOut, s.amountIn, s.amountOut);
+    return (pc, 0, s);
+  }
+}
 
 contract ClaimGuardHarness is HarborSwapVMRouter {
   using ContextLib for Context;
@@ -23,7 +40,8 @@ contract ClaimGuardHarness is HarborSwapVMRouter {
     ctx.query.tokenOut = tokenOut;
     ctx.swap = SwapRegisters(123, 456, buy ? quantity : 99, buy ? 99 : quantity);
     beforeHash = keccak256(abi.encode(ctx.query, ctx.swap));
-    HarborClaimGuard.exec(ctx, args);
+    (address receipt, address factory, uint256 version) = abi.decode(args, (address, address, uint256));
+    HarborClaimGuard.check(receipt, factory, version, tokenIn, tokenOut, ctx.swap.amountIn, ctx.swap.amountOut);
     afterHash = keccak256(abi.encode(ctx.query, ctx.swap));
   }
 
@@ -63,7 +81,8 @@ contract HarborClaimGuardTest is LidoClaimFixture {
   function test_LateGuardFailureRollsBackPrecedingAuthorization() public {
     FillAuthority authority = new FillAuthority();
     bytes memory program = bytes.concat(
-      HarborPricing.build(address(authority), 7, 9), HarborClaimGuard.build(address(receipt), address(factory), 1)
+      HarborPricing.build(address(authority), 7, 9),
+      Extruction.build(address(new ClaimGuardTarget()), abi.encode(address(receipt), address(factory), uint256(1)))
     );
     vm.expectRevert();
     guard.runLoop(program, hex"abcdef", address(receipt), address(weth));

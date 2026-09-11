@@ -33,21 +33,15 @@ contract HarborBook is BookGovernance, BookRedemptions, BookSettlement, BookClai
 
   /// @notice Read inventory cost accounting for one route, not its current NAV.
   /// @param id Approved route index.
-  /// @return Position containing raw base units and WETH cost. Receipt lifetime budgets live only in claimTotals.
+  /// @return Position containing raw base units and ASSET cost. Receipt lifetime budgets live only in claimTotals.
   function getPosition(uint256 id) external view returns (Accounting.Position memory) {
     return _state.positions[id];
-  }
-
-  /// @notice Current portfolio accounting version; standing quotes recompute from live state.
-  /// @return Version advanced on material portfolio transitions.
-  function portfolioVersion() external view returns (uint256) {
-    return _state.version;
   }
 
   /// @notice Read a live issuer right or its consumed-identity tombstone.
   /// @param adapter Approved adapter that defines the ID namespace.
   /// @param id Issuer-native request ID.
-  /// @return Claim whose WETH-denominated payload is zero after closure; exists/closed persist.
+  /// @return Claim whose settlement-asset-denominated payload is zero after closure; exists/closed persist.
   function getClaim(address adapter, uint256 id) external view returns (ClaimAccounting.Claim memory) {
     return _state.claims.claims[ClaimAccounting.key(adapter, id)];
   }
@@ -56,7 +50,7 @@ contract HarborBook is BookGovernance, BookRedemptions, BookSettlement, BookClai
   /// @dev Pin pages to the same block; recovery/export uses swap-pop and changes cursor order.
   /// @param cursor Zero-based live-set offset; start at zero, not at a protocol request ID.
   /// @param limit Page size, 1..32; an empty page at next indicates the end.
-  /// @return claims Current obligations in WETH-denominated wei, not historical receipts.
+  /// @return claims Current obligations in settlement-asset-denominated wei, not historical receipts.
   /// @return next Live-set cursor immediately after the returned page.
   function activeNativeClaims(uint256 cursor, uint256 limit)
     external
@@ -81,11 +75,11 @@ contract HarborBook is BookGovernance, BookRedemptions, BookSettlement, BookClai
   function valuation()
     external
     view
-    returns (uint256 inventory, uint256 claims, uint256 observedAt, uint256 policyVersion, bool valid)
+    returns (uint256 inventory, uint256 claims, uint256 observedAt, bytes32 evidence, bool valid)
   {
     BookPortfolio.Value memory v =
-      BookPortfolio.valuation(_state, _claimMarkets, _routes, VALUATION, INVENTORY_ROUTES, address(VAULT), stopped);
-    return (v.inventory, v.claims, v.observedAt, v.policy, v.valid);
+      BookPortfolio.valuation(_state, _claimMarkets, _routes, INVENTORY_ROUTES, address(VAULT), stopped);
+    return (v.inventory, v.claims, v.observedAt, v.evidence, v.valid);
   }
 
   /// @inheritdoc IHarborBook
@@ -94,11 +88,6 @@ contract HarborBook is BookGovernance, BookRedemptions, BookSettlement, BookClai
     view
     returns (uint256 entitlement, uint256 mark, uint256 time, uint256 policy, bytes32 hash, bool valid)
   {
-    return BookPortfolio.observation(_claimMarkets, _routes, VALUATION, id, quantity);
-  }
-
-  /// @inheritdoc IHarborBook
-  function receiptState() external view returns (bytes32) {
-    return BookPortfolio.receiptState(_claimMarkets, address(VAULT));
+    return BookPortfolio.observation(_claimMarkets, _routes, id, quantity);
   }
 }

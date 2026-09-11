@@ -3,28 +3,26 @@ pragma solidity 0.8.30;
 
 import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
 import {SafeTransferLib as SafeTransfer} from "solady/utils/SafeTransferLib.sol";
-import {VaultAccounting as Accounting} from "src/libraries/VaultAccounting.sol";
-import {WithdrawalQueue as Queue} from "src/libraries/WithdrawalQueue.sol";
-import {VaultState} from "src/vault/base/VaultState.sol";
-import {VaultSettlement} from "src/vault/base/VaultSettlement.sol";
+import {VaultLedger as Accounting} from "src/libraries/VaultLedger.sol";
+import {LPExitQueue as Queue} from "src/libraries/LPExitQueue.sol";
+import {VaultCore} from "src/vault/base/VaultCore.sol";
 
 /// @title HarborVault
 /// @notice Synchronous LP issuance, asynchronous exits and coherent public share views.
-/// @dev Treasury callbacks live in VaultSettlement; all modules share VaultState.
+/// @dev Treasury callbacks live in VaultCore; all modules share VaultCore.
 /// Pending issuer claims are not spendable cash and cannot directly fund exits.
-contract HarborVault is VaultSettlement {
+contract HarborVault is VaultCore {
   using Accounting for Accounting.State;
   using Queue for Queue.State;
 
   /// @notice Deploy synchronous issuance and asynchronous LP redemption.
-  /// @param weth Approved cash asset.
+  /// @param cashAsset Approved cash asset.
   /// @param book Immutable accounting and settlement coordinator.
   /// @param maxAge Maximum public mark age, seconds.
-  /// @param cap Maximum deposit NAV, WETH wei.
-  /// @param minSeed Minimum first deposit, WETH wei.
+  /// @param minSeed Minimum first deposit, settlement-asset raw units.
   /// @param minRequest Minimum exit request, LP share raw units; full exits are exempt.
-  constructor(address weth, address book, uint256 maxAge, uint256 cap, uint256 minSeed, uint256 minRequest)
-    VaultState(weth, book, maxAge, cap, minSeed, minRequest)
+  constructor(address cashAsset, address book, uint256 maxAge, uint256 minSeed, uint256 minRequest)
+    VaultCore(cashAsset, book, maxAge, minSeed, minRequest)
   {}
 
   /*//////////////////////////////////////////////////////////////
@@ -33,17 +31,17 @@ contract HarborVault is VaultSettlement {
 
   /// @notice LP share name; independent of the underlying token's metadata.
   function name() public pure override returns (string memory) {
-    return "Harbor WETH";
+    return "Harbor Vault";
   }
 
   /// @notice LP share ticker; not a promise of a fixed asset/share exchange rate.
   function symbol() public pure override returns (string memory) {
-    return "hWETH";
+    return "hVAULT";
   }
 
-  /// @notice Approved WETH cash asset for issuance and funded claims.
+  /// @notice Approved ASSET cash asset for issuance and funded claims.
   function asset() public view override returns (address) {
-    return WETH;
+    return ASSET;
   }
 
   /// @notice ERC-7575 share token is this same vault.
@@ -54,12 +52,17 @@ contract HarborVault is VaultSettlement {
   /// @notice ERC-7575 discovery; returns zero for unsupported assets.
   /// @param token Asset to resolve.
   function vault(address token) external view returns (address) {
-    return token == WETH ? address(this) : address(0);
+    return token == ASSET ? address(this) : address(0);
   }
 
   /// @dev Six extra share decimals implement the virtual-share inflation defense.
   function _decimalsOffset() internal pure override returns (uint8) {
     return 6;
+  }
+
+  /// @dev Approved asset metadata is fixed at deployment; LP precision is asset + 6.
+  function _underlyingDecimals() internal view override returns (uint8) {
+    return _assetDecimals;
   }
 
   /// @dev No implicit third-party share allowance; all spenders require approval.
@@ -77,19 +80,19 @@ contract HarborVault is VaultSettlement {
     return _state.supply;
   }
 
-  /// @notice Convert WETH wei to LP share raw units, rounding down.
+  /// @notice Convert settlement-asset raw units to LP share raw units, rounding down.
   /// @dev Uses committed NAV/supply plus one virtual wei and 1e6 virtual shares.
   function convertToShares(uint256 assets) public view override returns (uint256) {
     return Math.fullMulDiv(assets, _state.supply + VIRTUAL_SHARES, _state.nav + 1);
   }
 
-  /// @notice Convert LP share raw units to WETH wei, rounding down.
+  /// @notice Convert LP share raw units to settlement-asset raw units, rounding down.
   /// @dev This is a valuation conversion, not a synchronous withdrawal entitlement.
   function convertToAssets(uint256 shares) public view override returns (uint256) {
     return Math.fullMulDiv(shares, _state.nav + 1, _state.supply + VIRTUAL_SHARES);
   }
 
-  /// @notice WETH wei required for exact LP shares, rounding up.
+  /// @notice settlement-asset raw units required for exact LP shares, rounding up.
   function previewMint(uint256 shares) public view override returns (uint256) {
     return Math.fullMulDivUp(shares, _state.nav + 1, _state.supply + VIRTUAL_SHARES);
   }
@@ -116,7 +119,7 @@ contract HarborVault is VaultSettlement {
     view
     returns (uint256 cash, uint256 reserved, uint256 pending, bool valid, bool insolvent)
   {
-    bool cashDeficit = SafeTransfer.balanceOf(WETH, address(this)) < _state.cash;
+    bool cashDeficit = SafeTransfer.balanceOf(ASSET, address(this)) < _state.cash;
     return (
       _state.cash,
       _state.withdrawals.reserved,
@@ -126,29 +129,30 @@ contract HarborVault is VaultSettlement {
     );
   }
 
-  /// @notice Available deposit capacity in WETH wei; zero while gated or stale.
+  /// @notice Available deposit capacity in settlement-asset raw units; zero while gated or stale.
   function maxDeposit(address receiver) public view override returns (uint256) {
-    if (
-      _context != 0 || !_receiverValid(receiver) || !_fresh()
-        || SafeTransfer.balanceOf(WETH, address(this)) < _state.cash || _state.nav >= DEPOSIT_CAP || _orphaned()
-    ) return 0;
-    return DEPOSIT_CAP - _state.nav;
+    if (!_issuanceAvailable(receiver)) return 0;
+    (uint256 assets,) = _state.headroom();
+    return assets;
   }
 
-  /// @notice LP shares issuable within deposit capacity, rounded down.
+  /// @notice Exact LP shares issuable within asset and share numerical headroom.
+  /// @dev Mint rounds assets up: it may fit when no floor-rounded deposit fits.
   function maxMint(address receiver) public view override returns (uint256) {
-    return convertToShares(maxDeposit(receiver));
+    if (!_issuanceAvailable(receiver)) return 0;
+    (, uint256 shares) = _state.headroom();
+    return shares;
   }
 
-  /// @notice Funded claim cash in WETH wei, not the controller's unfunded NAV.
+  /// @notice Funded claim cash in settlement-asset raw units, not the controller's unfunded NAV.
   function maxWithdraw(address controller) public view override returns (uint256) {
-    if (_context != 0 || SafeTransfer.balanceOf(WETH, address(this)) < _state.withdrawals.reserved) return 0;
+    if (_context != 0 || SafeTransfer.balanceOf(ASSET, address(this)) < _state.withdrawals.reserved) return 0;
     return _state.withdrawals.credits[controller].assets;
   }
 
   /// @notice Funded claim units, not the controller's transferable LP balance.
   function maxRedeem(address controller) public view override returns (uint256) {
-    if (_context != 0 || SafeTransfer.balanceOf(WETH, address(this)) < _state.withdrawals.reserved) return 0;
+    if (_context != 0 || SafeTransfer.balanceOf(ASSET, address(this)) < _state.withdrawals.reserved) return 0;
     return _state.withdrawals.credits[controller].units;
   }
 
@@ -156,8 +160,8 @@ contract HarborVault is VaultSettlement {
                          SYNCHRONOUS ISSUANCE
   //////////////////////////////////////////////////////////////*/
 
-  /// @notice Deposit exact WETH wei and mint LP shares rounded down.
-  /// @param assets Exact WETH wei collected from the caller.
+  /// @notice Deposit exact settlement-asset raw units and mint LP shares rounded down.
+  /// @param assets Exact settlement-asset raw units collected from the caller.
   /// @param receiver Beneficiary of newly minted LP shares.
   /// @return shares LP share raw units minted.
   function deposit(uint256 assets, address receiver) public override coordinated returns (uint256 shares) {
@@ -165,17 +169,17 @@ contract HarborVault is VaultSettlement {
     _issue(assets, shares, receiver, msg.sender);
   }
 
-  /// @notice Mint exact LP share units and collect WETH wei rounded up.
+  /// @notice Mint exact LP share units and collect settlement-asset raw units rounded up.
   /// @param shares Exact LP share raw units to mint.
   /// @param receiver Beneficiary of newly minted LP shares.
-  /// @return assets WETH wei collected.
+  /// @return assets settlement-asset raw units collected.
   function mint(uint256 shares, address receiver) public override coordinated returns (uint256 assets) {
     assets = previewMint(shares);
     _issue(assets, shares, receiver, msg.sender);
   }
 
-  /// @notice Deposit exact WETH wei and mint LP shares rounded down.
-  /// @param assets Exact WETH wei collected from the caller.
+  /// @notice Deposit exact settlement-asset raw units and mint LP shares rounded down.
+  /// @param assets Exact settlement-asset raw units collected from the caller.
   /// @param receiver Beneficiary of newly minted LP shares.
   /// @param controller Caller or its delegating ERC7540 controller; caller supplies funds.
   /// @return shares LP share raw units minted.
@@ -185,11 +189,11 @@ contract HarborVault is VaultSettlement {
     _issue(assets, shares, receiver, controller);
   }
 
-  /// @notice Mint exact LP share units and collect WETH wei rounded up.
+  /// @notice Mint exact LP share units and collect settlement-asset raw units rounded up.
   /// @param shares Exact LP share raw units to mint.
   /// @param receiver Beneficiary of newly minted LP shares.
   /// @param controller Caller or its delegating ERC7540 controller; caller supplies funds.
-  /// @return assets WETH wei collected.
+  /// @return assets settlement-asset raw units collected.
   function mint(uint256 shares, address receiver, address controller) external coordinated returns (uint256 assets) {
     _authorize(controller);
     assets = previewMint(shares);
@@ -253,7 +257,7 @@ contract HarborVault is VaultSettlement {
   /// @param operator Account allowed to act for this controller.
   /// @param approved New operator permission.
   /// @return True when the permission is recorded.
-  function setOperator(address operator, bool approved) external coordinated returns (bool) {
+  function setOperator(address operator, bool approved) external localOperation returns (bool) {
     isOperator[msg.sender][operator] = approved;
     emit OperatorSet(msg.sender, operator, approved);
     return true;
@@ -267,7 +271,7 @@ contract HarborVault is VaultSettlement {
   function fulfillWithdrawals(uint256 maxTickets) external coordinated {
     if (maxTickets == 0 || maxTickets > Queue.MAX_PROCESS) revert InvalidAmount();
     _requireFresh();
-    _state.requireBacked(SafeTransfer.balanceOf(WETH, address(this)));
+    _state.requireBacked(SafeTransfer.balanceOf(ASSET, address(this)));
     Queue.State storage q = _state.withdrawals;
     uint256 numerator = _state.nav == 0 ? 0 : _state.nav + 1;
     uint256 denominator = _state.supply + VIRTUAL_SHARES;
@@ -280,19 +284,17 @@ contract HarborVault is VaultSettlement {
       _shareMutation = true;
       _burn(address(this), shares);
       _shareMutation = false;
-      emit WithdrawalFunded(
-        ticket, controller, shares, assets, _state.policyVersion, _state.markedVersion, pending - shares
-      );
+      emit WithdrawalFunded(ticket, controller, shares, assets, pending - shares);
       if (shares != pending) break;
     }
   }
 
-  /// @notice Claim WETH using exact funded claim units; not another LP share burn.
+  /// @notice Claim ASSET using exact funded claim units; not another LP share burn.
   /// @dev Credit conversion rounds assets down; the queue prevents stranded final cash.
   /// @param shares Funded claim units to consume.
-  /// @param receiver WETH beneficiary chosen by controller/operator.
+  /// @param receiver ASSET beneficiary chosen by controller/operator.
   /// @param controller Owner of the funded credit.
-  /// @return assets WETH wei paid from reserved cash.
+  /// @return assets settlement-asset raw units paid from reserved cash.
   function redeem(uint256 shares, address receiver, address controller)
     public
     override
@@ -304,10 +306,10 @@ contract HarborVault is VaultSettlement {
     _payClaim(assets, shares, receiver, controller);
   }
 
-  /// @notice Claim exact WETH wei from a controller's funded credit.
+  /// @notice Claim exact settlement-asset raw units from a controller's funded credit.
   /// @dev Required claim units round up; unrelated LP balances are not burned.
-  /// @param assets Exact WETH wei requested.
-  /// @param receiver WETH beneficiary chosen by controller/operator.
+  /// @param assets Exact settlement-asset raw units requested.
+  /// @param receiver ASSET beneficiary chosen by controller/operator.
   /// @param controller Owner of the funded credit.
   /// @return shares Funded claim units consumed, rounded up.
   function withdraw(uint256 assets, address receiver, address controller)
@@ -326,7 +328,7 @@ contract HarborVault is VaultSettlement {
   //////////////////////////////////////////////////////////////*/
 
   /// @notice Transfer LP share raw units under the shared operation lock.
-  function transfer(address receiver, uint256 shares) public override coordinated returns (bool) {
+  function transfer(address receiver, uint256 shares) public override localOperation returns (bool) {
     if (!_receiverValid(receiver)) revert InvalidReceiver();
     _shareMutation = true;
     _transfer(msg.sender, receiver, shares);
@@ -335,7 +337,7 @@ contract HarborVault is VaultSettlement {
   }
 
   /// @notice Allowance-authorized LP share transfer under the shared operation lock.
-  function transferFrom(address owner, address receiver, uint256 shares) public override coordinated returns (bool) {
+  function transferFrom(address owner, address receiver, uint256 shares) public override localOperation returns (bool) {
     if (!_receiverValid(receiver) || owner == address(this)) revert InvalidReceiver();
     _spendAllowance(owner, msg.sender, shares);
     _shareMutation = true;
@@ -347,43 +349,38 @@ contract HarborVault is VaultSettlement {
   /// @notice Anyone may checkpoint authenticated public observations from the Book.
   /// @dev A fresh public mark is required, not a signer-supplied private NAV.
   function checkpointValuation() external coordinated {
-    _state.requireBacked(SafeTransfer.balanceOf(WETH, address(this)));
-    (uint256 inventory, uint256 claims, uint256 observedAt, uint256 policy, bool valid) = BOOK.valuation();
+    (uint256 inventory, uint256 claims, uint256 time, bytes32 evidence, bool valid) = BOOK.valuation();
     if (!valid) revert ValuationUnavailable();
-    _state.checkpoint(inventory, claims, super.totalSupply(), observedAt, policy, MAX_MARK_AGE);
-    _receiptState = BOOK.receiptState();
-    emit ValuationCommitted(
-      _state.nav,
-      _state.supply,
-      _state.cash,
-      _state.withdrawals.reserved,
-      inventory,
-      claims,
-      policy,
-      _state.markedVersion,
-      observedAt
-    );
+    _checkpoint(inventory, claims, time, evidence);
   }
 
   /*//////////////////////////////////////////////////////////////
                          INTERNAL LP ACCOUNTING
   //////////////////////////////////////////////////////////////*/
 
-  /// @dev Collect exact WETH wei from msg.sender, then mint shares to receiver.
+  /// @dev Shared eligibility for idle max views, not a substitute for _issue's
+  /// under-lock checks. Each view applies its own floor/ceil capacity afterward.
+  function _issuanceAvailable(address receiver) private view returns (bool) {
+    return _context == 0 && _receiverValid(receiver) && _fresh()
+      && SafeTransfer.balanceOf(ASSET, address(this)) >= _state.cash && !_orphaned();
+  }
+
+  /// @dev Collect exact settlement-asset raw units from msg.sender, then mint shares to receiver.
   /// Controller affects authorization/event identity, not who funds the deposit.
   /// Caller supplies amounts computed with the public deposit/mint rounding rules.
   function _issue(uint256 assets, uint256 shares, address receiver, address controller) private {
     _requireFresh();
     if (!_receiverValid(receiver)) revert InvalidReceiver();
-    if (assets == 0 || shares == 0 || assets > DEPOSIT_CAP || _state.nav > DEPOSIT_CAP - assets) {
+    (uint256 assetRoom, uint256 shareRoom) = _state.issuanceLimits();
+    if (assets == 0 || shares == 0 || assets > assetRoom || shares > shareRoom) {
       revert InvalidAmount();
     }
     if (_orphaned()) revert OrphanedPortfolio();
     if (_state.supply == 0 && assets < MIN_INITIAL_ASSETS) revert InvalidAmount();
-    uint256 beforeBalance = SafeTransfer.balanceOf(WETH, address(this));
+    uint256 beforeBalance = SafeTransfer.balanceOf(ASSET, address(this));
     _state.requireBacked(beforeBalance);
-    SafeTransfer.safeTransferFrom(WETH, msg.sender, address(this), assets);
-    if (SafeTransfer.balanceOf(WETH, address(this)) != beforeBalance + assets) revert AssetDeltaMismatch();
+    SafeTransfer.safeTransferFrom(ASSET, msg.sender, address(this), assets);
+    if (SafeTransfer.balanceOf(ASSET, address(this)) != beforeBalance + assets) revert AssetDeltaMismatch();
     _requireFresh();
     _state.cash += assets; // Issuance cash flow is not portfolio profit or a new mark.
     _shareMutation = true;
@@ -397,20 +394,20 @@ contract HarborVault is VaultSettlement {
   function _claimChecks(address receiver, address controller) private view {
     _authorize(controller);
     if (!_receiverValid(receiver)) revert InvalidReceiver();
-    uint256 actual = SafeTransfer.balanceOf(WETH, address(this));
+    uint256 actual = SafeTransfer.balanceOf(ASSET, address(this));
     if (actual < _state.withdrawals.reserved) revert Accounting.CashDeficit(actual, _state.withdrawals.reserved);
   }
 
-  /// @dev Debit tracked cash and pay exactly the funded WETH amount.
+  /// @dev Debit tracked cash and pay exactly the funded ASSET amount.
   /// Check both vault and receiver deltas; donated balances are not claim revenue.
   function _payClaim(uint256 assets, uint256 shares, address receiver, address controller) private {
     _state.cash -= assets;
-    uint256 beforeVault = SafeTransfer.balanceOf(WETH, address(this));
-    uint256 beforeReceiver = SafeTransfer.balanceOf(WETH, receiver);
-    if (assets != 0) SafeTransfer.safeTransfer(WETH, receiver, assets);
+    uint256 beforeVault = SafeTransfer.balanceOf(ASSET, address(this));
+    uint256 beforeReceiver = SafeTransfer.balanceOf(ASSET, receiver);
+    if (assets != 0) SafeTransfer.safeTransfer(ASSET, receiver, assets);
     if (
-      SafeTransfer.balanceOf(WETH, address(this)) != beforeVault - assets
-        || SafeTransfer.balanceOf(WETH, receiver) != beforeReceiver + assets
+      SafeTransfer.balanceOf(ASSET, address(this)) != beforeVault - assets
+        || SafeTransfer.balanceOf(ASSET, receiver) != beforeReceiver + assets
     ) revert AssetDeltaMismatch();
     emit Withdraw(msg.sender, receiver, controller, assets, shares);
   }

@@ -3,11 +3,11 @@ pragma solidity 0.8.30;
 
 import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
 
-/// @title WithdrawalQueue
+/// @title LPExitQueue
 /// @notice FIFO pending shares and nontransferable funded receipt units.
 /// @dev No share burns or token transfers here. The vault applies returned effects
 /// atomically under its operation lock. Internal tickets are not ERC request IDs.
-library WithdrawalQueue {
+library LPExitQueue {
   uint256 internal constant MAX_PROCESS = 8;
 
   struct Ticket {
@@ -18,7 +18,7 @@ library WithdrawalQueue {
   struct Credit {
     uint256 pending; // Sum of controller's pending tickets.
     uint256 units; // Already burned shares represented by funded receipts.
-    uint256 assets; // Fixed reserved WETH wei backing those receipts.
+    uint256 assets; // Fixed reserved settlement-asset raw units backing those receipts.
   }
 
   struct State {
@@ -84,11 +84,11 @@ library WithdrawalQueue {
 
   /// @notice Largest share portion whose floor-priced assets fit available cash.
   /// @param pending Head ticket's unfunded shares.
-  /// @param cash Actual unreserved accounted WETH wei, excluding no LP buffer.
+  /// @param cash Actual unreserved accounted settlement-asset raw units, excluding no LP buffer.
   /// @param numerator NAV plus virtual assets, or zero for verified total loss.
   /// @param denominator Supply plus virtual shares; always positive.
   /// @return shares Largest fundable share portion, capped at pending.
-  /// @return assets WETH wei to reserve, rounded down.
+  /// @return assets settlement-asset raw units to reserve, rounded down.
   function fundable(uint256 pending, uint256 cash, uint256 numerator, uint256 denominator)
     internal
     pure
@@ -116,7 +116,7 @@ library WithdrawalQueue {
     self.reserved -= assets;
   }
 
-  /// @notice Withdraw exact WETH wei, consuming receipt units rounded up.
+  /// @notice Withdraw exact settlement-asset raw units, consuming receipt units rounded up.
   function withdraw(State storage self, address controller, uint256 assets) internal returns (uint256 units) {
     Credit storage c = self.credits[controller];
     if (assets == 0 || assets > c.assets) revert InsufficientCredit();

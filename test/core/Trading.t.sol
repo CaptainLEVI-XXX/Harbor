@@ -7,15 +7,19 @@ import {Trade, FillAmounts, Side, AmountMode} from "src/types/HarborTypes.sol";
 import {PricingParameters} from "src/types/PricingTypes.sol";
 import {TradingFixture} from "test/base/TradingFixture.sol";
 import {RealizationLogs} from "test/base/RealizationLogs.sol";
+import {DirectSettlementChecks} from "test/base/DirectSettlementChecks.sol";
 
 /// @notice Actual Aqua/SwapVM settlement with reusable, bounded route parameters.
 contract StandingTradingTest is TradingFixture {
   function test_TwoRoutesCannotSpendSameCash() public {
+    uint256 snapshot = vm.snapshotState();
+    new DirectSettlementChecks().checkTwoPoolsAndZeroFee();
+    vm.revertToState(snapshot);
     _buy(0, 16 ether);
     (Trade memory t,) = _quote(1, Side.BUY_BASE, AmountMode.EXACT_IN, 16 ether);
     vm.expectRevert();
     vm.prank(trader);
-    executor.execute(t);
+    executor.execute(address(book), t);
     assertEq(book.getPosition(1).shares, 0);
 
     // Fund enough actual cash to cross the capacity curve's 60% threshold.
@@ -28,19 +32,19 @@ contract StandingTradingTest is TradingFixture {
     vault.refreshStrategy(0);
     bases[0].mint(trader, 600 ether);
     Trade memory small = _trade(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether, 0);
-    uint256 beforePrice = executor.quote(small).traderOut;
+    uint256 beforePrice = executor.quote(address(book), small).traderOut;
     t = _trade(0, Side.BUY_BASE, AmountMode.EXACT_IN, 600 ether, 0);
-    FillAmounts memory priced = executor.quote(t);
+    FillAmounts memory priced = executor.quote(address(book), t);
     uint256 cashBefore = weth.balanceOf(address(vault));
     vm.prank(trader);
-    executor.execute(t);
+    executor.execute(address(book), t);
     assertEq(weth.balanceOf(address(vault)), cashBefore - priced.routerOut);
     assertEq(book.faceExposure(), 616 ether);
-    assertLt(executor.quote(small).traderOut, beforePrice);
+    assertLt(executor.quote(address(book), small).traderOut, beforePrice);
     small.limitAmount = beforePrice;
     vm.expectRevert();
     vm.prank(trader);
-    executor.execute(small); // Slippage, not a portfolio nonce, rejects the old expectation.
+    executor.execute(address(book), small); // Slippage, not a portfolio nonce, rejects the old expectation.
     assertEq(book.faceExposure(), 616 ether);
   }
 
@@ -62,7 +66,7 @@ contract StandingTradingTest is TradingFixture {
     _buy(0, 1 ether);
     (Trade memory t,) = _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     vm.prank(trader);
-    executor.execute(t); // Invalidates cached NAV.
+    executor.execute(address(book), t); // Invalidates cached NAV.
     uint256 nav = vault.totalAssets();
     (,, bool fresh) = vault.valuationIdentity();
     assertFalse(fresh);
@@ -71,7 +75,7 @@ contract StandingTradingTest is TradingFixture {
     assertFalse(fresh);
     assertEq(vault.totalAssets(), nav);
     vm.expectRevert(BookState.InvalidQuote.selector);
-    executor.quote(old);
+    executor.quote(address(book), old);
     vm.expectRevert(BookState.InvalidQuote.selector);
     book.publishPricing(0, p); // Version replay.
     p.version += 1;
@@ -81,15 +85,20 @@ contract StandingTradingTest is TradingFixture {
   }
 
   function test_LateFeeFailureRollsBackEverything() public {
+    uint256 snapshot = vm.snapshotState();
+    new DirectSettlementChecks().checkRollbackAndCallBinding();
+    vm.revertToState(snapshot);
     (Trade memory t, FillAmounts memory f) = _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
-    uint256 version = book.portfolioVersion();
+    uint256 version = book.getPosition(t.route).version;
     vm.mockCallRevert(
-      address(weth), abi.encodeWithSignature("transfer(address,uint256)", feeRecipient, f.fee), "fee payout failed"
+      address(weth),
+      abi.encodeWithSignature("transferFrom(address,address,uint256)", address(vault), feeRecipient, f.fee),
+      "fee payout failed"
     );
     vm.expectRevert();
     vm.prank(trader);
-    executor.execute(t);
-    assertEq(book.portfolioVersion(), version);
+    executor.execute(address(book), t);
+    assertEq(book.getPosition(t.route).version, version);
     assertEq(book.faceExposure(), 0);
     assertEq(book.getPosition(0).shares, 0);
     assertEq(weth.balanceOf(address(vault)), 20 ether);
@@ -97,7 +106,7 @@ contract StandingTradingTest is TradingFixture {
     assertEq(bases[0].allowance(address(executor), address(router)), 0);
     vm.clearMockedCalls();
     vm.prank(trader);
-    executor.execute(t);
+    executor.execute(address(book), t);
     assertEq(book.faceExposure(), 1 ether);
   }
 
@@ -105,12 +114,12 @@ contract StandingTradingTest is TradingFixture {
     (Trade memory t, FillAmounts memory f) = _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     uint256 version = book.pricingParameters(0).version;
     vm.prank(trader);
-    executor.execute(t);
+    executor.execute(address(book), t);
     (,, bool fresh) = vault.valuationIdentity();
     assertFalse(fresh);
-    assertEq(abi.encode(executor.quote(t)), abi.encode(f));
+    assertEq(abi.encode(executor.quote(address(book), t)), abi.encode(f));
     vm.prank(trader);
-    executor.execute(t); // Same intent, no signature/nonce or intervening publisher.
+    executor.execute(address(book), t); // Same intent, no signature/nonce or intervening publisher.
     assertEq(book.getPosition(0).shares, 2 ether);
     assertEq(book.pricingParameters(0).version, version);
     assertEq(weth.balanceOf(address(vault)), 18.02 ether);
@@ -120,15 +129,18 @@ contract StandingTradingTest is TradingFixture {
   function test_OnlyTraderMayExecute() public {
     (Trade memory t,) = _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     vm.expectRevert(HarborExecutor.UnauthorizedTrader.selector);
-    executor.execute(t);
+    executor.execute(address(book), t);
     t.receiver = address(0x5555);
     uint256 beforeBalance = weth.balanceOf(t.receiver);
     vm.prank(trader);
-    executor.execute(t);
+    executor.execute(address(book), t);
     assertEq(weth.balanceOf(t.receiver) - beforeBalance, 0.98901 ether);
   }
 
   function test_StandingProgramSettlesAllFourModes() public {
+    uint256 snapshot = vm.snapshotState();
+    new DirectSettlementChecks().checkModesAndReceipts();
+    vm.revertToState(snapshot);
     vm.recordLogs();
     _execute(Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     _execute(Side.BUY_BASE, AmountMode.EXACT_OUT, 1 ether);
@@ -149,7 +161,7 @@ contract StandingTradingTest is TradingFixture {
     (Trade memory t,) = _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
     book.revokeUpdater();
     vm.expectRevert(BookState.InvalidQuote.selector);
-    executor.quote(t);
+    executor.quote(address(book), t);
     vm.prank(alice);
     vault.withdraw(credit, alice, alice);
     assertEq(weth.balanceOf(alice), credit);
@@ -160,27 +172,28 @@ contract StandingTradingTest is TradingFixture {
     _publish(0, 1e18);
     t = _trade(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether, 0);
     vm.warp(vm.getBlockTimestamp() + 60);
-    assertGt(executor.quote(t).traderOut, 0); // Inclusive parameter expiry.
+    assertGt(executor.quote(address(book), t).traderOut, 0); // Inclusive parameter expiry.
     ++t.deadline;
     vm.warp(vm.getBlockTimestamp() + 1);
     valuation.setObservedAt(vm.getBlockTimestamp()); // Isolate parameter expiry from mark age.
     vm.expectRevert(BookState.InvalidQuote.selector);
-    executor.quote(t);
+    executor.quote(address(book), t);
   }
 
   function _execute(Side side, AmountMode mode, uint256 amount) private {
     (Trade memory t, FillAmounts memory f) = _quote(0, side, mode, amount);
-    assertEq(abi.encode(executor.quote(t)), abi.encode(f));
+    assertEq(abi.encode(executor.quote(address(book), t)), abi.encode(f));
     bool buy = side == Side.BUY_BASE;
+    _assertRouterQuote(t, f);
     uint256 cash = amount * (buy ? 99 : 101) / 100;
-    uint256 traderCash = buy ? cash * 9990 / 10000 : (cash * 10000 + 9989) / 9990;
+    uint256 traderCash = buy ? cash - cash * 10 / 10000 : cash + cash * 10 / 9990;
     uint256 fee = buy ? cash - traderCash : traderCash - cash;
     uint256 beforeCash = weth.balanceOf(address(vault));
     uint256 beforeTrader = weth.balanceOf(trader);
     uint256 beforeBase = bases[0].balanceOf(trader);
     uint256 beforeFee = weth.balanceOf(feeRecipient);
     vm.prank(trader);
-    executor.execute(t);
+    executor.execute(address(book), t);
     assertEq(weth.balanceOf(address(vault)), buy ? beforeCash - cash : beforeCash + cash);
     assertEq(weth.balanceOf(trader), buy ? beforeTrader + traderCash : beforeTrader - traderCash);
     assertEq(bases[0].balanceOf(trader), buy ? beforeBase - amount : beforeBase + amount);

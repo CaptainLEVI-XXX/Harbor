@@ -9,7 +9,7 @@ import {HarborBook} from "src/book/HarborBook.sol";
 import {HarborExecutor} from "src/execution/HarborExecutor.sol";
 import {Trade, Side, AmountMode} from "src/types/HarborTypes.sol";
 import {TradingFixture} from "test/base/TradingFixture.sol";
-import {VaultState} from "src/vault/base/VaultState.sol";
+import {VaultCore} from "src/vault/base/VaultCore.sol";
 import {Test} from "forge-std/Test.sol";
 import {ERC20} from "solady/tokens/ERC20.sol";
 import {MockVaultBook} from "test/base/VaultFixture.sol";
@@ -62,7 +62,7 @@ contract IssuerReentrancyTest is IssuerFixture {
   }
 }
 
-/// @notice Deliberately adversarial test token, not production WETH behavior.
+/// @notice Deliberately adversarial test token, not production ASSET behavior.
 contract TradingCallbackToken is TokenMock {
   HarborVault private vault;
   HarborBook private book;
@@ -71,7 +71,14 @@ contract TradingCallbackToken is TokenMock {
   uint256 private nav;
   uint256 private supply;
   uint256 public rejected;
-  constructor() TokenMock("Adversarial WETH", "BADWETH") {}
+  address private mutationTarget;
+  bytes private mutationData;
+  constructor() TokenMock("Adversarial ASSET", "BADWETH") {}
+
+  function armMutation(address target, bytes calldata data) external onlyOwner {
+    mutationTarget = target;
+    mutationData = data;
+  }
 
   function arm(HarborVault v, HarborBook b, address e, bytes calldata data) external onlyOwner {
     vault = v;
@@ -85,6 +92,10 @@ contract TradingCallbackToken is TokenMock {
   function _update(address from, address to, uint256 amount) internal override {
     super._update(from, to, amount);
     if (executor == address(0)) return;
+    if (mutationTarget != address(0)) {
+      (bool changed,) = mutationTarget.call(mutationData);
+      require(changed, "issuer mutation probe");
+    }
     _reject(address(vault), abi.encodeWithSignature("deposit(uint256,address)", 1, address(this)));
     _reject(address(vault), abi.encodeWithSignature("transfer(address,uint256)", address(1), 0));
     _reject(
@@ -113,16 +124,32 @@ contract TradingReentrancyTest is TradingFixture {
 
   function test_RouterFeeAndTraderCallbacksRemainLocked() public {
     (Trade memory t,) = _quote(0, Side.BUY_BASE, AmountMode.EXACT_IN, 1 ether);
-    TradingCallbackToken(address(weth)).arm(vault, book, address(executor), abi.encodeCall(executor.execute, (t)));
+    TradingCallbackToken(address(weth))
+      .arm(vault, book, address(executor), abi.encodeCall(executor.execute, (address(book), t)));
     vm.prank(trader);
-    executor.execute(t);
+    executor.execute(address(book), t);
     assertEq(TradingCallbackToken(address(weth)).rejected(), 21);
     vault.checkpointValuation();
     assertEq(vault.totalAssets(), 20.01 ether);
+    // A callback changing the selected conversion must not use a prepared old price.
+    TradingCallbackToken token = TradingCallbackToken(address(weth));
+    token.arm(vault, book, address(executor), abi.encodeCall(executor.execute, (address(book), t)));
+    token.armMutation(address(valuation), abi.encodeCall(valuation.setConversion, (address(bases[0]), 11, 10)));
+    uint256 beforeCash = weth.balanceOf(address(vault));
+    uint256 beforeFee = weth.balanceOf(feeRecipient);
+    vm.expectRevert();
+    vm.prank(trader);
+    executor.execute(address(book), t);
+    (uint256 n, uint256 d) = valuation.conversion(address(bases[0]));
+    assertEq(n, d);
+    assertEq(weth.balanceOf(address(vault)), beforeCash);
+    assertEq(weth.balanceOf(feeRecipient), beforeFee);
+    assertEq(book.getPosition(0).shares, 1 ether);
+    assertTrue(book.isIdle());
   }
 }
 
-/// @notice Deliberately adversarial token; not an approved production WETH.
+/// @notice Deliberately adversarial token; not an approved production ASSET.
 contract CallbackAsset is ERC20 {
   HarborVault private target;
   bool private armed;
@@ -162,7 +189,7 @@ contract CallbackAsset is ERC20 {
     attacks[7] = abi.encodeWithSignature("setOperator(address,bool)", address(1), true);
     for (uint256 i; i < attacks.length; ++i) {
       (bool success, bytes memory result) = address(target).call(attacks[i]);
-      require(!success && bytes4(result) == VaultState.Busy.selector, "reentry not blocked");
+      require(!success && bytes4(result) == VaultCore.Busy.selector, "reentry not blocked");
       ++rejected;
     }
     require(target.totalAssets() == expectedNAV && target.totalSupply() == expectedSupply, "incoherent snapshot");

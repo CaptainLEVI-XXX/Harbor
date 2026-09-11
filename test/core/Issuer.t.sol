@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {VaultState} from "src/vault/base/VaultState.sol";
+import {VaultCore} from "src/vault/base/VaultCore.sol";
 import {IssuerFixture} from "test/base/IssuerFixture.sol";
 import {BookAccounting} from "src/libraries/BookAccounting.sol";
 import {ClaimAccounting} from "src/libraries/ClaimAccounting.sol";
@@ -13,8 +13,11 @@ import {RealizationLogs} from "test/base/RealizationLogs.sol";
 import {LidoFixture} from "test/base/LidoFixture.sol";
 import {AdapterBase} from "src/adapters/base/AdapterBase.sol";
 import {IHarborAdapter} from "src/interfaces/IHarborAdapter.sol";
-import {LidoValuation} from "src/valuation/LidoValuation.sol";
 import {NativeValuationFixture} from "test/base/NativeValuationFixture.sol";
+import {LidoViews} from "src/adapters/lido/LidoViews.sol";
+import {LidoAdapter} from "src/adapters/LidoAdapter.sol";
+import {ClaimObservation, InventoryObservation} from "src/types/ClaimTypes.sol";
+import {IHarborClaim} from "src/interfaces/IHarborClaim.sol";
 
 contract IssuerRecoveryTest is NativeValuationFixture {
   function test_RecoveryFundsPendingFIFOExitsUsingActualWETH() public {
@@ -31,7 +34,7 @@ contract IssuerRecoveryTest is NativeValuationFixture {
     assertEq(vault.maxWithdraw(alice), 0.992 ether);
     queue.setFinalized(id, 19.2 ether);
     book.revokeUpdater();
-    LidoValuation(address(valuation)).revokePublisher();
+    adapter.revokePublisher();
     assertEq(vault.maxWithdraw(alice), 0.992 ether); // Funded credit survives both outages.
     _claim(id);
     assertEq(book.faceExposure(), 0);
@@ -77,12 +80,12 @@ contract IssuerRecoveryTest is NativeValuationFixture {
 
   function _checkIndependentValuation(uint256 id) private {
     address markPublisher = address(0x0ba5e);
-    LidoValuation marks = LidoValuation(address(valuation));
+    LidoAdapter marks = adapter;
     uint256 nowTime = vm.getBlockTimestamp();
     vault.checkpointValuation();
     (,, bool fresh) = vault.valuationIdentity();
     assertTrue(fresh);
-    vm.expectRevert(LidoValuation.Unauthorized.selector);
+    vm.expectRevert(AdapterBase.Unauthorized.selector);
     marks.publish(1e18, 0.98e18, nowTime, nowTime + 60, 2);
     vm.prank(markPublisher);
     marks.publish(1e18, 0.98e18, nowTime, nowTime + 60, 2);
@@ -96,20 +99,21 @@ contract IssuerRecoveryTest is NativeValuationFixture {
     assertEq(nominal, 1.2 ether);
     assertEq(mark, nominal);
     assertTrue(valid);
-    (mark,,, valid) = marks.claim(address(adapter), id, nominal);
-    assertEq(mark, 1.176 ether);
-    assertTrue(valid);
+    ClaimObservation memory right = marks.claimState(adapter.nativeClaimId(id));
+    assertEq(right.entitlement, nominal);
+    assertEq(right.mark, 1.176 ether);
+    assertTrue(right.valid);
     vm.prank(markPublisher);
-    vm.expectRevert(LidoValuation.InvalidObservation.selector);
+    vm.expectRevert(LidoViews.InvalidObservation.selector);
     marks.publish(1e18, 0.98e18, nowTime, nowTime + 60, 1);
     vm.warp(nowTime + 61);
     (,,,,, valid) = marks.inventory(address(bases[0]), 1 ether);
     assertFalse(valid);
     queue.setFinalized(id, 0.8 ether);
     marks.revokePublisher();
-    (mark,,, valid) = marks.claim(address(adapter), id, nominal);
-    assertEq(mark, 0.8 ether); // Native finalization, not expired estimates.
-    assertTrue(valid);
+    right = marks.claimState(adapter.nativeClaimId(id));
+    assertEq(right.mark, 0.8 ether); // Native finalization, not expired estimates.
+    assertTrue(right.valid);
   }
 }
 
@@ -127,11 +131,30 @@ contract LidoAdapterTest is LidoFixture {
       assertEq(base.allowance(address(adapter), address(queue)), 0);
       assertFalse(adapter.accepted(1));
     }
+    // Splitting nominal conversions can lose at most one wei per extra split.
+    queue.setFault(0);
+    amounts[0] = amounts[1] = 84;
+    base.mint(address(adapter), 168);
+    IHarborAdapter.Request[] memory requests = adapter.request(amounts, 2 ether);
+    uint256 nominal = requests[0].entitlement + requests[1].entitlement;
+    assertEq(nominal, 200);
+    assertEq(base.getStETHByWstETH(168) - nominal, 1);
+    assertEq(base.balanceOf(address(adapter)), 2 ether); // Old balance is not consumed.
+    assertEq(weth.balanceOf(vault), 0); // Rounding dust never becomes cash.
   }
 
   function test_ShortReceiptAndLiveRightCannotBeMarkedClosed() public {
     uint256 id = _request(1 ether);
+    bytes32[] memory ids = new bytes32[](1);
+    ids[0] = adapter.nativeClaimId(id);
+    (, ClaimObservation[] memory observed) = adapter.observePortfolio(address(base), 0, ids);
+    assertEq(observed.length, 1);
+    assertEq(observed[0].entitlement, 1.2 ether);
+    assertEq(uint256(observed[0].status), uint256(IHarborClaim.Status.PENDING));
     queue.setFinalized(id, 1.2 ether);
+    (, observed) = adapter.observePortfolio(address(base), 0, ids);
+    assertEq(observed[0].mark, 1.2 ether);
+    assertEq(uint256(observed[0].status), uint256(IHarborClaim.Status.FINALIZED));
     for (uint256 fault = 4; fault <= 5; ++fault) {
       queue.setFault(fault);
       vm.expectRevert(AdapterBase.ReceiptMismatch.selector);

@@ -71,7 +71,8 @@ struct Trade {
   uint256 strategyVersion;
 }
 
-/// @notice Exact trader and router token amounts plus the WETH fee.
+/// @notice Customer amounts and inner, pre-fee VM registers in raw token units.
+/// @dev Router.swap returns the customer pair, not routerIn/routerOut. Fee is settlement-asset raw units.
 struct FillAmounts {
   uint256 traderIn;
   uint256 traderOut;

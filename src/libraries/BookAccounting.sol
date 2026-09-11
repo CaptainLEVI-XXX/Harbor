@@ -12,18 +12,18 @@ library BookAccounting {
 
   struct Position {
     uint256 shares; // Managed wrapped token raw units.
-    uint256 basis; // Warehouse acquisition cost, WETH wei.
-    uint256 pendingBasis; // Cost assigned to live issuer claims, WETH wei.
-    uint256 purchases; // Native lifetime gross purchase debits, WETH wei; zero for receipt routes.
+    uint256 basis; // Warehouse acquisition cost, settlement-asset raw units.
+    uint256 pendingBasis; // Cost assigned to live issuer claims, settlement-asset raw units.
+    uint256 purchases; // Native lifetime gross purchase debits, settlement-asset raw units; zero for receipt routes.
     uint256 realizedLosses; // Native lifetime losses; receipt losses live only in issuer receipt totals.
-    uint256 version; // Advances on every portfolio transition.
+    uint256 version; // This position's keeper-intent epoch; also emitted with realizations.
   }
 
   struct State {
     mapping(uint256 => Position) positions;
     ClaimAccounting.State claims;
     mapping(bytes32 => uint256) protocolIds; // Live inverse IDs needed by valuation/discovery; cleared on closure.
-    uint256 version;
+    uint256 nativeClaimsFace; // Outstanding nominal native rights; cash remains in the Vault ledger.
   }
 
   error InvalidPositionAmount();
@@ -35,34 +35,34 @@ library BookAccounting {
   }
 
   /// @notice Final cost and cash result; gains are reconstructed from logs, not stored.
-  /// @dev WETH amounts include purchase fees in basis and exclude sale fees from proceeds.
+  /// @dev ASSET amounts include purchase fees in basis and exclude sale fees from proceeds.
   /// claimKey is zero for a sale; join its route/version to the same transaction's fill.
   event PositionRealized(
     uint256 indexed route,
     bytes32 indexed claimKey,
     RealizationKind kind,
-    uint256 basisWeth,
-    uint256 proceedsWeth,
+    uint256 basis,
+    uint256 proceeds,
     uint256 positionVersion
   );
 
-  /// @notice Record exact received inventory and gross paid WETH including the fee.
+  /// @notice Record exact received inventory and gross paid ASSET including the fee.
   function buy(State storage self, uint256 route, uint256 shares, uint256 cost) public {
     if (shares == 0 || cost == 0) revert InvalidPositionAmount();
     Position storage p = self.positions[route];
     p.shares += shares;
     p.basis += cost;
     p.purchases += cost;
-    _touch(self, p);
+    ++p.version;
   }
 
-  /// @notice Remove warehouse shares and realize verified net WETH revenue.
+  /// @notice Remove warehouse shares and realize verified net ASSET revenue.
   /// @return basis Assigned cost rounded down; final removal takes all remaining cost.
   function sell(State storage self, uint256 route, uint256 shares, uint256 revenue) public returns (uint256 basis) {
     Position storage p = self.positions[route];
     basis = _remove(p, shares);
     _realize(p, basis, revenue);
-    _touch(self, p);
+    ++p.version;
     emit PositionRealized(route, bytes32(0), RealizationKind.SALE, basis, revenue, p.version);
   }
 
@@ -76,15 +76,17 @@ library BookAccounting {
     basis = _remove(p, shares);
     p.pendingBasis += basis;
     self.claims.create(id, route, basis, entitlement);
-    _touch(self, p);
+    self.nativeClaimsFace += entitlement;
+    ++p.version;
   }
 
-  /// @notice Record measured WETH without treating residual claims as cash.
+  /// @notice Record measured ASSET without treating residual claims as cash.
   /// @dev Real losses are always recorded, even above configured risk budgets.
   /// The boundary stops new buys instead of reverting recovery to conceal a loss.
   function recover(State storage self, bytes32 id, uint256 cash, uint256 remaining) public {
     // Closure clears the payload; cache the route before retiring the live right.
     uint256 route = self.claims.claims[id].route;
+    self.nativeClaimsFace -= self.claims.claims[id].remaining - remaining;
     (bool closed, uint256 basis, uint256 receipts) = self.claims.receiveCash(id, cash, remaining);
     Position storage p = self.positions[route];
     if (closed) {
@@ -92,7 +94,7 @@ library BookAccounting {
       p.pendingBasis -= basis;
       _realize(p, basis, receipts);
     }
-    _touch(self, p);
+    ++p.version;
     if (closed) emit PositionRealized(route, id, RealizationKind.ISSUER_RECOVERY, basis, receipts, p.version);
   }
 
@@ -110,10 +112,5 @@ library BookAccounting {
 
   function _realize(Position storage p, uint256 basis, uint256 cash) private {
     if (cash < basis) p.realizedLosses += basis - cash;
-  }
-
-  function _touch(State storage self, Position storage p) private {
-    ++p.version;
-    ++self.version;
   }
 }
