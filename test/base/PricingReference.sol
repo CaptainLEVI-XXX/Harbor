@@ -7,12 +7,12 @@ import {PricingPolicy, PricingCurve, PricingMarket} from "src/types/PricingTypes
 import {Amounts} from "src/libraries/Amounts.sol";
 import {Fees} from "src/libraries/Fees.sol";
 
-/// @title PricingMath
-/// @notice Standing bid/ask pricing with a convex FACE inventory penalty.
+/// @title PricingReference
+/// @notice Straightforward precomputation-free reference for exact integer differential tests.
 /// @dev Work at 1e36 utilization precision and cash raw units * 1e18 price precision,
 /// then round once at the cash boundary. Potential bounds include intermediate
 /// rounding; subtracting separately rounded wei potentials is not conservative.
-library PricingMath {
+library PricingReference {
   uint256 internal constant WAD = 1e18;
   uint256 internal constant PRECISION = 1e36;
   uint256 internal constant MAX_AMOUNT = 1e27;
@@ -20,16 +20,6 @@ library PricingMath {
 
   error InvalidPricingDomain();
   error UnfillableAmount();
-
-  /// @dev Quote-local constants shared by every candidate in the inverse search.
-  /// Coefficients and beforeLow retain the original directed rounding, not a
-  /// rounded cash price. No external calls or state changes occur during reuse.
-  struct CashContext {
-    uint256 threshold;
-    uint256 coefficientLow;
-    uint256 coefficientHigh;
-    uint256 beforeLow;
-  }
 
   /// @notice Validate fixed curve bounds; at most 100 bisections cover MAX_AMOUNT.
   function validateCurve(PricingCurve memory c) internal pure {
@@ -90,17 +80,6 @@ library PricingMath {
   {
     validateCurve(c);
     validatePolicy(m.policy, c);
-    return quoteConfigured(buy, exactIn, specified, c, m);
-  }
-
-  /// @notice Price an admitted Book curve/policy; market state is still checked live.
-  /// @dev BookState validates the immutable curve; PricingState.configure validates
-  /// each write-once policy. Generic callers needing validation use quoteCore.
-  function quoteConfigured(bool buy, bool exactIn, uint256 specified, PricingCurve memory c, PricingMarket memory m)
-    public
-    pure
-    returns (uint256 input, uint256 output)
-  {
     if (
       m.discount < m.policy.minDiscount || m.discount > m.policy.maxDiscount || m.numerator == 0 || m.denominator == 0
         || m.maxQuantity == 0 || m.maxQuantity > MAX_AMOUNT || m.exposure > 2 * c.capacity
@@ -108,23 +87,21 @@ library PricingMath {
         || (!buy && m.discount + m.policy.sellMargin < _slope(c, m.exposure) + MIN_SLOPE)
     ) revert InvalidPricingDomain();
     if (specified == 0 || (m.receipt && m.maxQuantity != 1)) revert UnfillableAmount();
-    CashContext memory ctx = _constants(c);
-    (ctx.beforeLow,) = _potential(c, m.exposure, ctx);
     if (buy) {
       if (exactIn) {
         input = specified;
-        output = _cash(c, m, input, true, ctx);
+        output = cash(c, m, input, true);
       } else {
-        output = m.receipt ? _cash(c, m, 1, true, ctx) : specified;
-        input = m.receipt ? 1 : _quantity(c, m, output, true, ctx);
+        output = m.receipt ? cash(c, m, 1, true) : specified;
+        input = m.receipt ? 1 : _quantity(c, m, output, true);
       }
     } else {
       if (!exactIn) {
         output = specified;
-        input = _cash(c, m, output, false, ctx);
+        input = cash(c, m, output, false);
       } else {
-        input = m.receipt ? _cash(c, m, 1, false, ctx) : specified;
-        output = m.receipt ? 1 : _quantity(c, m, input, false, ctx);
+        input = m.receipt ? cash(c, m, 1, false) : specified;
+        output = m.receipt ? 1 : _quantity(c, m, input, false);
       }
     }
     if (input == 0 || output == 0) revert UnfillableAmount();
@@ -132,21 +109,8 @@ library PricingMath {
 
   /// @notice Gross vault buy debit or net sell receipt for exact raw base units.
   /// @dev A zero bid means decline. Costs price operations; they are not payouts.
-  /// Caller supplies the admitted curve/policy and exposure <=2K, as quoteCore does.
   function cash(PricingCurve memory c, PricingMarket memory m, uint256 quantity, bool buy)
     internal
-    pure
-    returns (uint256)
-  {
-    if (quantity == 0) return 0;
-    CashContext memory ctx = _constants(c);
-    (ctx.beforeLow,) = _potential(c, m.exposure, ctx);
-    return _cash(c, m, quantity, buy, ctx);
-  }
-
-  /// @dev Caller fixes the curve and initial exposure for the entire search.
-  function _cash(PricingCurve memory c, PricingMarket memory m, uint256 quantity, bool buy, CashContext memory ctx)
-    private
     pure
     returns (uint256)
   {
@@ -154,19 +118,20 @@ library PricingMath {
     if (quantity > m.maxQuantity || (m.receipt && quantity != 1)) revert UnfillableAmount();
     uint256 face = Math.fullMulDiv(quantity, m.numerator, m.denominator);
     if (face == 0 || face > MAX_AMOUNT) return 0;
+    (uint256 beforeLow,) = potential(c, m.exposure);
     uint256 value;
     uint256 penalty;
     if (buy) {
       if (face > c.capacity - m.exposure) revert UnfillableAmount();
-      (, uint256 afterHigh) = _potential(c, m.exposure + face, ctx);
-      penalty = afterHigh - ctx.beforeLow + m.policy.buyCost * WAD;
+      (, uint256 afterHigh) = potential(c, m.exposure + face);
+      penalty = afterHigh - beforeLow + m.policy.buyCost * WAD;
       value = face * (m.discount - m.policy.buyMargin);
       return value > penalty ? (value - penalty) / WAD : 0;
     }
     if (face > m.exposure) revert UnfillableAmount();
-    (, uint256 remainingHigh) = _potential(c, m.exposure - face, ctx);
+    (, uint256 remainingHigh) = potential(c, m.exposure - face);
     // A lower bound on the released penalty makes the ask conservative.
-    penalty = ctx.beforeLow > remainingHigh ? ctx.beforeLow - remainingHigh : 0;
+    penalty = beforeLow > remainingHigh ? beforeLow - remainingHigh : 0;
     value = face * (m.discount + m.policy.sellMargin) + m.policy.sellCost * WAD;
     if (value <= penalty) revert UnfillableAmount();
     return Math.divUp(value - penalty, WAD);
@@ -178,52 +143,39 @@ library PricingMath {
   /// integer cash functions nondecreasing despite the approximation interval.
   function potential(PricingCurve memory c, uint256 x) internal pure returns (uint256 low, uint256 high) {
     if (c.kappa == 0 || x * WAD <= c.capacity * c.target) return (0, 0);
-    return _potential(c, x, _constants(c));
-  }
-
-  function _constants(PricingCurve memory c) private pure returns (CashContext memory ctx) {
-    if (c.kappa == 0) return ctx;
-    ctx.threshold = c.target * WAD;
+    uint256 threshold = c.target * WAD;
+    uint256 lo = Math.fullMulDiv(x, PRECISION, c.capacity) - threshold;
+    uint256 hi = Math.fullMulDivUp(x, PRECISION, c.capacity) - threshold;
     uint256 denominator = 3 * (WAD - c.target) ** 2;
-    ctx.coefficientLow = _mulDiv(c.kappa, 1e54, denominator);
-    ctx.coefficientHigh = _mulDivUp(c.kappa, 1e54, denominator);
-  }
-
-  function _potential(PricingCurve memory c, uint256 x, CashContext memory ctx)
-    private
-    pure
-    returns (uint256 low, uint256 high)
-  {
-    if (c.kappa == 0 || x * WAD <= c.capacity * c.target) return (0, 0);
-    uint256 lo = _mulDiv(x, PRECISION, c.capacity) - ctx.threshold;
-    uint256 hi = _mulDivUp(x, PRECISION, c.capacity) - ctx.threshold;
-    uint256 cubeLow = _mulDiv(_mulDiv(lo, lo, PRECISION), lo, PRECISION);
-    uint256 cubeHigh = _mulDivUp(_mulDivUp(hi, hi, PRECISION), hi, PRECISION);
-    low = _mulDiv(c.capacity, _mulDiv(cubeLow, ctx.coefficientLow, PRECISION), WAD);
-    high = _mulDivUp(c.capacity, _mulDivUp(cubeHigh, ctx.coefficientHigh, PRECISION), WAD);
+    uint256 coefficientLow = Math.fullMulDiv(c.kappa, 1e54, denominator);
+    uint256 coefficientHigh = Math.fullMulDivUp(c.kappa, 1e54, denominator);
+    uint256 cubeLow = Math.fullMulDiv(Math.fullMulDiv(lo, lo, PRECISION), lo, PRECISION);
+    uint256 cubeHigh = Math.fullMulDivUp(Math.fullMulDivUp(hi, hi, PRECISION), hi, PRECISION);
+    low = Math.fullMulDiv(c.capacity, Math.fullMulDiv(cubeLow, coefficientLow, PRECISION), WAD);
+    high = Math.fullMulDivUp(c.capacity, Math.fullMulDivUp(cubeHigh, coefficientHigh, PRECISION), WAD);
   }
 
   /// @dev Continuous marginal penalty, rounded up, in 1e18 units per FACE unit.
   function _slope(PricingCurve memory c, uint256 x) private pure returns (uint256) {
     if (c.kappa == 0 || x * WAD <= c.capacity * c.target) return 0;
-    uint256 excess = _mulDivUp(x, PRECISION, c.capacity) - c.target * WAD;
-    uint256 square = _mulDivUp(excess, excess, PRECISION);
-    return _mulDivUp(c.kappa, square, (WAD - c.target) ** 2);
+    uint256 excess = Math.fullMulDivUp(x, PRECISION, c.capacity) - c.target * WAD;
+    uint256 square = Math.fullMulDivUp(excess, excess, PRECISION);
+    return Math.fullMulDivUp(c.kappa, square, (WAD - c.target) ** 2);
   }
 
   /// @dev Monotone integer search, bounded by the 90-bit quantity domain.
-  function _quantity(PricingCurve memory c, PricingMarket memory m, uint256 target, bool buy, CashContext memory ctx)
+  function _quantity(PricingCurve memory c, PricingMarket memory m, uint256 target, bool buy)
     private
     pure
     returns (uint256)
   {
-    uint256 maximum = _cash(c, m, m.maxQuantity, buy, ctx);
+    uint256 maximum = cash(c, m, m.maxQuantity, buy);
     if (target == 0 || target > maximum) revert UnfillableAmount();
     uint256 lo;
     uint256 hi = m.maxQuantity;
     while (lo < hi) {
       uint256 mid = buy ? lo + (hi - lo) / 2 : lo + (hi - lo + 1) / 2;
-      uint256 value = _cash(c, m, mid, buy, ctx);
+      uint256 value = cash(c, m, mid, buy);
       if (buy) {
         if (value >= target) hi = mid;
         else lo = mid + 1;
@@ -234,26 +186,5 @@ library PricingMath {
     }
     if (lo == 0) revert UnfillableAmount();
     return lo;
-  }
-
-  /// @dev Safety considerations for both bounded helpers: validateCurve fixes
-  /// K <= 1e27, target <= .9e18, kappa <= .01e18; quoteConfigured requires x <= 2K.
-  /// Thus excess <= 2e36, its square <= 4e72, and the cubing product <= 8e72.
-  /// The coefficient product <= 1e70 and cube*coefficient < 4e72. Every product
-  /// fits uint256 (8e72 < 2^256); divisors are positive K, 1e36, 1e18 or
-  /// 3*(1e18-target)^2. The rounded quotient fits too. Only curve internals use
-  /// these helpers: unconstrained token conversions retain fullMulDiv.
-  /// No memory, storage or external-call effects; no intentional wraparound.
-  function _mulDiv(uint256 x, uint256 y, uint256 d) private pure returns (uint256 z) {
-    assembly ("memory-safe") { z := div(mul(x, y), d) }
-  }
-
-  /// @dev Same proven domain as _mulDiv. Add one iff the product has a remainder;
-  /// do not form product+d-1, which has a different overflow domain.
-  function _mulDivUp(uint256 x, uint256 y, uint256 d) private pure returns (uint256 z) {
-    assembly ("memory-safe") {
-      let product := mul(x, y)
-      z := add(div(product, d), iszero(iszero(mod(product, d))))
-    }
   }
 }

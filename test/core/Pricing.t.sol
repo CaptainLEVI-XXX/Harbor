@@ -4,6 +4,7 @@ pragma solidity 0.8.30;
 import {Test} from "forge-std/Test.sol";
 import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
 import {PricingMath} from "src/libraries/PricingMath.sol";
+import {PricingReference} from "test/base/PricingReference.sol";
 import {PricingCurve, PricingMarket, PricingPolicy} from "src/types/PricingTypes.sol";
 import {Trade, FillAmounts, Side, AmountMode} from "src/types/HarborTypes.sol";
 import {Fees} from "src/libraries/Fees.sol";
@@ -54,6 +55,8 @@ contract PricingTest is Test {
     FillAmounts memory a = PricingMath.quote(_trade(Side.BUY_BASE, AmountMode.EXACT_IN, q), c, m, 10);
     assertEq(a.traderOut + a.fee, a.routerOut);
     FillAmounts memory b = PricingMath.quote(_trade(Side.BUY_BASE, AmountMode.EXACT_OUT, a.traderOut), c, m, 10);
+    _same(_trade(Side.BUY_BASE, AmountMode.EXACT_IN, q), c, m);
+    _same(_trade(Side.BUY_BASE, AmountMode.EXACT_OUT, a.traderOut), c, m);
     assertLe(b.traderIn, q);
     assertLt(PricingMath.cash(c, m, b.traderIn - 1, true), b.routerOut);
 
@@ -68,7 +71,31 @@ contract PricingTest is Test {
     assertGe(s.traderIn, a.traderOut);
     assertEq(s.routerIn + s.fee, s.traderIn);
     FillAmounts memory r = PricingMath.quote(_trade(Side.SELL_BASE, AmountMode.EXACT_IN, s.traderIn), c, m, 10);
+    _same(_trade(Side.SELL_BASE, AmountMode.EXACT_OUT, q), c, m);
+    _same(_trade(Side.SELL_BASE, AmountMode.EXACT_IN, s.traderIn), c, m);
     assertEq(r.traderOut, q);
+
+    // Independent integer implementation at both target extremes, zero/max
+    // penalty, and a non-unit raw conversion. All modes reach positive fills.
+    c.target = exposureSeed & 1 == 0 ? 0 : 0.9e18;
+    c.kappa = quantitySeed & 1 == 0 ? 0 : 0.01e18;
+    m.exposure = x;
+    m.numerator = 3;
+    m.denominator = 2;
+    m.maxQuantity = (c.capacity - x) * 2 / 3;
+    q = q < m.maxQuantity ? q : m.maxQuantity;
+    _same(_trade(Side.BUY_BASE, AmountMode.EXACT_IN, q), c, m);
+    a = PricingReference.quote(_trade(Side.BUY_BASE, AmountMode.EXACT_IN, q), c, m, 10);
+    _same(_trade(Side.BUY_BASE, AmountMode.EXACT_OUT, a.traderOut), c, m);
+    m.exposure = x + q * 3 / 2;
+    m.maxQuantity = q;
+    _same(_trade(Side.SELL_BASE, AmountMode.EXACT_OUT, q), c, m);
+    s = PricingReference.quote(_trade(Side.SELL_BASE, AmountMode.EXACT_OUT, q), c, m, 10);
+    _same(_trade(Side.SELL_BASE, AmountMode.EXACT_IN, s.traderIn), c, m);
+  }
+
+  function _same(Trade memory t, PricingCurve memory c, PricingMarket memory m) private pure {
+    assertEq(abi.encode(PricingMath.quote(t, c, m, 10)), abi.encode(PricingReference.quote(t, c, m, 10)));
   }
 
   function test_WholeReceiptExactnessAndBadPolicy() public {
@@ -100,11 +127,32 @@ contract PricingTest is Test {
     FillAmounts memory a = PricingMath.quote(_trade(Side.BUY_BASE, AmountMode.EXACT_OUT, 4e26), c, m, 10);
     uint256 consumed = gasBefore - gasleft();
     emit log_named_uint("maximum-domain exact-output gas", consumed);
+    gasBefore = gasleft();
+    FillAmounts memory expected = PricingReference.quote(_trade(Side.BUY_BASE, AmountMode.EXACT_OUT, 4e26), c, m, 10);
+    uint256 referenceGas = gasBefore - gasleft();
+    emit log_named_uint("reference maximum-domain exact-output gas", referenceGas);
+    assertEq(abi.encode(a), abi.encode(expected));
+    assertLt(consumed, referenceGas);
     assertLt(consumed, 2_000_000);
     assertEq(a.traderOut, 4e26);
     assertGe(PricingMath.cash(c, m, a.traderIn, true), a.routerOut);
     assertLt(PricingMath.cash(c, m, a.traderIn - 1, true), a.routerOut);
     vm.expectRevert();
     PricingMath.quote(_trade(Side.BUY_BASE, AmountMode.EXACT_IN, 1), c, m, 10);
+    _potentialBounds();
+  }
+
+  function _potentialBounds() private pure {
+    for (uint256 i; i < 8; ++i) {
+      PricingCurve memory c = PricingCurve(i & 1 == 0 ? 1 : 1e27, i & 2 == 0 ? 0 : 0.9e18, i & 4 == 0 ? 0 : 0.01e18);
+      uint256 threshold = c.capacity * c.target / 1e18;
+      uint256[5] memory points = [uint256(0), threshold, threshold + 1, c.capacity, 2 * c.capacity];
+      for (uint256 j; j < points.length; ++j) {
+        (uint256 lo, uint256 hi) = PricingMath.potential(c, points[j]);
+        (uint256 expectedLo, uint256 expectedHi) = PricingReference.potential(c, points[j]);
+        assertEq(lo, expectedLo);
+        assertEq(hi, expectedHi);
+      }
+    }
   }
 }
