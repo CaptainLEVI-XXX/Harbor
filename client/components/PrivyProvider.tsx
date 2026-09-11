@@ -1,6 +1,7 @@
 'use client';
 
 import { PrivyProvider, usePrivy } from '@privy-io/react-auth';
+import type { Address } from 'viem';
 import { DESIGN } from '@/lib/design';
 import { chain } from '@/lib/chain';
 
@@ -47,14 +48,19 @@ export function truncateAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
-type Connect = { label: string; connected: boolean; onConnect: () => void };
+type Connect = { label: string; connected: boolean; address?: Address; onConnect: () => void };
 
 function useConnectWithPrivy(): Connect {
   const { ready, authenticated, user, login, logout } = usePrivy();
 
   if (!ready) return { label: DESIGN.copy.connect, connected: false, onConnect: () => {} };
   if (authenticated && user?.wallet?.address) {
-    return { label: truncateAddress(user.wallet.address), connected: true, onConnect: logout };
+    return {
+      label: truncateAddress(user.wallet.address),
+      connected: true,
+      address: user.wallet.address as Address,
+      onConnect: logout,
+    };
   }
   return { label: DESIGN.copy.connect, connected: false, onConnect: login };
 }
