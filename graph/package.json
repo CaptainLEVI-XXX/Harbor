@@ -1,0 +1,23 @@
+{
+  "name": "@harbor/graph",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/tests/analytics.test.js",
+    "sources": "npm run build && node dist/src/cli.js list",
+    "verify:live": "npm run build && node dist/src/cli.js inspect",
+    "subgraph:build": "node scripts/build-subgraph.mjs",
+    "subgraph:test": "cd subgraph && graph test --version 0.6.0",
+    "verify": "npm test && npm run subgraph:build && npm run subgraph:test"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@graphprotocol/graph-cli": "0.98.1",
+    "@graphprotocol/graph-ts": "0.38.2",
+    "matchstick-as": "0.6.0",
+    "typescript": "7.0.2"
+  }
+}

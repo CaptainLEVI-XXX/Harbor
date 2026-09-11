@@ -1,0 +1,22 @@
+# Same document and schema across chain-specific Harbor deployments.
+# lastCheckpoint is an event-position observation, never a live executable NAV.
+query HarborVault($id: Bytes!, $block: Block_height!) {
+  _meta(block: $block) {
+    deployment
+    hasIndexingErrors
+    block { number hash }
+  }
+  pool(id: $id, block: $block) {
+    id chainId book vault asset cashDecimals shareDecimals environment complete
+    shareSupply pendingShares reservedAssets depositedAssets paidAssets
+    portfolioChangedSinceCheckpoint
+    lastCheckpoint {
+      nav supply cash reserved inventoryMark claimMark observedAt
+      blockNumber blockHash transactionHash logIndex timestamp
+    }
+    exitRequests(first: 20, orderBy: ticket, orderDirection: desc) {
+      id ticket controller owner requestedShares pendingShares
+      fundedShares fundedAssets requestedAt fundingCompletedAt
+    }
+  }
+}

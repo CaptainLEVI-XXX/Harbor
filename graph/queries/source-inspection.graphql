@@ -1,0 +1,22 @@
+# Identical query for every admitted Yield Aggregator schema deployment.
+# A successful sample is capability evidence, not economic source admission.
+query InspectYieldVaults($block: Block_height!, $where: Vault_filter!) {
+  _meta(block: $block) {
+    deployment
+    hasIndexingErrors
+    block { number hash }
+  }
+  yieldAggregators(first: 2, block: $block) {
+    id name network schemaVersion subgraphVersion methodologyVersion
+  }
+  vaults(first: 5, orderBy: totalValueLockedUSD, orderDirection: desc, where: $where, block: $block) {
+    id name
+    inputToken { id symbol decimals }
+    outputToken { id symbol decimals }
+    inputTokenBalance outputTokenSupply pricePerShare totalValueLockedUSD
+    fees { feeType feePercentage }
+    dailySnapshots(first: 2, orderBy: timestamp, orderDirection: desc) {
+      id timestamp blockNumber pricePerShare
+    }
+  }
+}

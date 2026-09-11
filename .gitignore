@@ -38,3 +38,12 @@ node_modules/
 !.env.example
 
 tools/
+
+# Graph build products and local verification artifacts
+/graph/dist/
+/graph/subgraph/generated/
+/graph/subgraph/build/
+/graph/subgraph/subgraph.yaml
+/graph/.local/
+/graph/subgraph/tests/.latest.json
+/graph/subgraph/tests/.bin/

@@ -1,0 +1,93 @@
+{
+  "catalogRevision": "2711ac91ef119f321f65b339e10a57f9aa74f9d8",
+  "catalogUrl": "https://github.com/messari/subgraphs/blob/2711ac91ef119f321f65b339e10a57f9aa74f9d8/deployment/deployment.json",
+  "sources": [
+    {
+      "id": "yearn-v2-ethereum",
+      "protocol": "yearn-v2",
+      "chainId": 1,
+      "network": "MAINNET",
+      "queryId": "FDLuaz69DbMADuBjJDEcLnTuPnjhZqNbFVrkNiBLGkEg",
+      "expectedDeployment": "QmXK4zttkPkpuMYjpyp8YdQYmb15CPN4WETqLStXW9XiGD",
+      "vaultIds": ["0xa258c4606ca8206d8aa700ce2143d7db854d168c", "0xa354f35829ae975e850e23e9615b11da1b3dc4de"],
+      "status": "DISCOVERED",
+      "expectedVersions": {
+        "schema": "1.3.0",
+        "subgraph": "1.2.4",
+        "methodology": "1.0.0"
+      }
+    },
+    {
+      "id": "yearn-v2-arbitrum",
+      "protocol": "yearn-v2",
+      "chainId": 42161,
+      "network": "ARBITRUM_ONE",
+      "queryId": "G3JZhmKKHC4mydRzD6kSz5fCWve5WDYYCyTFSJyv3SD5",
+      "expectedDeployment": "Qma91PBS9v2N8xFCuTgu18oU1nuqfqgrxTJXWEQ6wWNUMp",
+      "status": "DISCOVERED",
+      "expectedVersions": {
+        "schema": "1.3.0",
+        "subgraph": "1.2.4",
+        "methodology": "1.0.0"
+      }
+    },
+    {
+      "id": "vesper-finance-ethereum",
+      "protocol": "vesper-finance",
+      "chainId": 1,
+      "network": "MAINNET",
+      "queryId": "GQdCg4oR8tFB4tH8svyL1PfgDABKnRXz4GjwFYH68pPG",
+      "expectedDeployment": "QmY4embaj3RxJTsF5MxQbyD85K6dQMuVsPZWPHLU3sf3Lj",
+      "status": "DISCOVERED",
+      "expectedVersions": {
+        "schema": "1.3.0",
+        "subgraph": "1.0.2",
+        "methodology": "1.0.0"
+      }
+    },
+    {
+      "id": "ribbon-finance-ethereum",
+      "protocol": "ribbon-finance",
+      "chainId": 1,
+      "network": "MAINNET",
+      "queryId": "Crag42fFb8PrXnbTjHe1UG5KjgzoiUJbqwzJxZ1W8XNJ",
+      "expectedDeployment": "QmegbUZ183WPwsUbCtTZ8hW43JP3FnALymD5WdnmhaHrrV",
+      "vaultIds": ["0x53773e034d9784153471813dacaff53dbbb78e8c"],
+      "feePolicy": "QUARANTINE_UPSTREAM_MAPPING",
+      "status": "DISCOVERED",
+      "expectedVersions": { "schema": "1.3.1", "subgraph": "1.0.2", "methodology": "1.0.0" }
+    },
+    {
+      "id": "arrakis-finance-ethereum",
+      "protocol": "arrakis-finance",
+      "chainId": 1,
+      "network": "MAINNET",
+      "queryId": "GnroBYmeLLtKuHNyTNS38hzKki5n4CWaHeaMRqZpU4cr",
+      "expectedDeployment": "QmbmeihANx6cyZB7UxWkzTGeMg7XpdW5DVnjtvuJZj6Hnx",
+      "vaultIds": ["0x50379f632ca68d36e50cfbc8f78fe16bd1499d1e"],
+      "status": "DISCOVERED",
+      "expectedVersions": { "schema": "1.3.0", "subgraph": "1.2.1", "methodology": "1.0.0" }
+    },
+    {
+      "id": "arrakis-finance-optimism",
+      "protocol": "arrakis-finance",
+      "chainId": 10,
+      "network": "OPTIMISM",
+      "queryId": "6yqMWioX8XNx2aMDYJGnvrVQWNrZfgBzY3ee1RmkXh5Z",
+      "expectedDeployment": "QmbKWbtdTnB5XqUArqJAY84Z8XLY5QLC9uQP14SvqFq4Up",
+      "vaultIds": ["0x3fa8cee6795220ac25dd35d4d39ec306a3e4fb3f"],
+      "status": "DISCOVERED",
+      "expectedVersions": { "schema": "1.3.0", "subgraph": "1.1.2", "methodology": "1.0.0" }
+    },
+    {
+      "id": "badgerdao-ethereum",
+      "protocol": "badgerdao",
+      "chainId": 1,
+      "network": "MAINNET",
+      "queryId": "BchjnXAXXV5coiCBMQH4A8yCHXEFX9S88JFF6G3mfem4",
+      "expectedDeployment": "QmZLsxSYuBk9fEt7AWnTrwraRtNQRuHdSABcMxesQbbY2p",
+      "status": "DISCOVERED",
+      "expectedVersions": { "schema": "1.3.0", "subgraph": "1.1.2", "methodology": "1.0.0" }
+    }
+  ]
+}

@@ -1,0 +1,322 @@
+# Harbor extension schema. Not a claim of full Messari compatibility.
+# Amounts are raw cash/share units; timestamps are Unix seconds.
+type Pool @entity(immutable: false) {
+  id: Bytes!
+  chainId: BigInt!
+  book: Bytes!
+  vault: Bytes!
+  asset: Bytes!
+  cashDecimals: Int!
+  shareDecimals: Int!
+  environment: String!
+  complete: Boolean!
+  shareSupply: BigInt!
+  pendingShares: BigInt!
+  reservedAssets: BigInt!
+  depositedAssets: BigInt!
+  paidAssets: BigInt!
+  lastCheckpoint: ValuationCheckpoint
+  portfolioChangedSinceCheckpoint: Boolean!
+  deposits: [LPDeposit!]! @derivedFrom(field: "pool")
+  exitRequests: [ExitRequest!]! @derivedFrom(field: "pool")
+  strategies: [Strategy!]! @derivedFrom(field: "pool")
+  trades: [Trade!]! @derivedFrom(field: "pool")
+}
+
+# Raw base quantities never roll up across different assets. Child receipt cash can roll up.
+type Strategy @entity(immutable: false) {
+  id: Bytes!
+  pool: Pool!
+  route: BigInt!
+  kind: String!
+  base: Bytes!
+  adapter: Bytes!
+  source: Strategy
+  factory: Bytes
+  adapterClaimId: Bytes
+  inventoryUnits: BigInt!
+  inventoryBasis: BigInt!
+  pendingBasis: BigInt!
+  customerCashVolume: BigInt!
+  protocolFees: BigInt!
+  buyCashDebit: BigInt!
+  sellCashCredit: BigInt!
+  recoveredCash: BigInt!
+  realizedResult: BigInt!
+  currentEpisode: HoldingEpisode
+  receiptMarkets: [Strategy!]! @derivedFrom(field: "source")
+  trades: [Trade!]! @derivedFrom(field: "strategy")
+  claims: [NativeClaim!]! @derivedFrom(field: "strategy")
+  episodes: [HoldingEpisode!]! @derivedFrom(field: "strategy")
+}
+
+type Integration @entity(immutable: false) {
+  id: Bytes!
+  pool: Pool!
+  factory: Bytes!
+  adapter: Bytes!
+  source: Strategy!
+  enabled: Boolean!
+}
+
+type Trade @entity(immutable: true) {
+  id: Bytes!
+  pool: Pool!
+  strategy: Strategy!
+  context: Bytes!
+  trader: Bytes!
+  receiver: Bytes!
+  buyBase: Boolean!
+  mode: String!
+  tokenIn: Bytes!
+  tokenOut: Bytes!
+  amountIn: BigInt!
+  amountOut: BigInt!
+  fee: BigInt!
+  customerCash: BigInt!
+  vaultCash: BigInt!
+  pricingVersion: BigInt!
+  positionVersion: BigInt!
+  settlementLogIndex: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
+
+type NativeClaim @entity(immutable: false) {
+  id: Bytes!
+  pool: Pool!
+  strategy: Strategy!
+  issuerId: BigInt!
+  bookKey: Bytes!
+  basis: BigInt!
+  initialEntitlement: BigInt!
+  remainingEntitlement: BigInt!
+  recoveredCash: BigInt!
+  state: String!
+  requestedAt: BigInt!
+  requestTransaction: Bytes!
+  requestLogIndex: BigInt!
+  closedAt: BigInt
+  exportedMarket: Strategy
+  finalRealization: Realization
+  recoveries: [ClaimRecovery!]! @derivedFrom(field: "claim")
+}
+
+type ClaimRecovery @entity(immutable: true) {
+  id: Bytes!
+  pool: Pool!
+  claim: NativeClaim!
+  cash: BigInt!
+  remaining: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
+
+type Realization @entity(immutable: true) {
+  id: Bytes!
+  pool: Pool!
+  strategy: Strategy!
+  kind: String!
+  basis: BigInt!
+  proceeds: BigInt!
+  result: BigInt!
+  positionVersion: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
+
+type HoldingEpisode @entity(immutable: false) {
+  id: Bytes!
+  pool: Pool!
+  strategy: Strategy!
+  acquisitionVersion: BigInt!
+  basis: BigInt!
+  exported: Boolean!
+  acquiredAt: BigInt!
+  acquisitionTransaction: Bytes!
+  acquisitionLogIndex: BigInt!
+  disposal: Realization
+}
+
+type NativeExport @entity(immutable: true) {
+  id: Bytes!
+  pool: Pool!
+  claim: NativeClaim!
+  market: Strategy!
+  basis: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
+
+# Canonical custody/ownership is chain-wide, independent of any pool holding the token.
+type Receipt @entity(immutable: false) {
+  id: Bytes!
+  chainId: BigInt!
+  address: Bytes!
+  factory: Bytes!
+  adapter: Bytes!
+  claimId: Bytes!
+  asset: Bytes!
+  complete: Boolean!
+  problem: String
+  owner: Bytes!
+  burnedHolder: Bytes
+  activated: Boolean!
+  nominal: BigInt
+  collectedCash: BigInt!
+  paidCash: BigInt!
+  redeemed: Boolean!
+  createdAt: BigInt!
+  creationTransaction: Bytes!
+  activities: [ReceiptActivity!]! @derivedFrom(field: "receipt")
+}
+
+type ClaimBinding @entity(immutable: true) {
+  id: Bytes!
+  receipt: Receipt!
+}
+
+type ReceiptActivity @entity(immutable: true) {
+  id: Bytes!
+  receipt: Receipt!
+  kind: String!
+  sender: Bytes
+  receiver: Bytes
+  amount: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
+
+type LPBalance @entity(immutable: false) {
+  id: Bytes!
+  pool: Pool!
+  account: Bytes!
+  shares: BigInt!
+}
+
+type ControllerCredit @entity(immutable: false) {
+  id: Bytes!
+  pool: Pool!
+  controller: Bytes!
+  pendingShares: BigInt!
+  fundedUnits: BigInt!
+  claimableAssets: BigInt!
+}
+
+type LPDeposit @entity(immutable: true) {
+  id: Bytes!
+  pool: Pool!
+  payer: Bytes!
+  controller: Bytes!
+  receiver: Bytes!
+  assets: BigInt!
+  shares: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
+
+type ExitRequest @entity(immutable: false) {
+  id: Bytes!
+  pool: Pool!
+  ticket: BigInt!
+  controller: Bytes!
+  owner: Bytes!
+  caller: Bytes!
+  requestedShares: BigInt!
+  pendingShares: BigInt!
+  fundedShares: BigInt!
+  fundedAssets: BigInt!
+  requestedAt: BigInt!
+  fundingCompletedAt: BigInt
+  requestTransaction: Bytes!
+  requestLogIndex: BigInt!
+}
+
+type ExitFunding @entity(immutable: true) {
+  id: Bytes!
+  pool: Pool!
+  request: ExitRequest!
+  controller: Bytes!
+  shares: BigInt!
+  assets: BigInt!
+  remainingShares: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
+
+type ExitPayout @entity(immutable: true) {
+  id: Bytes!
+  pool: Pool!
+  controller: Bytes!
+  receiver: Bytes!
+  caller: Bytes!
+  assets: BigInt!
+  fundedUnits: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
+
+type ValuationCheckpoint @entity(immutable: true) {
+  id: Bytes!
+  pool: Pool!
+  nav: BigInt!
+  supply: BigInt!
+  cash: BigInt!
+  reserved: BigInt!
+  inventoryMark: BigInt!
+  claimMark: BigInt!
+  observedAt: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
+
+type ShareTransfer @entity(immutable: true) {
+  id: Bytes!
+  pool: Pool!
+  sender: Bytes!
+  receiver: Bytes!
+  shares: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
+
+type DataIssue @entity(immutable: true) {
+  id: Bytes!
+  pool: Pool!
+  code: String!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}

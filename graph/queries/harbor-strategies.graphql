@@ -1,0 +1,18 @@
+# One cursor-paginated query on every Harbor chain. Client caps first at 100.
+# Native rows and receipt rows are separate: never sum raw base/receipt quantities.
+query HarborStrategies($pool: Bytes!, $after: Bytes!, $first: Int!, $block: Block_height!) {
+  _meta(block: $block) {
+    deployment hasIndexingErrors block { number hash }
+  }
+  strategies(first: $first, orderBy: id, orderDirection: asc,
+    where: { pool: $pool, id_gt: $after }, block: $block) {
+    id route kind base adapter
+    pool { id chainId asset cashDecimals environment complete }
+    source { id route }
+    factory adapterClaimId
+    inventoryUnits inventoryBasis pendingBasis
+    customerCashVolume protocolFees buyCashDebit sellCashCredit
+    recoveredCash realizedResult
+    currentEpisode { id basis exported acquiredAt acquisitionVersion }
+  }
+}

@@ -1,0 +1,347 @@
+{
+  "checkedOn": "2026-09-11",
+  "provider": "The Graph gateway",
+  "rpcProvider": "https://ethereum.publicnode.com",
+  "comparisonAdmissionPassed": false,
+  "contractValueVerified": false,
+  "observations": [
+    {
+      "sourceId": "yearn-v2-ethereum",
+      "chainId": 1,
+      "environment": "PUBLIC_CHAIN",
+      "mode": "FINALIZED_NUMBER",
+      "queryHash": "339b31e4cdfd4e74e867902d2a28ec56160c247dba774dec1c6f22c7ee902a87",
+      "queriedAt": "2026-09-11T09:30:56.186Z",
+      "graphHead": {
+        "deployment": "QmXK4zttkPkpuMYjpyp8YdQYmb15CPN4WETqLStXW9XiGD",
+        "block": {
+          "number": 25800000,
+          "hash": null
+        }
+      },
+      "canonicalBlock": {
+        "number": 25800000,
+        "hash": "0xeb4ccbdb418b083ebbf646b371092c7c02016194e3a90caba9a9492becba8a2d",
+        "timestamp": 1787273051
+      },
+      "finalizedAtCheck": {
+        "number": 25953192,
+        "hash": "0x9539b51080f33c963c453975af3820bc9f1673375cb96f870b2c08ecf9fd0252",
+        "timestamp": 1789118039
+      },
+      "contractValueVerified": false,
+      "admitted": false,
+      "vault": {
+        "id": "0xa258c4606ca8206d8aa700ce2143d7db854d168c",
+        "name": "WETH yVault",
+        "inputToken": {
+          "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+          "symbol": "WETH",
+          "decimals": 18
+        },
+        "outputToken": {
+          "id": "0xa258c4606ca8206d8aa700ce2143d7db854d168c",
+          "symbol": "yvWETH",
+          "decimals": 18
+        },
+        "inputTokenBalance": "3757436267019151769679",
+        "outputTokenSupply": "3333176976250247864551",
+        "pricePerShare": "1126557266989679754",
+        "totalValueLockedUSD": "8751482.38387697657827705569",
+        "fees": [
+          {
+            "feeType": "MANAGEMENT_FEE",
+            "feePercentage": "0",
+            "status": "SOURCE_REPORTED"
+          },
+          {
+            "feeType": "PERFORMANCE_FEE",
+            "feePercentage": "20",
+            "status": "SOURCE_REPORTED"
+          }
+        ],
+        "dailySnapshots": [
+          {
+            "id": "0xa258c4606ca8206d8aa700ce2143d7db854d168c-20685",
+            "timestamp": "1787256827",
+            "blockNumber": "25798651",
+            "pricePerShare": "1126557266989679754"
+          },
+          {
+            "id": "0xa258c4606ca8206d8aa700ce2143d7db854d168c-20684",
+            "timestamp": "1787179631",
+            "blockNumber": "25792237",
+            "pricePerShare": "1126160887914147111"
+          }
+        ],
+        "quality": {
+          "sharePrice": "SOURCE_REPORTED",
+          "returnComparable": false,
+          "reasons": [
+            "PER_VAULT_METHODOLOGY_UNVERIFIED",
+            "CONTRACT_VALUE_UNVERIFIED",
+            "VALUATION_FRESHNESS_UNVERIFIED"
+          ]
+        }
+      }
+    },
+    {
+      "sourceId": "yearn-v2-ethereum",
+      "chainId": 1,
+      "environment": "PUBLIC_CHAIN",
+      "mode": "FINALIZED_NUMBER",
+      "queryHash": "339b31e4cdfd4e74e867902d2a28ec56160c247dba774dec1c6f22c7ee902a87",
+      "queriedAt": "2026-09-11T09:30:59.544Z",
+      "graphHead": {
+        "deployment": "QmXK4zttkPkpuMYjpyp8YdQYmb15CPN4WETqLStXW9XiGD",
+        "block": {
+          "number": 25950000,
+          "hash": null
+        }
+      },
+      "canonicalBlock": {
+        "number": 25950000,
+        "hash": "0xf22645c5d143419ed2d543e17f35b97882640109ddc5711e9c120c25b54444e7",
+        "timestamp": 1789079591
+      },
+      "finalizedAtCheck": {
+        "number": 25953192,
+        "hash": "0x9539b51080f33c963c453975af3820bc9f1673375cb96f870b2c08ecf9fd0252",
+        "timestamp": 1789118039
+      },
+      "contractValueVerified": false,
+      "admitted": false,
+      "vault": {
+        "id": "0xa258c4606ca8206d8aa700ce2143d7db854d168c",
+        "name": "WETH yVault",
+        "inputToken": {
+          "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+          "symbol": "WETH",
+          "decimals": 18
+        },
+        "outputToken": {
+          "id": "0xa258c4606ca8206d8aa700ce2143d7db854d168c",
+          "symbol": "yvWETH",
+          "decimals": 18
+        },
+        "inputTokenBalance": "3759710902633606265162",
+        "outputTokenSupply": "3331791193072043622138",
+        "pricePerShare": "1128127925761857425",
+        "totalValueLockedUSD": "9240242.477966292413160701402768",
+        "fees": [
+          {
+            "feeType": "MANAGEMENT_FEE",
+            "feePercentage": "0",
+            "status": "SOURCE_REPORTED"
+          },
+          {
+            "feeType": "PERFORMANCE_FEE",
+            "feePercentage": "20",
+            "status": "SOURCE_REPORTED"
+          }
+        ],
+        "dailySnapshots": [
+          {
+            "id": "0xa258c4606ca8206d8aa700ce2143d7db854d168c-20706",
+            "timestamp": "1789065947",
+            "blockNumber": "25948869",
+            "pricePerShare": "1128127925761857425"
+          },
+          {
+            "id": "0xa258c4606ca8206d8aa700ce2143d7db854d168c-20704",
+            "timestamp": "1788907847",
+            "blockNumber": "25935744",
+            "pricePerShare": "1127601120089976600"
+          }
+        ],
+        "quality": {
+          "sharePrice": "SOURCE_REPORTED",
+          "returnComparable": false,
+          "reasons": [
+            "PER_VAULT_METHODOLOGY_UNVERIFIED",
+            "CONTRACT_VALUE_UNVERIFIED",
+            "VALUATION_FRESHNESS_UNVERIFIED"
+          ]
+        }
+      }
+    },
+    {
+      "sourceId": "ribbon-finance-ethereum",
+      "chainId": 1,
+      "environment": "PUBLIC_CHAIN",
+      "mode": "FINALIZED_NUMBER",
+      "queryHash": "339b31e4cdfd4e74e867902d2a28ec56160c247dba774dec1c6f22c7ee902a87",
+      "queriedAt": "2026-09-11T09:36:09.277Z",
+      "graphHead": {
+        "deployment": "QmegbUZ183WPwsUbCtTZ8hW43JP3FnALymD5WdnmhaHrrV",
+        "block": {
+          "number": 25800000,
+          "hash": null
+        }
+      },
+      "canonicalBlock": {
+        "number": 25800000,
+        "hash": "0xeb4ccbdb418b083ebbf646b371092c7c02016194e3a90caba9a9492becba8a2d",
+        "timestamp": 1787273051
+      },
+      "finalizedAtCheck": {
+        "number": 25953224,
+        "hash": "0x3f30567d3d110109f522127e0cabd339033a5984b515decf4730d70fb4fdc772",
+        "timestamp": 1789118423
+      },
+      "contractValueVerified": false,
+      "admitted": false,
+      "vault": {
+        "id": "0x53773e034d9784153471813dacaff53dbbb78e8c",
+        "name": "Ribbon stETH Theta Vault",
+        "inputToken": {
+          "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+          "symbol": "WETH",
+          "decimals": 18
+        },
+        "outputToken": {
+          "id": "0x53773e034d9784153471813dacaff53dbbb78e8c",
+          "symbol": "rstETH-THETA",
+          "decimals": 18
+        },
+        "inputTokenBalance": "880932825772752496763",
+        "outputTokenSupply": "789831731107679453951",
+        "pricePerShare": "1115322353281123719",
+        "totalValueLockedUSD": "1537237.043982116107343938462945",
+        "fees": [
+          {
+            "feeType": "MANAGEMENT_FEE",
+            "feePercentage": null,
+            "status": "QUARANTINED"
+          },
+          {
+            "feeType": "PERFORMANCE_FEE",
+            "feePercentage": null,
+            "status": "QUARANTINED"
+          },
+          {
+            "feeType": "WITHDRAWAL_FEE",
+            "feePercentage": null,
+            "status": "QUARANTINED"
+          }
+        ],
+        "dailySnapshots": [
+          {
+            "id": "0x53773e034d9784153471813dacaff53dbbb78e8c-20642",
+            "timestamp": "1783512395",
+            "blockNumber": "25487741",
+            "pricePerShare": "1112815006804185070"
+          },
+          {
+            "id": "0x53773e034d9784153471813dacaff53dbbb78e8c-20572",
+            "timestamp": "1777440167",
+            "blockNumber": "24983622",
+            "pricePerShare": "1112247760961169782"
+          }
+        ],
+        "quality": {
+          "sharePrice": "SOURCE_REPORTED",
+          "returnComparable": false,
+          "reasons": [
+            "PER_VAULT_METHODOLOGY_UNVERIFIED",
+            "CONTRACT_VALUE_UNVERIFIED",
+            "VALUATION_FRESHNESS_UNVERIFIED",
+            "FEE_MAPPING_QUARANTINED"
+          ]
+        }
+      }
+    },
+    {
+      "sourceId": "ribbon-finance-ethereum",
+      "chainId": 1,
+      "environment": "PUBLIC_CHAIN",
+      "mode": "FINALIZED_NUMBER",
+      "queryHash": "339b31e4cdfd4e74e867902d2a28ec56160c247dba774dec1c6f22c7ee902a87",
+      "queriedAt": "2026-09-11T09:36:11.902Z",
+      "graphHead": {
+        "deployment": "QmegbUZ183WPwsUbCtTZ8hW43JP3FnALymD5WdnmhaHrrV",
+        "block": {
+          "number": 25950000,
+          "hash": null
+        }
+      },
+      "canonicalBlock": {
+        "number": 25950000,
+        "hash": "0xf22645c5d143419ed2d543e17f35b97882640109ddc5711e9c120c25b54444e7",
+        "timestamp": 1789079591
+      },
+      "finalizedAtCheck": {
+        "number": 25953224,
+        "hash": "0x3f30567d3d110109f522127e0cabd339033a5984b515decf4730d70fb4fdc772",
+        "timestamp": 1789118423
+      },
+      "contractValueVerified": false,
+      "admitted": false,
+      "vault": {
+        "id": "0x53773e034d9784153471813dacaff53dbbb78e8c",
+        "name": "Ribbon stETH Theta Vault",
+        "inputToken": {
+          "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+          "symbol": "WETH",
+          "decimals": 18
+        },
+        "outputToken": {
+          "id": "0x53773e034d9784153471813dacaff53dbbb78e8c",
+          "symbol": "rstETH-THETA",
+          "decimals": 18
+        },
+        "inputTokenBalance": "882503416241000929674",
+        "outputTokenSupply": "789805031025462417894",
+        "pricePerShare": "1117348637748698784",
+        "totalValueLockedUSD": "2180028.26662552295597769480945",
+        "fees": [
+          {
+            "feeType": "MANAGEMENT_FEE",
+            "feePercentage": null,
+            "status": "QUARANTINED"
+          },
+          {
+            "feeType": "PERFORMANCE_FEE",
+            "feePercentage": null,
+            "status": "QUARANTINED"
+          },
+          {
+            "feeType": "WITHDRAWAL_FEE",
+            "feePercentage": null,
+            "status": "QUARANTINED"
+          }
+        ],
+        "dailySnapshots": [
+          {
+            "id": "0x53773e034d9784153471813dacaff53dbbb78e8c-20703",
+            "timestamp": "1788796343",
+            "blockNumber": "25926491",
+            "pricePerShare": "1115322353281123719"
+          },
+          {
+            "id": "0x53773e034d9784153471813dacaff53dbbb78e8c-20642",
+            "timestamp": "1783512395",
+            "blockNumber": "25487741",
+            "pricePerShare": "1112815006804185070"
+          }
+        ],
+        "quality": {
+          "sharePrice": "SOURCE_REPORTED",
+          "returnComparable": false,
+          "reasons": [
+            "PER_VAULT_METHODOLOGY_UNVERIFIED",
+            "CONTRACT_VALUE_UNVERIFIED",
+            "VALUATION_FRESHNESS_UNVERIFIED",
+            "FEE_MAPPING_QUARANTINED"
+          ]
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Ethereum finalized-number mode only",
+    "Graph historical block hashes are null; RPC hashes are independently observed, not substituted",
+    "Headers checked before and after each observation; no archive contract-value parity claimed",
+    "Share-price update semantics, valuation freshness and financial comparability remain unverified"
+  ]
+}

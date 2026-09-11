@@ -1,0 +1,24 @@
+# Native and receipt IDs are deliberately different. Native export links to the receipt route.
+# These are observed histories, not issuer-finalization forecasts or executable balances.
+query HarborClaim($nativeId: Bytes!, $receiptId: Bytes!, $after: Bytes!, $first: Int!, $block: Block_height!) {
+  _meta(block: $block) {
+    deployment hasIndexingErrors block { number hash }
+  }
+  nativeClaim(id: $nativeId, block: $block) {
+    id issuerId bookKey state basis initialEntitlement remainingEntitlement recoveredCash
+    pool { id chainId asset cashDecimals environment complete }
+    requestedAt requestTransaction requestLogIndex closedAt
+    exportedMarket { id base adapterClaimId }
+    finalRealization { id basis proceeds result transactionHash logIndex }
+    recoveries(first: $first, orderBy: id, where: { id_gt: $after }) {
+      id cash remaining timestamp transactionHash logIndex blockNumber blockHash
+    }
+  }
+  receipt(id: $receiptId, block: $block) {
+    id chainId address factory adapter claimId asset complete problem
+    owner activated nominal collectedCash paidCash redeemed createdAt creationTransaction
+    activities(first: $first, orderBy: id, where: { id_gt: $after }) {
+      id kind sender receiver amount timestamp transactionHash logIndex blockNumber blockHash
+    }
+  }
+}

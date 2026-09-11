@@ -1,0 +1,3 @@
+libsFolder: ../node_modules
+testsFolder: ./tests
+manifestPath: ./subgraph.yaml

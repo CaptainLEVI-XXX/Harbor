@@ -5,6 +5,100 @@ withdrawal rights through official 1inch Aqua and SwapVM's Extruction extension.
 The vault supports synchronous deposits and asynchronous LP exits. This is
 unaudited hackathon code, not a mainnet-ready yield product.
 
+## Graph analytics
+
+Read-only Graph tooling lives in `graph/`, separate from Foundry and the client.
+It includes a shared standardized-vault source inspector, exact return arithmetic,
+and Harbor mappings for deposits, shares, exits, checkpoints, settled trades,
+native recoveries and canonical receipt ownership/holding episodes. Full policy
+history, daily rollups, read-service integration, comparison admission and public
+deployment remain unfinished. Analytics does not authorize settlement or publish prices.
+
+With Node 22 or newer and the existing Foundry artifacts:
+
+```sh
+forge build
+npm --prefix graph ci --ignore-scripts
+npm --prefix graph run verify
+```
+
+The verification command runs five analytics scenarios, builds the same Harbor
+schema/mappings with two synthetic network configurations, and runs seven mapping
+scenarios using pinned Matchstick 0.6.0. The runner may require a supported native
+platform and an initial download. Fixtures are **not public deployments**;
+`graph/subgraph/networks.json` intentionally contains no claimed deployed addresses.
+
+List catalogued candidates or inspect them through The Graph gateway:
+
+```sh
+npm --prefix graph run sources
+node --env-file=graph/.env graph/dist/src/cli.js inspect
+# Inspect only the currently working comparison candidates:
+node --env-file=graph/.env graph/dist/src/cli.js inspect yearn-v2-ethereum ribbon-finance-ethereum arrakis-finance-ethereum arrakis-finance-optimism
+```
+
+Set `GRAPH_API_KEY` in ignored `graph/.env`, never in `.env.example`. The key
+is transmitted only in an authorization header. The catalog pins public Messari
+source IDs, observed deployment CIDs and repository metadata; it does not claim
+those deployments index financially comparable data. An inspection pins queries
+to a block hash, rejects indexing/version/deployment errors and reports remaining
+admission checks. Explicit vault selections are used where configured; otherwise
+discovery samples by source-reported TVL, not address order. A
+successful query alone does not approve a source or prove current valuation.
+
+The September 11 provider check succeeded for Yearn, Ribbon and Badger on Ethereum,
+and Arrakis on Ethereum and Optimism, using the same query. Yearn Arbitrum remains
+excluded for `MAINNET` metadata; Vesper remains excluded for indexing errors.
+Inspecting all sources exits nonzero when any source fails, while retaining each
+source's result. See [source verification](graph/sources/verification.json).
+
+Every vault carries field-level quality and `returnComparable: false` until
+financial review. Ribbon fee percentages are returned as null/`QUARANTINED`,
+not zero: its pinned upstream [fee mapping](https://github.com/messari/subgraphs/blob/2711ac91ef119f321f65b339e10a57f9aa74f9d8/subgraphs/ribbon-finance/src/modules/Transaction.ts#L195)
+has identifier/scaling defects; exact deployed-source correspondence is unproven.
+Other fee values remain explicitly source-reported, not independently verified.
+Missing share prices, including the selected Arrakis vaults, exclude returns
+without discarding the source's other observations. No source has passed
+financial-comparison admission. An indexed head does not make an old mark fresh.
+
+For Ethereum history, set `GRAPH_RPC_URL_1` in ignored `graph/.env` to an approved
+HTTPS RPC endpoint supporting `eth_chainId`, `finalized` and historical headers:
+
+```sh
+node --env-file=graph/.env graph/dist/src/cli.js history yearn-v2-ethereum 0xa258c4606ca8206d8aa700ce2143d7db854d168c 25800000 25950000
+```
+
+This explicit `FINALIZED_NUMBER` mode validates chain/finality, brackets the read
+with canonical-header checks and rejects deployment changes. Historical Graph
+hashes can remain null; the separately observed RPC hash is never substituted
+into Graph metadata. Observation timestamps remain distinct from query-block
+timestamps. See [historical verification](graph/sources/history-verification.json).
+The existing hash-pinned reader still rejects missing hashes. Number-mode finality
+is currently reviewed only for Ethereum; other chains fail explicitly pending a
+chain-specific policy. Provider-trusted headers are not contract-value proofs:
+archive `eth_call` parity, mark-update semantics and return admission remain
+outstanding. This command emits observations, not an APY ranking.
+
+Harbor checkpoint records describe their event position. Pending exit shares,
+funded controller credit and actual payouts remain separate; no ticket-level
+payout attribution is invented. Current NAV and executable limits still require
+contract reads. External protocol comparisons require explicit asset, history,
+fee/reward and methodology review, not matching token symbols or headline APYs.
+
+Trade history joins the Book settlement to its matching, manifest-pinned Executor
+completion inside the transaction receipt. Repeated intents remain distinct;
+exact-input/output mode stays `UNKNOWN` when logs cannot prove it. Customer cash,
+protocol fees and Vault cash are separate values. Final native realization does
+not count cumulative proceeds as another recovery. Receipt sale/rebuy episodes
+preserve their own basis, and a holder's payout is not automatically Vault income.
+
+Canonical receipt templates replay creation-transaction mint/activation/transfer
+logs idempotently. Matchstick tests cover that interpreter, not Graph Node's actual
+template scheduling or reorg behavior; an engine-level smoke check remains required.
+Each route's totals are route-local: receipt routes link to their source strategy,
+but automatic parent/day rollups are not implemented yet. Use the shared queries
+under `graph/queries/`; current claim status and valuations still need pinned RPC reads.
+
 ## Contracts
 
 | Component | Responsibility |

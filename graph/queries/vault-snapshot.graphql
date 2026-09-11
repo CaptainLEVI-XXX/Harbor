@@ -1,0 +1,18 @@
+query VaultSnapshot($id: ID!, $block: Block_height!) {
+  _meta(block: $block) {
+    deployment
+    hasIndexingErrors
+    block { number hash }
+  }
+  vault(id: $id, block: $block) {
+    id name
+    protocol { id name network schemaVersion subgraphVersion methodologyVersion }
+    inputToken { id symbol decimals }
+    outputToken { id symbol decimals }
+    inputTokenBalance outputTokenSupply pricePerShare totalValueLockedUSD
+    fees { feeType feePercentage }
+    dailySnapshots(first: 2, orderBy: timestamp, orderDirection: desc) {
+      id timestamp blockNumber pricePerShare
+    }
+  }
+}
