@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
+import {BookContext as Context} from "src/libraries/BookContext.sol";
+
 import {SwapVM} from "@1inch/swap-vm/src/SwapVM.sol";
 import {AssetUnits} from "src/libraries/AssetUnits.sol";
 import {IHarborBook} from "src/interfaces/IHarborBook.sol";
@@ -17,23 +19,12 @@ import {ClaimMarkets} from "src/libraries/ClaimMarkets.sol";
 /// @title BookState
 /// @notice Shared immutable mandate, persistent ledgers and transaction-local locks.
 /// @dev Every Book module inherits this one state owner. Domain libraries use fixed
-/// compiler links and explicit storage references; no mutable dispatch or manual slots.
+/// compiler links and explicit storage references; no mutable dispatch.
 /// Context lasts until explicit release. New deployments require fresh bindings.
 abstract contract BookState is IHarborBook {
   /*//////////////////////////////////////////////////////////////
                                 TYPES
   //////////////////////////////////////////////////////////////*/
-
-  /// @notice Transaction-local progress through the input-first settlement hooks.
-  /// @dev Advancing a phase never releases the Book/Vault operation lock.
-  enum SettlementPhase {
-    IDLE,
-    OPENED,
-    AUTHORIZED,
-    INPUT_RECEIVED,
-    OUTPUT_AUTHORIZED,
-    OUTPUT_SENT
-  }
 
   /// @notice Deployment-only mandate. Addresses and risk ceilings cannot be replaced.
   struct Config {
@@ -41,7 +32,7 @@ abstract contract BookState is IHarborBook {
     address vault;
     /// @notice Predicted trader settlement entrypoint.
     address executor;
-    /// @notice Approved wrapped native token; accounting uses wei.
+    /// @notice Approved settlement ERC-20; accounting uses its raw units.
     address asset;
     /// @notice Official Aqua balance-management deployment.
     address aqua;
@@ -81,6 +72,9 @@ abstract contract BookState is IHarborBook {
   address public immutable ASSET;
   /// @dev One whole settlement token in raw units; decimals fixed by admission.
   uint256 internal immutable ASSET_UNIT;
+  /// @dev Fixed native units: route 0 in bits 0..63, route 1 in 64..127.
+  /// Admission bounds each unit by 1e18 < 2^64; receipt lots never use this word.
+  uint256 internal immutable BASE_UNITS;
   /// @dev Official shared strategy-balance ledger.
   address public immutable AQUA;
   /// @dev Only router allowed to authorize fills and deliver settlement hooks.
@@ -152,33 +146,7 @@ abstract contract BookState is IHarborBook {
                          TRANSIENT CONTEXT
   //////////////////////////////////////////////////////////////*/
 
-  /// @dev Compiler transient slots are disjoint from persistent library state.
-  /// Book coordinates all domains; these locks survive begin-method returns.
-  /// @dev Transaction-local domain lock shared across all inherited modules.
-  Operation internal transient _operation;
-  /// @dev Exact operation identity; persists across callback returns.
-  bytes32 internal transient _context;
-  /// @dev Input-first hook lifecycle; never a durable accounting value.
-  SettlementPhase internal transient _phase;
-  /// @dev Commitment to maker/taker/token/order identity; amounts are bound separately.
-  bytes32 internal transient _hookHash;
-  /// @dev Maker input-token balance before router transfers, raw units.
-  uint256 internal transient _beforeIn;
-  /// @dev Maker output-token balance before router transfers, raw units.
-  uint256 internal transient _beforeOut;
-  /// @dev Active trading or issuer-request route.
-  uint256 internal transient _route;
-  /// @dev Whether the active trade purchases base inventory for the vault.
-  bool internal transient _buy;
-  /// @dev Trade cash in settlement-asset raw units; during REDEMPTION only, requested wrapped shares.
-  uint256 internal transient _cash;
-  /// @dev Core pair computed once inside Extruction and enforced by all settlement hooks.
-  uint256 internal transient _preparedIn;
-  uint256 internal transient _preparedOut;
-  uint256 internal transient _preparedFee;
-  bytes32 internal transient _preparedObservation;
-  address internal transient _claimAdapter;
-  bytes32 internal transient _claimId;
+  // Transaction-local slots are owned by BookContext, shared with linked execution.
 
   /*//////////////////////////////////////////////////////////////
                          ERRORS
@@ -299,6 +267,7 @@ abstract contract BookState is IHarborBook {
     MAX_EXPOSURE = c.maxBasisExposure;
     GOVERNANCE_DELAY = c.governanceDelay;
     INVENTORY_ROUTES = routes.length;
+    uint256 units;
     for (uint256 i; i < routes.length; ++i) {
       RouteConfig memory r = routes[i];
       if (
@@ -307,6 +276,7 @@ abstract contract BookState is IHarborBook {
           || r.maxPurchases == 0 || r.lossBudget == 0 || r.maxDailyRedemption == 0
       ) revert InvalidConfiguration();
       if (i != 0 && (routes[0].base == r.base || routes[0].adapter == r.adapter)) revert InvalidConfiguration();
+      units |= AssetUnits.unit(r.base) << (64 * i);
       _routes.push(r);
       emit IssuerRouteConfigured(
         i,
@@ -322,6 +292,7 @@ abstract contract BookState is IHarborBook {
         r.maxDailyRedemption
       );
     }
+    BASE_UNITS = units;
     VAULT = HarborVault(c.vault);
     EXECUTOR = HarborExecutor(c.executor);
     if (c.feeRecipient == address(VAULT) || c.feeRecipient == address(EXECUTOR)) revert InvalidConfiguration();
@@ -338,17 +309,20 @@ abstract contract BookState is IHarborBook {
   }
 
   function isIdle() external view returns (bool) {
-    return _operation == Operation.NONE;
+    return Context.operation() == Operation.NONE;
   }
 
   /// @notice Only the selected recovery/export may mutate adapter cash while locked.
   function claimOperationAllowed(address adapter, bytes32 id) external view returns (bool) {
-    return _operation == Operation.RECOVERY && adapter == _claimAdapter && id == _claimId && id != bytes32(0);
+    return Context.operation() == Operation.RECOVERY && adapter == address(uint160(Context.get(Context.CLAIM_ADAPTER)))
+      && id == bytes32(Context.get(Context.CLAIM_ID)) && id != bytes32(0);
   }
 
   /// @inheritdoc IHarborBook
   function finishVaultOperation(bytes32 context) external {
-    if (msg.sender != address(VAULT) || _operation != Operation.VAULT || context != _context) revert Unauthorized();
+    if (msg.sender != address(VAULT) || Context.operation() != Operation.VAULT || context != Context.context()) {
+      revert Unauthorized();
+    }
     _release();
   }
 
@@ -360,31 +334,17 @@ abstract contract BookState is IHarborBook {
   /// @param context Nonzero identity used to bind every subsequent callback.
   /// @param operation Domain whose settlement methods may run while locked.
   function _open(bytes32 context, Operation operation) internal {
-    if (_operation != Operation.NONE) revert Busy();
+    if (Context.operation() != Operation.NONE) revert Busy();
     if (context == 0) revert InvalidCallback();
-    _operation = operation;
-    _context = context;
+    Context.control(operation, Context.Phase.IDLE, false);
+    Context.set(Context.CONTEXT, uint256(context));
     VAULT.beginBookOperation(context, operation);
   }
 
   /// @dev Release the Vault first, then clear every transient field explicitly.
   /// Same-transaction sequential operations must not inherit earlier context.
   function _release() internal {
-    VAULT.finishBookOperation(_context);
-    _operation = Operation.NONE;
-    _context = 0;
-    _phase = SettlementPhase.IDLE;
-    _hookHash = 0;
-    _beforeIn = 0;
-    _beforeOut = 0;
-    _route = 0;
-    _buy = false;
-    _cash = 0;
-    _preparedIn = 0;
-    _preparedOut = 0;
-    _preparedFee = 0;
-    _preparedObservation = bytes32(0);
-    _claimAdapter = address(0);
-    _claimId = bytes32(0);
+    VAULT.finishBookOperation(Context.context());
+    Context.clear();
   }
 }

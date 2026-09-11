@@ -8,6 +8,7 @@ import {ClaimAccounting} from "src/libraries/ClaimAccounting.sol";
 import {RealizationLogs} from "test/base/RealizationLogs.sol";
 import {RedemptionAccounting as RedemptionLedger} from "src/libraries/RedemptionAccounting.sol";
 import {RedeemIntent} from "src/types/HarborTypes.sol";
+import {RedemptionReference} from "test/base/RedemptionReference.sol";
 
 contract QueueHarness {
   using Queue for Queue.State;
@@ -170,9 +171,32 @@ contract BookAccountingTest is Test {
 contract RedemptionLedgerHarness {
   using RedemptionLedger for RedemptionLedger.State;
   RedemptionLedger.State private _state;
+  RedemptionReference.State private _referenceState;
 
   function consume(RedeemIntent calldata i, uint256[] calldata a) external returns (bytes32) {
     return _state.consume(i, a, address(1), address(2), 3);
+  }
+
+  function consumeReference(RedeemIntent calldata i, uint256[] calldata a) external returns (bytes32) {
+    return RedemptionReference.consume(_referenceState, i, a, address(1), address(2), 3);
+  }
+
+  function consumed(uint256 epoch, uint256 nonce) external view returns (bool) {
+    return _state.usedNonce(epoch, nonce);
+  }
+
+  function consumedReference(uint256 epoch, uint256 nonce) external view returns (bool) {
+    return _referenceState.usedNonce[epoch][nonce];
+  }
+
+  function advanceEpoch() external {
+    ++_state.epoch;
+    ++_referenceState.epoch;
+  }
+
+  function consumeAndFail(RedeemIntent calldata i, uint256[] calldata a) external {
+    _state.consume(i, a, address(1), address(2), 3);
+    revert("after nonce consumption");
   }
 
   function record(uint256 route, uint256 amount, uint256 minimum, uint256 limit) external {
@@ -197,6 +221,7 @@ contract RedemptionAccountingTest is Test {
   }
 
   function test_LongGapAndFailedRolloverPreserveLastSuccessfulUsage() public {
+    _nonceBoundaries();
     ledger.record(0, 8, 1, 10);
     vm.warp(400 days);
     vm.expectRevert(RedemptionLedger.DailyLimit.selector);
@@ -207,5 +232,66 @@ contract RedemptionAccountingTest is Test {
     ledger.record(0, 10, 1, 10);
     assertEq(ledger.usage(0).day, 400);
     assertEq(ledger.used(0), 10);
+  }
+
+  function _nonceBoundaries() private {
+    uint256[] memory amounts = new uint256[](1);
+    amounts[0] = 1;
+    RedeemIntent memory intent = RedeemIntent(
+      block.chainid,
+      address(1),
+      address(ledger),
+      0,
+      address(2),
+      1,
+      1,
+      1,
+      1,
+      3,
+      0,
+      0,
+      block.timestamp,
+      keccak256(abi.encode(amounts))
+    );
+    uint256[5] memory nonces = [uint256(0), 1, 255, 256, type(uint256).max];
+    for (uint256 i; i < nonces.length; ++i) {
+      intent.nonce = nonces[i];
+      assertFalse(ledger.consumed(0, intent.nonce));
+      assertFalse(ledger.consumedReference(0, intent.nonce));
+      uint256 start = gasleft();
+      bytes32 actual = ledger.consume(intent, amounts);
+      uint256 bitmapGas = start - gasleft();
+      start = gasleft();
+      bytes32 expected = ledger.consumeReference(intent, amounts);
+      uint256 plainGas = start - gasleft();
+      assertEq(actual, expected);
+      assertEq(actual, keccak256(abi.encode(intent)));
+      assertTrue(ledger.consumed(0, intent.nonce));
+      assertFalse(ledger.consumed(1, intent.nonce));
+      if (i == 0 || i == 1 || i == 3) {
+        emit log_named_uint("nonce", intent.nonce);
+        emit log_named_uint("bitmap nonce gas", bitmapGas);
+        emit log_named_uint("reference nonce gas", plainGas);
+      }
+      if (i == 1) assertLt(bitmapGas, plainGas);
+      vm.expectRevert(RedemptionLedger.InvalidIntent.selector);
+      ledger.consume(intent, amounts);
+    }
+    intent.nonce = 2;
+    vm.expectRevert("after nonce consumption");
+    ledger.consumeAndFail(intent, amounts);
+    assertFalse(ledger.consumed(0, 2));
+    ++intent.shares;
+    vm.expectRevert(RedemptionLedger.InvalidIntent.selector);
+    ledger.consume(intent, amounts);
+    assertFalse(ledger.consumed(0, 2));
+    --intent.shares;
+    ledger.advanceEpoch();
+    intent.epoch = 1;
+    intent.nonce = 255;
+    ledger.consume(intent, amounts);
+    assertTrue(ledger.consumed(0, 255));
+    assertTrue(ledger.consumed(1, 255));
+    assertFalse(ledger.consumed(1, 256));
   }
 }

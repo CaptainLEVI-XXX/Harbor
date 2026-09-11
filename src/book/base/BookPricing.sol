@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
+import {BookContext as Context} from "src/libraries/BookContext.sol";
+
 import {StandingPricing} from "src/libraries/StandingPricing.sol";
 import {BookState} from "src/book/base/BookState.sol";
 import {IHarborBook} from "src/interfaces/IHarborBook.sol";
@@ -17,7 +19,7 @@ abstract contract BookPricing is BookState {
   /// @notice Configure one admitted route exactly once, independently of its updater.
   function configurePricing(uint256 route, PricingPolicy calldata policy) external {
     if (msg.sender != GOVERNOR) revert Unauthorized();
-    if (_operation != Operation.NONE) revert Busy();
+    if (Context.operation() != Operation.NONE) revert Busy();
     PricingState.configure(_pricing, route, INVENTORY_ROUTES + _claimMarkets.count, policy, pricingCurve(), ASSET_UNIT);
   }
 
@@ -26,7 +28,7 @@ abstract contract BookPricing is BookState {
   /// is supplied to reject stale queued updates. Publication never touches NAV.
   function publishPricing(uint256 route, PricingParameters calldata p) external {
     if (msg.sender != parameterUpdater) revert Unauthorized();
-    if (_operation != Operation.NONE) revert Busy();
+    if (Context.operation() != Operation.NONE) revert Busy();
     PricingState.publish(_pricing, route, p, configVersion, MAX_PARAMETER_AGE);
   }
 
@@ -35,7 +37,7 @@ abstract contract BookPricing is BookState {
   }
 
   function pricingPolicy(uint256 route) external view returns (PricingPolicy memory) {
-    return _pricing.policies[route];
+    return PricingState.loadPolicy(_pricing, route);
   }
 
   function pricingCurve() public view returns (PricingCurve memory) {
@@ -49,7 +51,7 @@ abstract contract BookPricing is BookState {
 
   /// @inheritdoc IHarborBook
   function quote(Trade calldata trade) external view returns (FillAmounts memory) {
-    if (_operation != Operation.NONE) revert Busy();
+    if (Context.operation() != Operation.NONE) revert Busy();
     return _quote(trade);
   }
 
@@ -95,7 +97,8 @@ abstract contract BookPricing is BookState {
       stopped,
       parameterUpdater,
       configVersion,
-      ASSET_UNIT
+      ASSET_UNIT,
+      uint64(BASE_UNITS >> (t.route == 0 ? 0 : 64))
     );
     return StandingPricing.quote(
       _state, _claimMarkets, _routes, _pricing, strategyVersion, strategyHash, strategyFactoryVersion, t, c

@@ -19,6 +19,7 @@ import {IHarborClaim} from "src/interfaces/IHarborClaim.sol";
 import {ClaimObservation, ClaimDomain} from "src/types/ClaimTypes.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {CashPoolChecks} from "test/base/CashPoolChecks.sol";
+import {BookExecution} from "src/libraries/BookExecution.sol";
 
 /// @notice Adversarial transfer behavior on otherwise synthetic wrapped cash.
 contract SettlementCallbackWeth is MockWrappedEther {
@@ -208,7 +209,9 @@ contract DirectSettlementChecks is RedemptionMarketFixture {
         extensionEntered = true;
         ++extensions;
       }
-      if (accesses[i].account == address(PricingMath) && bytes4(accesses[i].data) == PricingMath.quoteCore.selector) {
+      if (
+        accesses[i].account == address(PricingMath) && bytes4(accesses[i].data) == PricingMath.quoteConfigured.selector
+      ) {
         assertTrue(extensionEntered, "pricing occurred before VM extension");
         ++calls;
       }
@@ -304,6 +307,16 @@ contract DirectSettlementChecks is RedemptionMarketFixture {
     vm.clearMockedCalls();
 
     bytes32 callbackHash = book.strategyHash(0);
+    // Fixed linked code is not an independently callable settlement authority.
+    BookExecution.Hook memory fake =
+      BookExecution.Hook(address(vault), address(executor), t.tokenIn, t.tokenOut, 1, 1, callbackHash);
+    (bool directlyCalled,) = address(BookExecution).call(abi.encodeWithSelector(BookExecution.preOutput.selector, fake));
+    assertFalse(directlyCalled);
+    vm.expectRevert(BookState.InvalidCallback.selector);
+    book.postTransferIn(fake.maker, fake.taker, fake.tokenIn, fake.tokenOut, 1, 1, 0, callbackHash, "", "");
+    vm.prank(address(router));
+    vm.expectRevert(BookState.InvalidCallback.selector);
+    book.postTransferIn(fake.maker, fake.taker, fake.tokenIn, fake.tokenOut, 1, 1, 0, callbackHash, "", "");
     vm.prank(address(router));
     vm.expectRevert(HarborExecutor.InvalidCallback.selector);
     executor.preTransferInCallback(

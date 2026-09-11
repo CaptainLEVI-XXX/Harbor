@@ -10,7 +10,6 @@ import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {Trade, FillAmounts, Side, AmountMode} from "src/types/HarborTypes.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {BookState} from "src/book/base/BookState.sol";
-import {HarborClaimGuard} from "src/swapvm/instructions/HarborClaimGuard.sol";
 import {AdapterBase} from "src/adapters/base/AdapterBase.sol";
 import {ClaimImport, CollateralKind} from "src/types/ClaimTypes.sol";
 import {ClaimObservation} from "src/types/ClaimTypes.sol";
@@ -127,9 +126,9 @@ contract RedemptionMarketTest is RedemptionMarketFixture {
     emit log_named_uint(side == Side.BUY_BASE ? "receipt buy gas" : "receipt sell gas", used);
     emit log_named_uint("receipt trade issuer reads", calls);
     // The sold receipt also participates in the pre-trade portfolio batch.
-    // The VM now enters the Book's own check; the extra private guard opcode is
-    // gone. Live observation and final post-callback custody checks remain.
-    assertEq(calls, side == Side.BUY_BASE ? 4 : 5);
+    // One coherent claim read before pricing and one after callbacks. A held
+    // receipt additionally participates in the pre-trade portfolio batch.
+    assertEq(calls, side == Side.BUY_BASE ? 2 : 3);
     assertEq(input, expected.traderIn);
     assertEq(output, expected.traderOut);
     vault.checkpointValuation();

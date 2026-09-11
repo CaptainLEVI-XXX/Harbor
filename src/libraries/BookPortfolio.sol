@@ -11,8 +11,7 @@ import {IHarborAdapter} from "src/interfaces/IHarborAdapter.sol";
 import {IHarborClaimAdapter} from "src/interfaces/IHarborClaimAdapter.sol";
 import {InventoryObservation, ClaimObservation, ClaimDomain} from "src/types/ClaimTypes.sol";
 import {IHarborValuation} from "src/interfaces/IHarborValuation.sol";
-import {IHarborPool} from "src/interfaces/IHarborPool.sol";
-import {HarborClaimGuard} from "src/swapvm/instructions/HarborClaimGuard.sol";
+import {ClaimValidation} from "src/libraries/ClaimValidation.sol";
 import {RouteConfig} from "src/types/HarborTypes.sol";
 
 /// @title BookPortfolio
@@ -31,15 +30,12 @@ library BookPortfolio {
     uint256 id,
     bool buy,
     uint256 quantity,
-    uint256 cash,
     uint256 factoryVersion,
-    address cashAsset,
     bytes32 expectedEvidence
   ) public view {
-    if (markets.markets[id].factory != address(0)) {
-      receiptCheck(markets, id, buy, quantity, cash, factoryVersion, cashAsset);
-    }
-    (,,,, bytes32 evidence, bool valid) = observation(markets, routes, id, quantity);
+    (,,,, bytes32 evidence, bool valid) = markets.markets[id].factory != address(0)
+      ? receiptCheck(markets, id, buy, quantity, factoryVersion)
+      : observation(markets, routes, id, quantity);
     if (!valid || evidence != expectedEvidence) revert SettlementMismatch();
   }
 
@@ -88,28 +84,17 @@ library BookPortfolio {
     bool valid;
   }
 
-  /// @notice Verify a receipt's live identity, published factory version and one-unit trade.
-  function receiptCheck(
-    ClaimMarkets.State storage markets,
-    uint256 route,
-    bool buy,
-    uint256 quantity,
-    uint256 cash,
-    uint256 version,
-    address cashAsset
-  ) public view {
+  /// @notice Verify live admission/status and return the same observation used by pricing.
+  function receiptCheck(ClaimMarkets.State storage markets, uint256 route, bool buy, uint256 quantity, uint256 version)
+    public
+    view
+    returns (uint256, uint256, uint256, uint256, bytes32, bool)
+  {
     ClaimMarkets.Market storage m = markets.markets[route];
     if (buy && !markets.integrations[m.factory][m.adapter].enabled) revert InvalidQuote();
-    address receipt = m.receipt;
-    HarborClaimGuard.check(
-      receipt,
-      m.factory,
-      version,
-      buy ? receipt : cashAsset,
-      buy ? cashAsset : receipt,
-      buy ? quantity : cash,
-      buy ? cash : quantity
-    );
+    ClaimObservation memory o = IHarborClaimAdapter(m.adapter).claimState(m.claimId);
+    ClaimValidation.check(m.factory, m.adapter, version, buy, quantity, o.status);
+    return _receiptObservation(m, o);
   }
 
   /// @notice Enforce aggregate and issuer-level budgets independently of pricing estimates.
@@ -175,6 +160,14 @@ library BookPortfolio {
     // The receipt's entitlement getter calls this same adapter again; read one
     // coherent live observation instead. Neither mark nor status is cached here.
     ClaimObservation memory o = IHarborClaimAdapter(m.adapter).claimState(m.claimId);
+    return _receiptObservation(m, o);
+  }
+
+  function _receiptObservation(ClaimMarkets.Market storage m, ClaimObservation memory o)
+    private
+    view
+    returns (uint256 entitlement, uint256 mark, uint256 time, uint256 policy, bytes32 hash, bool valid)
+  {
     (mark, time, policy, valid) = (o.mark, o.observedAt, 1, o.valid);
     entitlement = o.entitlement;
     valid = valid && entitlement == m.nominal && mark <= entitlement;
@@ -188,11 +181,11 @@ library BookPortfolio {
     RouteConfig[] storage routes,
     uint256 nativeRoutes,
     address vault,
+    address asset,
     bool stopped
   ) public view returns (Value memory v) {
     v.observedAt = block.timestamp;
     v.valid = !stopped;
-    address asset = IHarborPool(address(this)).ASSET();
     for (uint256 route; route < nativeRoutes; ++route) {
       address adapter = routes[route].adapter;
       if (IHarborClaimAdapter(adapter).ASSET() != asset) revert InvalidQuote();
@@ -223,24 +216,24 @@ library BookPortfolio {
     view
     returns (bytes32[] memory ids)
   {
-    uint256 count;
-    for (uint256 i; i < book.claims.active.length; ++i) {
-      if (book.claims.claims[book.claims.active[i]].route == route) ++count;
-    }
-    for (uint256 i; i < markets.active.length; ++i) {
-      if (markets.markets[markets.active[i]].sourceRoute == route) ++count;
-    }
-    ids = new bytes32[](count);
+    uint256 nativeLength = book.claims.active.length;
+    uint256 receiptLength = markets.active.length;
+    ids = new bytes32[](nativeLength + receiptLength);
     uint256 cursor;
-    for (uint256 i; i < book.claims.active.length; ++i) {
+    for (uint256 i; i < nativeLength; ++i) {
       bytes32 key = book.claims.active[i];
       if (book.claims.claims[key].route == route) {
         ids[cursor++] = IHarborAdapter(adapter).nativeClaimId(book.protocolIds[key]);
       }
     }
-    for (uint256 i; i < markets.active.length; ++i) {
+    for (uint256 i; i < receiptLength; ++i) {
       ClaimMarkets.Market storage m = markets.markets[markets.active[i]];
       if (m.sourceRoute == route) ids[cursor++] = m.claimId;
+    }
+    // Safety considerations: each live entry appends at most one initialized
+    // word; cursor <= allocated capacity. Only shorten this unaliased array.
+    assembly ("memory-safe") {
+      mstore(ids, cursor)
     }
   }
 
@@ -302,11 +295,29 @@ library BookPortfolio {
     uint256 nativeRoutes,
     address vault
   ) public view returns (uint256 total) {
+    (total,,) = faceAndConversion(book, markets, routes, nativeRoutes, vault, type(uint256).max);
+  }
+
+  /// @notice FACE plus the selected native conversion from the same static pass.
+  /// @dev Receipt routes return zero conversion lanes and use their admitted
+  /// nominal entitlement instead. Standalone FACE reads keep custody validation.
+  function faceAndConversion(
+    Accounting.State storage book,
+    ClaimMarkets.State storage markets,
+    RouteConfig[] storage routes,
+    uint256 nativeRoutes,
+    address vault,
+    uint256 selected
+  ) public view returns (uint256 total, uint256 selectedNumerator, uint256 selectedDenominator) {
     for (uint256 i; i < nativeRoutes; ++i) {
       uint256 quantity = book.positions[i].shares;
       if (SafeTransfer.balanceOf(routes[i].base, vault) < quantity) revert InvalidQuote();
       (uint256 numerator, uint256 denominator) = IHarborValuation(routes[i].adapter).conversion(routes[i].base);
       if (numerator == 0 || denominator == 0) revert InvalidQuote();
+      if (i == selected) {
+        selectedNumerator = numerator;
+        selectedDenominator = denominator;
+      }
       total += Math.fullMulDiv(quantity, numerator, denominator);
     }
     total += book.nativeClaimsFace + markets.heldFace;

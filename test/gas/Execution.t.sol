@@ -4,10 +4,16 @@ pragma solidity 0.8.30;
 import {NativeValuationFixture} from "test/base/NativeValuationFixture.sol";
 import {DirectSettlementChecks} from "test/base/DirectSettlementChecks.sol";
 import {DeployHarbor} from "script/DeployHarbor.s.sol";
+import {PrimitiveChecks} from "test/base/PrimitiveChecks.sol";
+import {BookExecution} from "src/libraries/BookExecution.sol";
 
 /// @notice Deployment-size gate and warm exact-input execution comparison.
 contract ExecutionGasTest is NativeValuationFixture {
   function test_DeployedRuntimeSizes() public {
+    (uint256 optimizedHashGas, uint256 referenceHashGas) = new PrimitiveChecks().hashGas(0x1234);
+    emit log_named_uint("64 scratch claim hashes gas", optimizedHashGas);
+    emit log_named_uint("64 ABI reference hashes gas", referenceHashGas);
+    assertLt(optimizedHashGas, referenceHashGas);
     // Exercise script nonce ordering and shared dependency reuse in the local EVM.
     DeployHarbor script = new DeployHarbor();
     DeployHarbor.Deployment memory deployed = script.runLido(
@@ -33,6 +39,7 @@ contract ExecutionGasTest is NativeValuationFixture {
     assertNotEq(address(deployed.factory), address(factory));
     assertFalse(deployed.factory.active(address(deployed.adapter)));
     assertLe(address(book).code.length, 24_576);
+    assertLe(address(BookExecution).code.length, 24_576);
     assertLe(address(router).code.length, 24_576);
     assertLe(address(vault).code.length, 24_576);
     assertLe(address(executor).code.length, 24_576);
@@ -40,6 +47,7 @@ contract ExecutionGasTest is NativeValuationFixture {
     assertLe(address(factory).code.length, 24_576);
     assertLe(factory.IMPLEMENTATION().code.length, 24_576);
     vm.snapshotValue("HarborRuntimeBytes", "book", address(book).code.length);
+    vm.snapshotValue("HarborRuntimeBytes", "book-execution", address(BookExecution).code.length);
     vm.snapshotValue("HarborRuntimeBytes", "router", address(router).code.length);
     vm.snapshotValue("HarborRuntimeBytes", "vault", address(vault).code.length);
     vm.snapshotValue("HarborRuntimeBytes", "executor", address(executor).code.length);

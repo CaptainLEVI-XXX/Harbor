@@ -2,7 +2,8 @@
 pragma solidity 0.8.30;
 
 import {LidoClaimFixture} from "test/base/LidoClaimFixture.sol";
-import {HarborClaimGuard} from "src/swapvm/instructions/HarborClaimGuard.sol";
+import {ClaimValidation} from "src/libraries/ClaimValidation.sol";
+import {IHarborClaim} from "src/interfaces/IHarborClaim.sol";
 import {HarborPricing} from "src/swapvm/instructions/HarborPricing.sol";
 import {HarborSwapVMRouter} from "src/swapvm/HarborSwapVMRouter.sol";
 import {Context, ContextLib, SwapRegisters} from "@1inch/swap-vm/src/libs/VM.sol";
@@ -21,7 +22,9 @@ contract ClaimGuardTarget is IExtruction {
     bytes calldata
   ) external view returns (uint256, uint256, SwapRegisters memory) {
     (address receipt, address factory, uint256 version) = abi.decode(args, (address, address, uint256));
-    HarborClaimGuard.check(receipt, factory, version, q.tokenIn, q.tokenOut, s.amountIn, s.amountOut);
+    IHarborClaim c = IHarborClaim(receipt);
+    bool buy = q.tokenIn == receipt;
+    ClaimValidation.check(factory, c.ADAPTER(), version, buy, buy ? s.amountIn : s.amountOut, c.status());
     return (pc, 0, s);
   }
 }
@@ -41,7 +44,8 @@ contract ClaimGuardHarness is HarborSwapVMRouter {
     ctx.swap = SwapRegisters(123, 456, buy ? quantity : 99, buy ? 99 : quantity);
     beforeHash = keccak256(abi.encode(ctx.query, ctx.swap));
     (address receipt, address factory, uint256 version) = abi.decode(args, (address, address, uint256));
-    HarborClaimGuard.check(receipt, factory, version, tokenIn, tokenOut, ctx.swap.amountIn, ctx.swap.amountOut);
+    IHarborClaim c = IHarborClaim(receipt);
+    ClaimValidation.check(factory, c.ADAPTER(), version, buy, quantity, c.status());
     afterHash = keccak256(abi.encode(ctx.query, ctx.swap));
   }
 
@@ -58,7 +62,7 @@ contract ClaimGuardHarness is HarborSwapVMRouter {
   }
 }
 
-contract HarborClaimGuardTest is LidoClaimFixture {
+contract ClaimValidationTest is LidoClaimFixture {
   ClaimGuardHarness internal guard;
 
   function setUp() public override {

@@ -7,7 +7,7 @@ enum Side {
   SELL_BASE
 }
 
-/// @notice Exactness applies to trader amounts after Harbor fee normalization.
+/// @notice Exactness applies to trader amounts after VM fee normalization.
 enum AmountMode {
   EXACT_IN,
   EXACT_OUT
@@ -33,7 +33,7 @@ struct RouteConfig {
   uint256 maxExposure;
   uint256 maxPurchases;
   uint256 lossBudget;
-  uint256 maxDailyRedemption; // Requested underlying ETH wei per UTC day.
+  uint256 maxDailyRedemption; // Requested entitlement, settlement-asset raw units per UTC day.
 }
 
 /// @notice Keeper mandate bound to one exact inventory transition, not a quote.

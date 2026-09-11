@@ -4,15 +4,12 @@ pragma solidity 0.8.30;
 import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IAqua} from "@1inch/aqua/src/interfaces/IAqua.sol";
-import {IHarborValuation} from "src/interfaces/IHarborValuation.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {BookAccounting as Accounting} from "src/libraries/BookAccounting.sol";
 import {BookPortfolio} from "src/libraries/BookPortfolio.sol";
 import {ClaimMarkets} from "src/libraries/ClaimMarkets.sol";
 import {PricingMath} from "src/libraries/PricingMath.sol";
 import {PricingState} from "src/libraries/PricingState.sol";
-import {AssetUnits} from "src/libraries/AssetUnits.sol";
-import {IHarborClaimAdapter} from "src/interfaces/IHarborClaimAdapter.sol";
 import {QuoteValidation} from "src/libraries/QuoteValidation.sol";
 import {Trade, FillAmounts, Side, AmountMode, RouteConfig} from "src/types/HarborTypes.sol";
 import {PricingParameters, PricingCurve, PricingMarket} from "src/types/PricingTypes.sol";
@@ -41,6 +38,7 @@ library StandingPricing {
     address updater;
     uint256 configVersion;
     uint256 assetUnit;
+    uint256 baseUnit;
   }
   error InvalidQuote();
   error CapacityExceeded();
@@ -67,7 +65,6 @@ library StandingPricing {
         || block.timestamp > p.validUntil
     ) revert InvalidQuote();
     RouteConfig memory r = ClaimMarkets.config(markets, routes, t.route);
-    if (IHarborClaimAdapter(r.adapter).ASSET() != c.asset) revert InvalidQuote();
     bool buy = t.side == Side.BUY_BASE;
     if (
       t.tokenIn != (buy ? r.base : c.asset) || t.tokenOut != (buy ? c.asset : r.base)
@@ -76,9 +73,12 @@ library StandingPricing {
     ) revert InvalidQuote();
     value = _requireLiveValuation(book, markets, routes, c);
     PricingMarket memory m;
-    m.policy = pricing.policies[t.route];
+    m.policy = PricingState.loadPolicy(pricing, t.route);
     m.discount = p.discount;
-    m.exposure = BookPortfolio.face(book, markets, routes, c.nativeRoutes, c.vault);
+    // The live valuation has checked each fixed native adapter's cash asset;
+    // registered receipts reference those same source adapters.
+    (m.exposure, m.numerator, m.denominator) =
+      BookPortfolio.faceAndConversion(book, markets, routes, c.nativeRoutes, c.vault, t.route);
     m.receipt = markets.markets[t.route].factory != address(0);
     if (m.receipt) {
       if (t.trader == markets.markets[t.route].factory || t.receiver == markets.markets[t.route].factory) {
@@ -90,15 +90,13 @@ library StandingPricing {
       m.denominator = 1;
       m.maxQuantity = 1;
     } else {
-      (m.numerator, m.denominator) = IHarborValuation(r.adapter).conversion(r.base);
       // Compare whole tokens, not raw units: a six-decimal settlement token
       // and eighteen-decimal share must not be mistaken for a near-zero price.
       // Both units <=1e18 and n,d <=1e36, so these products fit uint256.
-      uint256 baseUnit = AssetUnits.unit(r.base);
       if (
         m.numerator == 0 || m.denominator == 0 || m.numerator > 1e36 || m.denominator > 1e36
-          || m.numerator * baseUnit * 2 < m.denominator * c.assetUnit
-          || m.numerator * baseUnit > m.denominator * c.assetUnit * 4
+          || m.numerator * c.baseUnit * 2 < m.denominator * c.assetUnit
+          || m.numerator * c.baseUnit > m.denominator * c.assetUnit * 4
       ) revert InvalidQuote();
       if (buy) {
         if (m.exposure >= c.curve.capacity) revert CapacityExceeded();
@@ -113,7 +111,8 @@ library StandingPricing {
       }
     }
     if (c.vmPricing) {
-      (a.routerIn, a.routerOut) = PricingMath.quoteCore(buy, t.mode == AmountMode.EXACT_IN, c.specified, c.curve, m);
+      (a.routerIn, a.routerOut) =
+        PricingMath.quoteConfigured(buy, t.mode == AmountMode.EXACT_IN, c.specified, c.curve, m);
     } else {
       // Compatibility preview only. Executions enter through Extruction and let
       // upstream FeeProtocol normalize the registers exactly once.
@@ -121,8 +120,9 @@ library StandingPricing {
     }
     uint256 quantity = buy ? a.routerIn : a.routerOut;
     uint256 cash = buy ? a.routerOut : a.routerIn;
-    (uint256 nominal, uint256 mark, uint256 time,, bytes32 observed, bool valid) =
-      BookPortfolio.observation(markets, routes, t.route, quantity);
+    (uint256 nominal, uint256 mark, uint256 time,, bytes32 observed, bool valid) = m.receipt
+      ? BookPortfolio.receiptCheck(markets, t.route, buy, quantity, factoryVersion)
+      : BookPortfolio.observation(markets, routes, t.route, quantity);
     evidence = observed;
     if (
       !valid || time == 0 || time > block.timestamp || block.timestamp - time > c.maxMarkAge
@@ -131,9 +131,6 @@ library StandingPricing {
     QuoteValidation.price(
       t.side, cash, m.receipt ? mark : nominal, buy ? r.bid : r.ask, buy ? r.buyBuffer : r.sellBuffer
     );
-    if (m.receipt) {
-      BookPortfolio.receiptCheck(markets, t.route, buy, quantity, cash, factoryVersion, c.asset);
-    }
     BookPortfolio.capacity(
       book,
       markets,
@@ -166,7 +163,7 @@ library StandingPricing {
     RouteConfig[] storage routes,
     Config memory c
   ) private view returns (BookPortfolio.Value memory v) {
-    v = BookPortfolio.valuation(book, markets, routes, c.nativeRoutes, c.vault, false);
+    v = BookPortfolio.valuation(book, markets, routes, c.nativeRoutes, c.vault, c.asset, false);
     if (
       !v.valid || v.observedAt == 0 || v.observedAt > block.timestamp || block.timestamp - v.observedAt > c.maxMarkAge
     ) {

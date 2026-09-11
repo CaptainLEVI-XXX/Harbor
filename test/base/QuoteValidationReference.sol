@@ -6,10 +6,11 @@ import {Side, Trade, AmountMode} from "src/types/HarborTypes.sol";
 import {SwapQuery} from "@1inch/swap-vm/src/libs/VM.sol";
 import {HarborPricing} from "src/swapvm/instructions/HarborPricing.sol";
 
-/// @title QuoteValidation
+/// @title QuoteValidationReference
 /// @notice Deterministic amount and public-price guards on authenticated inputs.
-library QuoteValidation {
+library QuoteValidationReference {
   error PublicPriceViolation();
+  error InvalidPricePolicy();
   error InvalidQuote();
 
   /// @notice Bind canonical fixed-width intent bytes to the VM's actual order and direction.
@@ -23,13 +24,11 @@ library QuoteValidation {
   ) public view returns (Trade memory trade, bytes32 context) {
     (uint256 route, uint256 version) = HarborPricing.parse(args);
     if (payload.length != 13 * 32) revert InvalidQuote();
-    // Solidity 0.8.30's ABI decoder rejects dirty address bits and invalid enum
-    // words. With exactly 13 static words, re-encoding cannot change the bytes.
     trade = abi.decode(payload, (Trade));
     context = keccak256(payload);
     if (
-      route != trade.route || version != trade.strategyVersion || query.orderHash != hashes[route]
-        || query.tokenIn != trade.tokenIn || query.tokenOut != trade.tokenOut
+      context != keccak256(abi.encode(trade)) || route != trade.route || version != trade.strategyVersion
+        || query.orderHash != hashes[route] || query.tokenIn != trade.tokenIn || query.tokenOut != trade.tokenOut
         || query.isExactIn != (trade.mode == AmountMode.EXACT_IN)
     ) revert InvalidQuote();
   }
@@ -39,8 +38,7 @@ library QuoteValidation {
   /// @param multiplier Bid/ask in 1e18 scale.
   /// @param buffer Nonnegative ASSET adjustment, applied against the maker's spend.
   function price(Side side, uint256 cash, uint256 entitlement, uint256 multiplier, uint256 buffer) internal pure {
-    // Native constructor and receipt integration admission fix positive
-    // multipliers and a buy multiplier <=1e18. Only the live price is checked here.
+    if (multiplier == 0 || (side == Side.BUY_BASE && multiplier > 1e18)) revert InvalidPricePolicy();
     if (side == Side.BUY_BASE) {
       uint256 ceiling = Math.fullMulDiv(entitlement, multiplier, 1e18);
       if (ceiling < buffer || cash > ceiling - buffer) revert PublicPriceViolation();

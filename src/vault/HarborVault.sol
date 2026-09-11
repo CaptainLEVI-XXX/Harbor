@@ -301,9 +301,9 @@ contract HarborVault is VaultCore {
     coordinated
     returns (uint256 assets)
   {
-    _claimChecks(receiver, controller);
+    uint256 balance = _claimChecks(receiver, controller);
     assets = _state.withdrawals.redeem(controller, shares);
-    _payClaim(assets, shares, receiver, controller);
+    _payClaim(assets, shares, receiver, controller, balance);
   }
 
   /// @notice Claim exact settlement-asset raw units from a controller's funded credit.
@@ -318,9 +318,9 @@ contract HarborVault is VaultCore {
     coordinated
     returns (uint256 shares)
   {
-    _claimChecks(receiver, controller);
+    uint256 balance = _claimChecks(receiver, controller);
     shares = _state.withdrawals.withdraw(controller, assets);
-    _payClaim(assets, shares, receiver, controller);
+    _payClaim(assets, shares, receiver, controller, balance);
   }
 
   /*//////////////////////////////////////////////////////////////
@@ -391,18 +391,20 @@ contract HarborVault is VaultCore {
   }
 
   /// @dev Require controller authority and backed reserves; fresh NAV is not required.
-  function _claimChecks(address receiver, address controller) private view {
+  function _claimChecks(address receiver, address controller) private view returns (uint256 actual) {
     _authorize(controller);
     if (!_receiverValid(receiver)) revert InvalidReceiver();
-    uint256 actual = SafeTransfer.balanceOf(ASSET, address(this));
+    actual = SafeTransfer.balanceOf(ASSET, address(this));
     if (actual < _state.withdrawals.reserved) revert Accounting.CashDeficit(actual, _state.withdrawals.reserved);
   }
 
   /// @dev Debit tracked cash and pay exactly the funded ASSET amount.
   /// Check both vault and receiver deltas; donated balances are not claim revenue.
-  function _payClaim(uint256 assets, uint256 shares, address receiver, address controller) private {
+  /// The validated pre-payment balance crosses only internal queue/accounting operations.
+  function _payClaim(uint256 assets, uint256 shares, address receiver, address controller, uint256 beforeVault)
+    private
+  {
     _state.cash -= assets;
-    uint256 beforeVault = SafeTransfer.balanceOf(ASSET, address(this));
     uint256 beforeReceiver = SafeTransfer.balanceOf(ASSET, receiver);
     if (assets != 0) SafeTransfer.safeTransfer(ASSET, receiver, assets);
     if (

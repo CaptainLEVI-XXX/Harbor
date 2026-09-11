@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
+import {BookContext as Context} from "src/libraries/BookContext.sol";
+
 import {BookState} from "src/book/base/BookState.sol";
 import {ClaimMarkets} from "src/libraries/ClaimMarkets.sol";
 import {Operation} from "src/types/HarborTypes.sol";
@@ -35,7 +37,7 @@ abstract contract BookClaims is BookState {
   /// @notice Irreversibly disable new exposure; existing recovery and sales remain available.
   function retireClaimFactory(address factory, address adapter) external {
     if (msg.sender != GOVERNOR && msg.sender != GUARDIAN) revert Unauthorized();
-    if (_operation != Operation.NONE) revert Busy();
+    if (Context.operation() != Operation.NONE) revert Busy();
     ClaimMarkets.retire(_claimMarkets, factory, adapter);
     emit ClaimIntegrationStatusChanged(factory, adapter, false, true, ++configVersion);
   }
@@ -54,10 +56,11 @@ abstract contract BookClaims is BookState {
     _claimAdmin();
     if (stopped) revert Unauthorized();
     _open(keccak256(abi.encode(msg.sender, source, id, factory)), Operation.RECOVERY);
-    _claimAdapter = _routes[source].adapter;
-    _claimId = IHarborAdapter(_claimAdapter).nativeClaimId(id);
+    address adapter = _routes[source].adapter;
+    Context.set(Context.CLAIM_ADAPTER, uint160(adapter));
+    Context.set(Context.CLAIM_ID, uint256(IHarborAdapter(adapter).nativeClaimId(id)));
     route = ClaimMarkets.exportRight(_claimMarkets, _state, _routes, source, id, factory, address(VAULT), ASSET);
-    VAULT.settleIssuer(_context, 0);
+    VAULT.settleIssuer(Context.context(), 0);
     _release();
   }
 
@@ -69,11 +72,11 @@ abstract contract BookClaims is BookState {
       revert InvalidConfiguration();
     }
     _open(keccak256(abi.encode(msg.sender, route, data)), Operation.RECOVERY);
-    _claimAdapter = _claimMarkets.markets[route].adapter;
-    _claimId = _claimMarkets.markets[route].claimId;
-    cash = VAULT.recoverReceipt(_context, _claimMarkets.markets[route].receipt, data);
+    Context.set(Context.CLAIM_ADAPTER, uint160(_claimMarkets.markets[route].adapter));
+    Context.set(Context.CLAIM_ID, uint256(_claimMarkets.markets[route].claimId));
+    cash = VAULT.recoverReceipt(Context.context(), _claimMarkets.markets[route].receipt, data);
     ClaimMarkets.dispose(_claimMarkets, _state, route, cash, true);
-    VAULT.settleIssuer(_context, cash);
+    VAULT.settleIssuer(Context.context(), cash);
     _release();
   }
 
@@ -112,6 +115,6 @@ abstract contract BookClaims is BookState {
 
   function _claimAdmin() private view {
     if (msg.sender != GOVERNOR) revert Unauthorized();
-    if (_operation != Operation.NONE) revert Busy();
+    if (Context.operation() != Operation.NONE) revert Busy();
   }
 }

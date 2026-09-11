@@ -89,13 +89,15 @@ contract HarborExecutor is ReentrancyGuardTransient {
     _activeBook = book;
     IHarborBook(book).prepareTrade(trade);
     ISwapVM.Order memory order = IHarborBook(book).currentOrder(trade.route);
-    bytes32 context = keccak256(abi.encode(trade));
-    _fundingContext = keccak256(abi.encode(book, trade));
+    bytes memory payload = abi.encode(trade);
+    bytes memory funding = abi.encode(book, trade);
+    bytes32 context = keccak256(payload);
+    _fundingContext = keccak256(funding);
     _orderHash = keccak256(abi.encode(order));
     uint256 beforeIn = SafeTransfer.balanceOf(trade.tokenIn, address(this));
     uint256 beforeOut = SafeTransfer.balanceOf(trade.tokenOut, address(this));
     (uint256 routerIn, uint256 routerOut, bytes32 orderHash) =
-      ROUTER.swap(order, trade.amountSpecified, _takerData(book, trade));
+      ROUTER.swap(order, trade.amountSpecified, _takerData(trade, payload, funding));
     if (
       _fundingContext != 0 || routerIn != _actualIn || routerOut != _actualOut || orderHash != _orderHash
         || SafeTransfer.balanceOf(trade.tokenOut, address(this)) != beforeOut + routerOut
@@ -165,14 +167,22 @@ contract HarborExecutor is ReentrancyGuardTransient {
   {
     _pool(book);
     return ISwapVMQuote(address(ROUTER))
-      .quote(IHarborBook(book).currentOrder(trade.route), trade.amountSpecified, _takerData(book, trade));
+      .quote(
+        IHarborBook(book).currentOrder(trade.route),
+        trade.amountSpecified,
+        _takerData(trade, abi.encode(trade), abi.encode(book, trade))
+      );
   }
 
   function _pool(address book) private view {
     if (vaultOf[book] == address(0)) revert InvalidPool();
   }
 
-  function _takerData(address book, Trade calldata trade) private view returns (bytes memory) {
+  function _takerData(Trade calldata trade, bytes memory payload, bytes memory funding)
+    private
+    view
+    returns (bytes memory)
+  {
     TakerTraitsLib.Args memory args;
     args.taker = address(this);
     args.isExactIn = trade.mode == AmountMode.EXACT_IN;
@@ -181,8 +191,8 @@ contract HarborExecutor is ReentrancyGuardTransient {
     args.useTransferFromAndAquaPush = true;
     args.threshold = abi.encode(trade.limitAmount);
     args.hasPreTransferInCallback = true;
-    args.preTransferInCallbackData = abi.encode(book, trade);
-    args.instructionsArgs = abi.encode(trade);
+    args.preTransferInCallbackData = funding;
+    args.instructionsArgs = payload;
     return TakerTraitsLib.build(args);
   }
 

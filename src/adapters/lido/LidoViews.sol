@@ -85,7 +85,7 @@ abstract contract LidoViews is AdapterBase, IHarborValuation {
     _idle();
     if (
       inventoryFactor_ > 1e18 || claimFactor_ > 1e18 || time == 0 || time > block.timestamp || time < observedAt
-        || expiry < block.timestamp || expiry < time || expiry - time > MAX_AGE || nextVersion != version + 1
+        || expiry < block.timestamp || expiry - time > MAX_AGE || nextVersion != version + 1
     ) revert InvalidObservation();
     inventoryFactor = inventoryFactor_;
     claimFactor = claimFactor_;
@@ -197,17 +197,17 @@ abstract contract LidoViews is AdapterBase, IHarborValuation {
   /// This avoids pairwise comparisons without imposing sorted calldata on callers.
   function _pendingIds(bytes32[] memory ids) private view returns (uint256[] memory nativeIds) {
     if (ids.length > 64 || LibSort.hasDuplicate(ids)) revert InvalidObservation();
-    uint256 pending;
-    for (uint256 i; i < ids.length; ++i) {
-      IssuerClaimLedger.Claim storage c = _claims.claims[ids[i]];
-      if (c.stage == ClaimStage.NONE) revert InvalidObservation();
-      if (c.stage == ClaimStage.PENDING) ++pending;
-    }
-    nativeIds = new uint256[](pending);
+    nativeIds = new uint256[](ids.length);
     uint256 cursor;
     for (uint256 i; i < ids.length; ++i) {
       IssuerClaimLedger.Claim storage c = _claims.claims[ids[i]];
+      if (c.stage == ClaimStage.NONE) revert InvalidObservation();
       if (c.stage == ClaimStage.PENDING) nativeIds[cursor++] = c.issuerId;
+    }
+    // Safety considerations: <=64 inputs, at most one write per input. The
+    // shortened array exposes only initialized IDs, in unchanged caller order.
+    assembly ("memory-safe") {
+      mstore(nativeIds, cursor)
     }
   }
 

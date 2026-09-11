@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
+import {BookContext as Context} from "src/libraries/BookContext.sol";
+
 import {Operation} from "src/types/HarborTypes.sol";
 import {BookState} from "src/book/base/BookState.sol";
 
@@ -12,7 +14,7 @@ abstract contract BookGovernance is BookState {
   /// @notice Irreversibly revoke new keeper requests; existing recovery stays open.
   function revokeKeeper() external {
     if (msg.sender != GOVERNOR && msg.sender != GUARDIAN) revert Unauthorized();
-    if (_operation != Operation.NONE) revert Busy();
+    if (Context.operation() != Operation.NONE) revert Busy();
     _redemptions.revoked = true;
     emit KeeperRevoked(++_redemptions.epoch);
   }
@@ -22,7 +24,7 @@ abstract contract BookGovernance is BookState {
   /// recoveries and funded LP claims do not depend on this gate.
   function stopTrading() external {
     if (msg.sender != GUARDIAN && msg.sender != GOVERNOR) revert Unauthorized();
-    if (_operation != Operation.NONE) revert Busy();
+    if (Context.operation() != Operation.NONE) revert Busy();
     stopped = true;
     resumeReadyAt = 0;
     ++configVersion;
@@ -44,7 +46,7 @@ abstract contract BookGovernance is BookState {
   /// @dev Recovery and funded LP claims stay available. Re-enabling requires a delayed rotation.
   function revokeUpdater() external {
     if (msg.sender != GOVERNOR && msg.sender != GUARDIAN) revert Unauthorized();
-    if (_operation != Operation.NONE) revert Busy();
+    if (Context.operation() != Operation.NONE) revert Busy();
     parameterUpdater = address(0);
     pendingUpdater = address(0);
     updaterReadyAt = 0;
@@ -54,7 +56,7 @@ abstract contract BookGovernance is BookState {
   /// @notice Permissionlessly apply a matured updater replacement while idle.
   /// @dev Advancing configVersion invalidates prior quotes; consumed nonces persist.
   function applyUpdater() external {
-    if (_operation != Operation.NONE) revert Busy();
+    if (Context.operation() != Operation.NONE) revert Busy();
     if (updaterReadyAt == 0 || block.timestamp < updaterReadyAt) revert Unauthorized();
     parameterUpdater = pendingUpdater;
     pendingUpdater = address(0);
@@ -75,7 +77,7 @@ abstract contract BookGovernance is BookState {
   /// @notice Permissionlessly apply matured resumption while idle.
   /// @dev Does not refresh NAV or reopen deposits without a new public mark.
   function resumeTrading() external {
-    if (_operation != Operation.NONE) revert Busy();
+    if (Context.operation() != Operation.NONE) revert Busy();
     if (resumeReadyAt == 0 || block.timestamp < resumeReadyAt) revert Unauthorized();
     resumeReadyAt = 0;
     stopped = false;
@@ -86,6 +88,6 @@ abstract contract BookGovernance is BookState {
   /// @dev Require the governor and an idle shared operation context.
   function _governance() private view {
     if (msg.sender != GOVERNOR) revert Unauthorized();
-    if (_operation != Operation.NONE) revert Busy();
+    if (Context.operation() != Operation.NONE) revert Busy();
   }
 }

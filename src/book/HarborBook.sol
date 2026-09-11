@@ -78,7 +78,7 @@ contract HarborBook is BookGovernance, BookRedemptions, BookSettlement, BookClai
     returns (uint256 inventory, uint256 claims, uint256 observedAt, bytes32 evidence, bool valid)
   {
     BookPortfolio.Value memory v =
-      BookPortfolio.valuation(_state, _claimMarkets, _routes, INVENTORY_ROUTES, address(VAULT), stopped);
+      BookPortfolio.valuation(_state, _claimMarkets, _routes, INVENTORY_ROUTES, address(VAULT), ASSET, stopped);
     return (v.inventory, v.claims, v.observedAt, v.evidence, v.valid);
   }
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
+import {BookContext as Context} from "src/libraries/BookContext.sol";
+
 import {IHarborBook} from "src/interfaces/IHarborBook.sol";
 
 import {RedemptionAccounting} from "src/libraries/RedemptionAccounting.sol";
@@ -28,10 +30,10 @@ abstract contract BookRedemptions is BookState {
   /// @param nonce Keeper's exact-intent nonce.
   /// @return True after successful consumption; reverted requests do not consume.
   function usedRedemptionNonce(uint256 epoch, uint256 nonce) external view returns (bool) {
-    return _redemptions.usedNonce[epoch][nonce];
+    return RedemptionAccounting.usedNonce(_redemptions, epoch, nonce);
   }
 
-  /// @notice Current UTC-day request usage in settlement-asset-denominated entitlement wei.
+  /// @notice Current UTC-day request usage in settlement-asset raw entitlement units.
   function redemptionUsedToday(uint256 route) external view returns (uint256) {
     if (route >= INVENTORY_ROUTES) revert InvalidConfiguration();
     return _redemptions.usedToday(route);
@@ -60,8 +62,8 @@ abstract contract BookRedemptions is BookState {
       revert CapacityExceeded();
     }
     _open(context, Operation.REDEMPTION);
-    _route = intent.route;
-    _cash = intent.shares;
+    Context.set(Context.ROUTE, intent.route);
+    Context.set(Context.CASH, intent.shares);
     requests = IssuerOperations.request(_state, _redemptions, r, intent, amounts, address(VAULT), ASSET, context);
     VAULT.settleIssuer(context, 0);
     _release();
@@ -73,10 +75,11 @@ abstract contract BookRedemptions is BookState {
     view
     returns (address base, address adapter, uint256 amount, uint256 managed)
   {
-    if (msg.sender != address(VAULT) || _operation != Operation.REDEMPTION || context != _context) {
+    if (msg.sender != address(VAULT) || Context.operation() != Operation.REDEMPTION || context != Context.context()) {
       revert Unauthorized();
     }
-    return (_routes[_route].base, _routes[_route].adapter, _cash, _state.positions[_route].shares);
+    uint256 route = Context.get(Context.ROUTE);
+    return (_routes[route].base, _routes[route].adapter, Context.get(Context.CASH), _state.positions[route].shares);
   }
 
   /// @notice Permissionless recovery independent of parameter publisher, keeper and NAV.
@@ -89,7 +92,7 @@ abstract contract BookRedemptions is BookState {
     address adapter = _routes[routeId].adapter;
     _open(keccak256(abi.encode(msg.sender, routeId, ids, hints)), Operation.RECOVERY);
     uint256 total = IssuerOperations.recover(_state, adapter, routeId, ids, hints, address(VAULT), ASSET);
-    VAULT.settleIssuer(_context, total);
+    VAULT.settleIssuer(Context.context(), total);
     _release();
   }
 }

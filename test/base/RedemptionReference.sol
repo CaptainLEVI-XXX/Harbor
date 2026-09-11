@@ -3,8 +3,8 @@ pragma solidity 0.8.30;
 
 import {RedeemIntent} from "src/types/HarborTypes.sol";
 
-/// @notice Independent keeper nonce and bounded daily request accounting.
-library RedemptionAccounting {
+/// @notice Straightforward one-slot-per-nonce reference for replay accounting.
+library RedemptionReference {
   /// @notice Only the current UTC day's usage affects future request authorization.
   struct DailyUsage {
     uint256 day; // block.timestamp / 1 days at the last successful request.
@@ -14,7 +14,7 @@ library RedemptionAccounting {
   struct State {
     uint256 epoch;
     bool revoked;
-    mapping(uint256 => mapping(uint256 => uint256)) nonceWords;
+    mapping(uint256 => mapping(uint256 => bool)) usedNonce;
     mapping(uint256 => DailyUsage) dailyUsage;
   }
   error InvalidIntent();
@@ -31,25 +31,18 @@ library RedemptionAccounting {
     if (
       self.revoked || intent.chainId != block.chainid || intent.book != address(this) || intent.vault != vault
         || intent.adapter != adapter || intent.adapterVersion != 1 || intent.positionVersion != positionVersion
-        || intent.epoch != self.epoch || usedNonce(self, intent.epoch, intent.nonce)
-        || block.timestamp > intent.deadline || intent.deadline - block.timestamp > 1 days || intent.shares == 0
-        || intent.minUnderlying == 0 || amounts.length == 0 || amounts.length > 8 || amounts.length > intent.maxIds
-        || intent.maxIds > 8 || intent.splitsHash != keccak256(abi.encode(amounts))
+        || intent.epoch != self.epoch || self.usedNonce[intent.epoch][intent.nonce] || block.timestamp > intent.deadline
+        || intent.deadline - block.timestamp > 1 days || intent.shares == 0 || intent.minUnderlying == 0
+        || amounts.length == 0 || amounts.length > 8 || amounts.length > intent.maxIds || intent.maxIds > 8
+        || intent.splitsHash != keccak256(abi.encode(amounts))
     ) revert InvalidIntent();
     uint256 total;
     for (uint256 i; i < amounts.length; ++i) {
       total += amounts[i];
     }
     if (total != intent.shares) revert InvalidIntent();
-    self.nonceWords[intent.epoch][intent.nonce >> 8] |= uint256(1) << (intent.nonce & 255);
+    self.usedNonce[intent.epoch][intent.nonce] = true;
     context = keccak256(abi.encode(intent));
-  }
-
-  /// @notice Full-width nonces partition into 256-bit words independently per epoch.
-  /// @dev No narrowing: even uint256.max has a distinct word/bit. Never clear
-  /// consumed words; failed requests revert the bit with the enclosing operation.
-  function usedNonce(State storage self, uint256 epoch, uint256 nonce) internal view returns (bool) {
-    return self.nonceWords[epoch][nonce >> 8] & (uint256(1) << (nonce & 255)) != 0;
   }
 
   function record(State storage self, uint256 route, uint256 underlying, uint256 minimum, uint256 limit) internal {

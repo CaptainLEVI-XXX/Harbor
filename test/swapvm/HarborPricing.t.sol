@@ -8,6 +8,7 @@ import {CalldataPtrLib} from "@1inch/solidity-utils/contracts/libraries/Calldata
 import {HarborPricing} from "src/swapvm/instructions/HarborPricing.sol";
 import {HarborSwapVMRouter} from "src/swapvm/HarborSwapVMRouter.sol";
 import {Trade, AmountMode} from "src/types/HarborTypes.sol";
+import {PrimitiveChecks} from "test/base/PrimitiveChecks.sol";
 
 /// @notice Synthetic extension: amounts and attempted quote writes are test-controlled.
 contract FillAuthority is IExtruction {
@@ -73,8 +74,11 @@ contract PricingInstructionHarness is HarborSwapVMRouter {
 contract HarborPricingTest is Test {
   PricingInstructionHarness internal h = new PricingInstructionHarness();
   FillAuthority internal authority = new FillAuthority();
+  PrimitiveChecks internal primitives = new PrimitiveChecks();
 
   function testFuzz_ArgumentsMatchAbiAndRejectMalformed(uint256 route, uint256 version) public {
+    primitives.encoding(route, version);
+    primitives.hashAndContext(route, version);
     bytes memory args = abi.encode(route, version);
     (uint256 r, uint256 v) = h.parse(args);
     assertEq(r, route);

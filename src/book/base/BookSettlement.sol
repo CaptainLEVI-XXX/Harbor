@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
+import {BookContext as Context} from "src/libraries/BookContext.sol";
+
 import {IHarborBook} from "src/interfaces/IHarborBook.sol";
 
-import {SafeTransferLib as SafeTransfer} from "solady/utils/SafeTransferLib.sol";
+import {BookExecution} from "src/libraries/BookExecution.sol";
 import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {IMakerHooks} from "@1inch/swap-vm/src/interfaces/IMakerHooks.sol";
 import {IExtruction} from "@1inch/swap-vm/src/instructions/Extruction.sol";
@@ -38,7 +40,7 @@ abstract contract BookSettlement is BookPricing, IExtruction, IMakerHooks {
   function prepareTrade(Trade calldata trade) external {
     if (msg.sender != address(EXECUTOR)) revert Unauthorized();
     _open(keccak256(abi.encode(trade)), Operation.TRADE);
-    _phase = SettlementPhase.OPENED;
+    Context.advance(Context.Phase.OPENED);
   }
 
   /// @inheritdoc IHarborBook
@@ -46,24 +48,10 @@ abstract contract BookSettlement is BookPricing, IExtruction, IMakerHooks {
   /// checks its net cash delta before either contract releases its operation lock.
   function finishTrade(bytes32 digest) external returns (uint256 fee) {
     if (
-      msg.sender != address(EXECUTOR) || _operation != Operation.TRADE || _phase != SettlementPhase.OUTPUT_SENT
-        || digest != _context
-    ) {
-      revert Unauthorized();
-    }
-    BookPortfolio.checkSettlement(
-      _claimMarkets,
-      _routes,
-      _route,
-      _buy,
-      _buy ? _preparedIn : _preparedOut,
-      _cash,
-      strategyFactoryVersion[_route],
-      ASSET,
-      _preparedObservation
-    );
-    VAULT.settleTrade(_context, _buy, _cash);
-    fee = _preparedFee;
+      msg.sender != address(EXECUTOR) || Context.operation() != Operation.TRADE
+        || Context.phase() != Context.Phase.OUTPUT_SENT || digest != Context.context()
+    ) revert Unauthorized();
+    fee = BookExecution.finish(_claimMarkets, _routes, strategyFactoryVersion, address(VAULT));
     _release();
   }
 
@@ -74,7 +62,7 @@ abstract contract BookSettlement is BookPricing, IExtruction, IMakerHooks {
     external
     returns (ISwapVM.Order memory order, bytes32 previous, address base, uint256 managed)
   {
-    if (msg.sender != address(VAULT) || _operation != Operation.VAULT || requester != GOVERNOR) {
+    if (msg.sender != address(VAULT) || Context.operation() != Operation.VAULT || requester != GOVERNOR) {
       revert Unauthorized();
     }
     previous = strategyHash[id];
@@ -113,8 +101,10 @@ abstract contract BookSettlement is BookPricing, IExtruction, IMakerHooks {
     (Trade memory trade, bytes32 context) = QuoteValidation.intent(query, strategyHash, args, payload);
     uint256 id = trade.route;
     if (isStaticContext) {
-      if (_operation != Operation.NONE) revert Busy();
-    } else if (_operation != Operation.TRADE || _phase != SettlementPhase.OPENED || _context != context) {
+      if (Context.operation() != Operation.NONE) revert Busy();
+    } else if (
+      Context.operation() != Operation.TRADE || Context.phase() != Context.Phase.OPENED || Context.context() != context
+    ) {
       revert InvalidCallback();
     }
     (FillAmounts memory a, BookPortfolio.Value memory value, bytes32 evidence) =
@@ -123,17 +113,9 @@ abstract contract BookSettlement is BookPricing, IExtruction, IMakerHooks {
       swap, trade, a.routerIn, a.routerOut, FEE_BPS, _claimMarkets.markets[id].factory != address(0)
     );
     if (!isStaticContext) {
-      _preparedObservation = evidence;
-      VAULT.checkpointTrade(_context, value.inventory, value.claims, value.observedAt, value.evidence);
-      _preparedIn = a.routerIn;
-      _preparedOut = a.routerOut;
-      _hookHash = keccak256(abi.encode(query.maker, query.taker, query.tokenIn, query.tokenOut, query.orderHash));
-      _beforeIn = SafeTransfer.balanceOf(query.tokenIn, address(VAULT));
-      _beforeOut = SafeTransfer.balanceOf(query.tokenOut, address(VAULT));
-      _route = id;
-      _buy = trade.side == Side.BUY_BASE;
-      _cash = _buy ? a.routerOut : a.routerIn;
-      _phase = SettlementPhase.AUTHORIZED;
+      BookExecution.authorize(
+        address(VAULT), id, trade.side == Side.BUY_BASE, query, a.routerIn, a.routerOut, value, evidence
+      );
     }
     return (nextPC, payload.length, updatedSwap);
   }
@@ -167,18 +149,9 @@ abstract contract BookSettlement is BookPricing, IExtruction, IMakerHooks {
     bytes calldata makerData,
     bytes calldata takerData
   ) external virtual {
-    // Only the canonical router may supply the post-fee pair. Capture the fee
-    // as the difference from VM-priced core cash, never recalculate its rate.
-    if (msg.sender != ROUTER || _phase != SettlementPhase.AUTHORIZED) revert InvalidCallback();
-    _preparedFee = _buy ? _preparedOut - amountOut : amountIn - _preparedIn;
-    _hook(
-      maker, taker, tokenIn, tokenOut, amountIn, amountOut, orderHash, makerData, takerData, SettlementPhase.AUTHORIZED
-    );
-    uint256 expectedFee = _buy ? 0 : _preparedFee;
-    if (fee != expectedFee || SafeTransfer.balanceOf(tokenIn, address(VAULT)) != _beforeIn + amountIn - expectedFee) {
-      revert SettlementMismatch();
-    }
-    _phase = SettlementPhase.INPUT_RECEIVED;
+    _hookCaller(makerData, takerData);
+    BookExecution.Hook memory hook = BookExecution.Hook(maker, taker, tokenIn, tokenOut, amountIn, amountOut, orderHash);
+    BookExecution.postInput(address(VAULT), hook, fee);
   }
 
   /// @inheritdoc IMakerHooks
@@ -194,19 +167,9 @@ abstract contract BookSettlement is BookPricing, IExtruction, IMakerHooks {
     bytes calldata makerData,
     bytes calldata takerData
   ) external {
-    _hook(
-      maker,
-      taker,
-      tokenIn,
-      tokenOut,
-      amountIn,
-      amountOut,
-      orderHash,
-      makerData,
-      takerData,
-      SettlementPhase.INPUT_RECEIVED
-    );
-    _phase = SettlementPhase.OUTPUT_AUTHORIZED;
+    _hookCaller(makerData, takerData);
+    BookExecution.Hook memory hook = BookExecution.Hook(maker, taker, tokenIn, tokenOut, amountIn, amountOut, orderHash);
+    BookExecution.preOutput(hook);
   }
 
   /// @inheritdoc IMakerHooks
@@ -224,26 +187,9 @@ abstract contract BookSettlement is BookPricing, IExtruction, IMakerHooks {
     bytes calldata makerData,
     bytes calldata takerData
   ) external virtual {
-    _hook(
-      maker,
-      taker,
-      tokenIn,
-      tokenOut,
-      amountIn,
-      amountOut,
-      orderHash,
-      makerData,
-      takerData,
-      SettlementPhase.OUTPUT_AUTHORIZED
-    );
-    uint256 expectedFee = _buy ? _preparedFee : 0;
-    if (fee != expectedFee || SafeTransfer.balanceOf(tokenOut, address(VAULT)) != _beforeOut - amountOut - expectedFee)
-    {
-      revert SettlementMismatch();
-    }
-    ClaimMarkets.recordTrade(_claimMarkets, _state, _route, _buy, _buy ? amountIn : amountOut, _cash);
-    _phase = SettlementPhase.OUTPUT_SENT;
-    emit FillSettled(_context, _route, _buy, amountIn, amountOut, _state.positions[_route].version);
+    _hookCaller(makerData, takerData);
+    BookExecution.Hook memory hook = BookExecution.Hook(maker, taker, tokenIn, tokenOut, amountIn, amountOut, orderHash);
+    BookExecution.postOutput(_state, _claimMarkets, address(VAULT), hook, fee);
   }
 
   /*//////////////////////////////////////////////////////////////
@@ -267,26 +213,9 @@ abstract contract BookSettlement is BookPricing, IExtruction, IMakerHooks {
     );
   }
 
-  /// @dev Check router, operation, phase and the complete authorized hook tuple.
-  /// Amounts are raw token units. Both hook-data blobs must be empty.
-  /// The hash commits maker, taker, token direction and order hash. Core amounts
-  /// and the fee measured from the router's first hook bind both customer amounts.
-  function _hook(
-    address maker,
-    address taker,
-    address tokenIn,
-    address tokenOut,
-    uint256 amountIn,
-    uint256 amountOut,
-    bytes32 orderHash,
-    bytes calldata makerData,
-    bytes calldata takerData,
-    SettlementPhase phase
-  ) internal view {
-    if (
-      msg.sender != ROUTER || _operation != Operation.TRADE || _phase != phase || makerData.length != 0
-        || takerData.length != 0 || keccak256(abi.encode(maker, taker, tokenIn, tokenOut, orderHash)) != _hookHash
-        || amountIn != _preparedIn + (_buy ? 0 : _preparedFee) || amountOut != _preparedOut - (_buy ? _preparedFee : 0)
-    ) revert InvalidCallback();
+  /// @dev Authenticate the external boundary once; linked execution owns phase,
+  /// exact tuple and amount checks. No user-supplied hook payload is supported.
+  function _hookCaller(bytes calldata makerData, bytes calldata takerData) private view {
+    if (msg.sender != ROUTER || makerData.length != 0 || takerData.length != 0) revert InvalidCallback();
   }
 }

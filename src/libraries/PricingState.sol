@@ -8,9 +8,20 @@ import {PricingMath} from "src/libraries/PricingMath.sol";
 /// @notice Book-owned standing publications and immutable per-route publisher bounds.
 /// @dev Linked operations use explicit Book storage. The Book authenticates roles and its idle lock.
 library PricingState {
+  /// @dev Admission bounds every field by 1e18. Four factors occupy one slot,
+  /// both raw-asset costs another; the external policy ABI remains uint256.
+  struct StoredPolicy {
+    uint64 minDiscount;
+    uint64 maxDiscount;
+    uint64 buyMargin;
+    uint64 sellMargin;
+    uint64 buyCost;
+    uint64 sellCost;
+  }
+
   struct State {
     mapping(uint256 => PricingParameters) parameters;
-    mapping(uint256 => PricingPolicy) policies;
+    mapping(uint256 => StoredPolicy) policies;
   }
   error InvalidConfiguration();
   error InvalidQuote();
@@ -39,7 +50,14 @@ library PricingState {
       revert InvalidConfiguration();
     }
     PricingMath.validatePolicy(policy, curve);
-    self.policies[route] = policy;
+    self.policies[route] = StoredPolicy(
+      uint64(policy.minDiscount),
+      uint64(policy.maxDiscount),
+      uint64(policy.buyMargin),
+      uint64(policy.sellMargin),
+      uint64(policy.buyCost),
+      uint64(policy.sellCost)
+    );
     emit PricingPolicyConfigured(route, policy);
   }
 
@@ -47,15 +65,21 @@ library PricingState {
   function publish(State storage self, uint256 route, PricingParameters memory p, uint256 configVersion, uint256 maxAge)
     public
   {
-    PricingPolicy storage policy = self.policies[route];
+    StoredPolicy storage policy = self.policies[route];
     PricingParameters storage previous = self.parameters[route];
     if (
       policy.minDiscount == 0 || p.discount < policy.minDiscount || p.discount > policy.maxDiscount
         || p.configVersion != configVersion || p.version != previous.version + 1 || p.observedAt == 0
-        || p.observedAt > block.timestamp || p.validUntil < block.timestamp || p.validUntil < p.observedAt
-        || p.validUntil - p.observedAt > maxAge || p.observedAt < previous.observedAt
+        || p.observedAt > block.timestamp || p.validUntil < block.timestamp || p.validUntil - p.observedAt > maxAge
+        || p.observedAt < previous.observedAt
     ) revert InvalidQuote();
     self.parameters[route] = p;
     emit PricingParametersPublished(route, p.version, p.configVersion, p.discount, p.observedAt, p.validUntil);
+  }
+
+  /// @notice Expand the admitted packed policy without changing its public units.
+  function loadPolicy(State storage self, uint256 route) internal view returns (PricingPolicy memory p) {
+    StoredPolicy storage s = self.policies[route];
+    p = PricingPolicy(s.minDiscount, s.maxDiscount, s.buyMargin, s.sellMargin, s.buyCost, s.sellCost);
   }
 }

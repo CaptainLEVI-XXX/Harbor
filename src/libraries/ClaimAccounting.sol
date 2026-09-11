@@ -30,8 +30,15 @@ library ClaimAccounting {
   error InvalidRemainingRight();
 
   /// @notice Domain separates protocol request IDs by immutable adapter identity.
-  function key(address adapter, uint256 id) internal pure returns (bytes32) {
-    return keccak256(abi.encode(adapter, id));
+  /// @dev Safety considerations: use exactly 64 scratch bytes, clean the address
+  /// lane, and preserve the free-memory pointer/zero word. Full-width IDs do not
+  /// overlap the ABI-padded address. No allocation, storage, or external calls.
+  function key(address adapter, uint256 id) internal pure returns (bytes32 result) {
+    assembly ("memory-safe") {
+      mstore(0, and(adapter, 0xffffffffffffffffffffffffffffffffffffffff))
+      mstore(0x20, id)
+      result := keccak256(0, 0x40)
+    }
   }
 
   /// @notice Register externally verified rights and assigned basis atomically.
