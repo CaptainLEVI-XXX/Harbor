@@ -11,6 +11,7 @@ unaudited hackathon code, not a mainnet-ready yield product.
 | --- | --- |
 | `HarborVault` | Custody, LP shares, coherent NAV, FIFO withdrawal funding and reserved cash. The vault is the Aqua maker. |
 | `HarborBook` | Route admission, bounded pricing publication, live risk checks, basis/claim accounting and authenticated settlement hooks. |
+| `BookExecution` / `BookContext` | Fixed linked settlement code and one Book-owned transient context; no separate custody, ledger or upgrade target. |
 | `StandingPricing` / `PricingMath` | Linked live-state checks and pure discount/inventory-potential arithmetic; no independent ledger or mutable dispatch target. |
 | `HarborExecutor` | Authenticate the trader, collect computed input, invoke the router, pay customer output and reject residue. |
 | `HarborSwapVMRouter` | Deployment alias for the pinned official router, with no overrides. Native Extruction invokes Book pricing; FeeProtocol handles fees. |
@@ -200,7 +201,7 @@ forge fmt --check
 ```
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md), the [SwapVM guide](src/swapvm/README.md)
-and [demo instructions](DEMO.md). Solidity dependencies are pinned Forge-managed
+and the [pinned fork checks](#pinned-fork-checks). Solidity dependencies are pinned Forge-managed
 submodules; contracts require no npm installation.
 
 The suite retains **50 Solidity test/invariant entrypoints: 46 local, four fork**.
@@ -220,10 +221,12 @@ native export, loss recovery and final holder payout. It is not an exhaustive
 campaign or a claim that Lido supports partial issuer payouts. `IssuerRecoveryTest` uses the actual native
 valuation implementation with synthetic issuer finalization. `StandingTradingTest`
 covers repeated parameters, four modes, real transfers, curve repricing and rollback.
-The same tests exercise an isolated direct-settlement harness in `test/base/`:
+The same tests exercise the production contracts through shared fixtures in `test/base/`:
 VM-native fees, one traced pricing-kernel call, receipt fee-rounding boundaries,
-callback rollback and two pools sharing Aqua/Router. This harness is not the
-production entrypoint and is not included in deployment scripts. Passing synthetic tests does not approve its deployment.
+callback rollback and two pools sharing Aqua/Router/Executor. Test-only issuer
+and callback helpers are not included in deployment scripts. Arithmetic and
+encoding regressions compare against straightforward test-only references;
+the production contracts contain no second reference implementation.
 
 ```sh
 forge test --list
@@ -241,31 +244,49 @@ After list-only compilation, use `forge test --force` if artifacts contain no by
 FOUNDRY_PROFILE=fork forge test
 ```
 
-Configure `HARBOR_MAINNET_RPC_URL` locally with archive access; never commit credentials.
-An unavailable provider is not a passing test.
+Configure `HOODI_RPC_URL` in your ignored root `.env` with access to the pinned
+state; no private key is required. Foundry uses the `hoodi` RPC alias. An
+unavailable/pruned provider is a failed check, not a passing or silently skipped test.
 
 | Suite | Block | Evidence |
 | --- | ---: | --- |
-| `LidoAdapterForkTest` | 25,924,311 | Real new wstETH request; separately mature historical recovery to a fixed vault. |
-| `RedemptionMarketForkTest` | 25,930,239 | Full Harbor pooled maker, native valuation and standing receipt buy/sell through local official Aqua/router, then LP cash payout; separately mature historical holder recovery. |
+| `LidoAdapterForkTest` | Hoodi 3,602,344 | Real new wstETH request; separate historical native and tokenized recovery using actual issuer ETH, holder-only payout and duplicate-payment rejection. |
+| `RedemptionMarketForkTest` | Hoodi 3,602,344 | All four modes for wstETH inventory and pending receipts through the existing Aqua/router/WETH; quote agreement, independent price/fee checks, measured balances and LP cash payout. |
 
-Both pin queue implementation `0xE42C659Dc09109566720EA8b2De186c2Be7D94D9`.
-Historical checks transfer request 134,829 from its owner using fork impersonation
-and seed test-only tracking. They do not finalize the newly created request,
-modify issuer storage or inject issuer recovery cash. The production Lido adapter rejects finalized imports/exports; the historical
-fork harness has an explicitly test-only export for already-mature rights. Written/compiled fork checks require an actual
-successful RPC-backed run before claiming evidence.
+The shared [Hoodi fixture](test/base/HoodiFork.sol) pins chain 560048 and queue
+implementation `0xD0a60e52837e045F4567193Cf8921191C486eCD5`. Block hash:
+`0x63c38d9e4265601c8b541cf71d287c3d890f8523bfdd2f3360da08ac5ad875b8`.
+It uses the WETH/Aqua/router addresses in the deployment table below and checks
+the deployed Aqua/router runtime fingerprints and immutable bindings. It never
+deploys substitutes for those dependencies; only Harbor contracts are created in
+the local fork. There are no broadcasts, real wallet signatures or public gas costs.
+
+Historical recovery uses requests 4989 and 4990, transferred from their actual
+owners through fork-only impersonation and seeded into a test-only adapter ledger.
+The production adapter rejects finalized imports/exports, so the harness explicitly
+permits historical export solely to exercise generic receipt recovery. It does
+not finalize the newly created request, modify issuer storage or inject recovery
+cash. New-request finalization over time is **not** proven by these tests.
+
+All four fork tests passed against this configuration. This is integration
+evidence, not an audit or a guarantee of future issuer availability. To repeat
+the pinned run after provider pruning, use an archive-capable Hoodi RPC; do not
+change the block or claim IDs merely to suppress a failing test. No redeployment
+is needed to rerun the checks.
 
 ### Deployment-size gate
 
 Solidity 0.8.30, Cancun, via-IR, 700 optimizer runs. The gate retains the
 24,576-byte absolute runtime limit and [committed sizes](snapshots/HarborRuntimeBytes.json).
 Read the current sizes in that snapshot and check every linked runtime in
-`forge build --sizes`. Book remains close to the limit;
-source segregation alone does not reduce bytecode.
+`forge build --sizes --skip test --skip script`. Book is 23,785 bytes, with 791
+bytes of headroom. Its fixed 4,216-byte execution library moves substantive
+settlement code out of Book; source segregation alone does not reduce bytecode.
+This is not a proxy and does not make existing Books or receipts upgradeable.
 
-The maximum-domain arithmetic-only exact-output check measures about 374k gas
-against a 2m gas ceiling. This excludes transfers, cold state and a full 64-right
+The maximum-domain arithmetic-only exact-output check measures about 189k gas
+versus 374k for the straightforward reference, against a 2m gas ceiling.
+This excludes transfers, cold state and a full 64-right
 portfolio. Other old snapshot files are historical, not current transaction
 benchmarks. The gas test measures production Executor execution using warm and
 explicitly cooled exact-input inventory purchases at 0/1/8/64 held pending receipts.
@@ -293,6 +314,76 @@ and no estimated or guaranteed APY is supplied.
 
 ## Deployment compatibility and status
 
+### Hoodi dependency deployment
+
+[Hoodi configuration](script/hoodi.config.json) records two confirmed deployments
+on chain 560048, source revisions, compiler settings, transactions and verification:
+
+| Contract | Hoodi address |
+| --- | --- |
+| Aqua | `0xf40826aFd0de1078bc4b39b77E87E42d3b35Fe6A` |
+| AquaSwapVMRouter | `0x63C78337758eA9c98b4Ce6Cc9988E72e2D8F3303` |
+| Existing WETH (not deployed by this script) | `0xE0decAa66aED871ac9eb924443D1Bf333Fdb062E` |
+
+The router owner is `0x41363507931dd8963f5eb836e299d74272d0ccb0` and its
+EIP-712 domain is `Harbor`, version `2`. Both creation inputs and deployed runtime
+code were checked against the compiled pinned contracts, with runtime immutable
+locations normalized and constructor arguments/getters independently checked.
+The existing WETH passed a fork-only wrap/transfer/approve/unwrap check. These
+checks are not an audit or a claim of explorer source verification. The instances
+are user-deployed upstream code, not claimed canonical 1inch deployments; sponsor
+eligibility remains separately unconfirmed.
+
+Harbor core contracts have subsequently been deployed and the Book/Vault pair
+registered with Executor. The [deployment manifest](script/harbor-hoodi.deployment.json)
+records 17 successful transactions and 34 checked bindings/configuration values.
+Admission activation, price/mark publication, LP deposits and strategy allocations
+remain pending. No additional token mocks were deployed. Lido runtime provenance
+is not independently attested by this deployment record.
+
+Verify the Harbor receipts and configuration without sending transactions:
+
+```sh
+node --env-file=.env script/verify-harbor-hoodi.mjs
+```
+
+Use the official [SwapVM deployment guide](https://github.com/1inch/swap-vm/blob/main/DEPLOY.md)
+for constructor requirements. Harbor uses the pinned `AquaSwapVMRouter` through
+Foundry; do not install a separate latest Hardhat project or silently change
+instruction tables, ABIs or EIP-712 domain values. The five constructor inputs
+are Aqua, wrapped-native token, owner, name and version.
+
+Add these entries manually to the ignored root `.env` when preparing a test-only
+deployer; do not replace existing entries or put secrets in `.env.example`:
+
+```dotenv
+HOODI_RPC_URL=
+HOODI_PRIVATE_KEY=
+```
+
+An encrypted Foundry keystore is preferable for signing. If an env key is used,
+use a disposable test-only wallet with no valuable funds on any chain. Never paste
+the key into chat, logs or command-line arguments. `DeployAquaHoodi` has separate
+Aqua/router entrypoints restricted to Hoodi; it imports no Harbor contracts.
+`hoodi-ops.mjs` supplies the named RPC alias, redacts credentials from child output,
+and refuses to repeat broadcasts when a live broadcast record exists. Do not
+delete that record to retry an uncertain transaction; check its receipt first.
+
+Recheck the deployed instances without sending transactions:
+
+```sh
+node --env-file=.env script/hoodi-ops.mjs verify 0xf40826aFd0de1078bc4b39b77E87E42d3b35Fe6A 0x63C78337758eA9c98b4Ce6Cc9988E72e2D8F3303
+```
+
+SwapVM executes quotes/swaps on-chain without a continuously running 1inch backend.
+Its configured dependencies and program calls must remain available. Harbor still
+needs authorized pricing/mark publications and keeper transactions; expired inputs
+can stop new trades. Lido finalization depends on its own protocol operations.
+Graph is a read layer, not a settlement dependency. Running a custom router does
+not automatically register Harbor with 1inch's hosted routing/discovery services.
+
+### Existing deployment boundary
+
 Use fresh immutable core/router/library deployments and fresh Aqua orders.
 The local deployment script rejects chains other than 31337. Verify deployment
 addresses, links, code hashes and ABIs; dependency getters are not attestations.
@@ -312,3 +403,55 @@ This implementation requires no external report service, confidential workflow,
 feed subscription or automation job. Parameter publication still needs an operator.
 No frontend/backend deployment, calibrated pricing, mainnet launch, multi-issuer
 valuation, exhaustive conformance testing or audit is claimed.
+
+### Controlled Hoodi setup
+
+`script/DeployHarborHoodi.s.sol` reuses the recorded Aqua/router/WETH/Lido
+addresses. It deploys immutable Harbor contracts with zero protocol fees and
+the signer in every administrative role. Required public configuration names
+and units are in [hoodi-demo.env.example](script/hoodi-demo.env.example); fill
+the existing ignored `.env`, never this example, with actual settings/credentials.
+
+On chain 560048 only, receipt admissions still require explicit scheduling and
+activation but have no waiting period. Book pricing and adapter marks allow
+100-day lifetimes. Other chains retain the one-day maximum and admission delay.
+Updater rotation and trading resumption retain their original governance delays.
+Long-lived demo inputs are not calibrated forecasts and do not override live
+claim-status, cash, exposure or slippage checks.
+
+The script exposes independent commands:
+
+1. `run()`: deploy Harbor and register its Book/Vault with Executor.
+2. `configure(address)`: pass the Book address; admit receipts and publish native
+   pricing/marks for 100 days. No LP funds move.
+3. `publishStrategy(address,uint256)`: after users deposit through the frontend,
+   pass the Book and route ID. Calls `Vault.refreshStrategy(route)`; Vault is the
+   Aqua maker. This command does not wrap funds or deposit for users.
+4. `registerReceipt(address,address)`: register an already imported pending
+   receipt held by the demo trader and publish its 100-day pricing parameters.
+   Call `publishStrategy` separately when the Vault has liquidity.
+
+Approved demo settings: zero fees; inventory buy/sell margins 1%; receipts
+97% bid / 98% ask of nominal entitlement before capacity adjustment. Receipt
+parameters use a 97.5% discount and 0.5% nominal buy/sell margins.
+Trader/receipt holder: `0x7c5437B3Ac402EE9316981a66f37Ce46E1468aea`.
+
+Simulation example (no broadcast):
+
+```sh
+forge script script/DeployHarborHoodi.s.sol:DeployHarborHoodi --rpc-url hoodi --sig 'run()'
+```
+
+Review the explicit configuration, signer nonce, linked libraries, estimated gas
+and transaction list before authorizing broadcast. The original local-only
+`DeployHarbor` entrypoints remain gated. Foundry records broadcast transactions;
+reconcile them before using `--resume`. Rerunning `run()` creates another pool.
+Configuration can renew marks/prices; it is not a no-op inspection command.
+
+There is no automated LP funding or seeding command. Users wrap/deposit through
+their frontend wallets using the selected WETH. The script does not buy wstETH,
+create withdrawal NFTs, trade, finalize claims or configure the frontend/indexer.
+Reverse-direction trading needs accounted inventory acquired through a trade;
+donations are not positions. Receipt markets require their own route policy and
+Aqua strategy after an eligible NFT is imported. A separate trader is required:
+the signer/fee recipient is excluded from trading even when the fee is zero.

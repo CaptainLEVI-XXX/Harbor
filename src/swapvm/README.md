@@ -13,13 +13,17 @@ No private opcode numbers, bespoke fill signature or patched dependency is neede
 | HarborPricing | Extruction argument encoding and strict register/whole-lot validation. |
 | Book.extruction | Authenticate VM context, price once, checkpoint independent NAV and bind settlement. |
 | StandingPricing / PricingMath | Live risk gates and bounded, fee-free core pricing. |
-| HarborClaimGuard | Shared Book custody/identity checks, not a separate opcode. |
+| ClaimValidation | Live pending status, whole-lot and factory-version checks for admitted receipts; not an opcode. |
+| BookExecution / BookContext | Fixed linked settlement and shared Book transient slots; Book entrypoints authenticate callers. |
 | HarborExecutor | Authenticate trader, lock pool, fund the computed input in a callback, pay output. |
 | Official Aqua / SwapVM | Allocations, VM evaluation, native fee calculation and token transfers. |
 
 The pricing target is non-upgradeable. Authorized publishers may still update
 bounded, expiring parameters; that trust is explicit and distinct from NAV.
 The Book's linked libraries are fixed at deployment and share its accounting.
+BookExecution runs with Book's caller/storage context; it has no independent
+ledger. BookContext owns 13 transient words, including a packed operation/phase/
+direction word. Successful completion explicitly clears them after Vault settlement.
 `Book.priceTrade` is a self-call-only, read-only ABI boundary shared by the
 preview and extension. External callers cannot bypass the entrypoint's lock and
 context checks. It avoids duplicating large configuration/ledger encoders in
@@ -88,9 +92,10 @@ state requires a new quote or can cause slippage/version/expiry rejection.
 
 ## Whole receipts and rounding
 
-One raw receipt unit represents the entire claim. Book verifies canonicality,
-admission, live pending status and nominal backing during pricing, then repeats
-the required live checks at final settlement. No redundant claim opcode runs
+One raw receipt unit represents the entire claim. Market admission verifies
+immutable canonical bindings. Pricing verifies current admission/version,
+pending status and nominal backing using one live receipt observation, then
+gets a fresh observation at final settlement. No redundant claim opcode runs
 between those boundaries. Finalized/cash-ready claims recover but do not trade.
 
 Bids floor and asks ceil. Native fees floor at bps*1000 / 10,000,000.
@@ -107,7 +112,7 @@ repeat the VM fee computation. No output-price change overrides customer limits.
 
 ```sh
 forge test
-forge build --sizes
+forge build --sizes --skip test --skip script
 forge fmt --check
 ```
 
@@ -115,16 +120,26 @@ The existing compact suite exercises official Extruction dispatch, static-write
 rejection, malformed args, four modes, whole-unit fee boundaries, one traced
 core calculation inside the VM call, callback rollback and two-pool isolation.
 Synthetic fixtures and pinned real-issuer fork evidence are distinguished in
-[DEMO.md](../../DEMO.md). This is not an audit or a production routing approval.
+[the pinned fork checks](../../README.md#pinned-fork-checks).
+This is not an audit or a production routing approval.
 
 Use fresh deployments and orders. The published v1.0.2 router documentation
 describes a different ABI from this pinned source: compatibility with this
 revision is demonstrated, not automatic compatibility with a vanity address.
 1inch production resolver acceptance is a separate integration/review step.
 
-Measured with solc 0.8.30, Cancun, via-IR and optimizer 700: Book 24,402 bytes,
-Router 20,376 and shared Executor 8,492. Book has only 174 bytes below EIP-170.
-Shared-pool routing and currency checks increase the zero-held-receipt inventory
-benchmark from 467,154 to 476,167 gas warm, and 632,607 to 645,731 with observed
-accounts/slots cooled. This buys explicit pool isolation and decimal support;
-it is not a per-trade gas optimization. Router dispatch remains unmodified.
+Measured before the Hoodi admission change with solc 0.8.30, Cancun, via-IR
+and optimizer 700: Book 23,765 bytes,
+BookExecution 4,216, Router 20,376 and shared Executor 8,499.
+Book has 811 bytes below EIP-170. The same optimized code without execution
+extraction produces a 24,622-byte Book, which exceeds the limit. The extraction
+costs roughly 5.5–6k gas per measured trade; it is a size tradeoff, not a gas saving.
+The deployed Hoodi-capable Book is 23,785 bytes with 791 bytes of headroom;
+the other runtime sizes above are unchanged.
+
+Against the pre-refactor code, the complete zero-held-receipt inventory workload
+falls from 476,167 to 474,167 gas warm and 645,731 to 635,777 with observed accounts
+and slots cooled. At 64 held receipts, it falls from 1,432,712 to 1,326,092 warm
+and 3,665,077 to 3,550,162 cooled. These synthetic entrypoint measurements exclude
+setup and transaction intrinsic gas. They are not public transaction receipts.
+Router dispatch, pricing economics and native VM fee handling remain unchanged.
