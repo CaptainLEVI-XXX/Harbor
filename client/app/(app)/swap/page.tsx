@@ -5,14 +5,26 @@ import AssetSelect from '@/components/swap/AssetSelect';
 import QuotePanel, { type QuoteRow } from '@/components/swap/QuotePanel';
 import ReceiptList from '@/components/swap/ReceiptList';
 import { useConnect } from '@/components/PrivyProvider';
+import { TOKENS, chain } from '@/lib/chain';
 import { ASSETS, RECEIPTS } from '@/lib/swap/fixtures';
 import { formatWei, parseWei } from '@/lib/format';
 import { quoteTokens, quoteReceipt, isExpired } from '@/lib/swap/useQuote';
 import type { Direction, TradeMode } from '@/lib/swap/types';
+import { useSwap, type SwapStatus } from '@/lib/swap/useSwap';
 
 type Surface = 'tokens' | 'receipts';
 
 const PAIR = [ASSETS.wstETH, ASSETS.WETH];
+
+const SWAP_LABEL: Record<SwapStatus, string> = {
+  ready: 'Swap',
+  preparing: 'Preparing…',
+  approving: 'Approving…',
+  swapping: 'Swapping…',
+  swapped: 'Swapped',
+  repriced: 'Confirm new price',
+  failed: 'Failed · Try again',
+};
 
 /** Which asset sits on each leg, given the direction. */
 function legs(direction: Direction) {
@@ -22,7 +34,7 @@ function legs(direction: Direction) {
 }
 
 export default function SwapPage() {
-  const { label, onConnect } = useConnect();
+  const { label, onConnect, address } = useConnect();
 
   const [surface, setSurface] = useState<Surface>('tokens');
   const [direction, setDirection] = useState<Direction>('sell');
@@ -52,6 +64,10 @@ export default function SwapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [surface, typed, mode, direction, receipt?.markWei, quoteRev],
   );
+
+  const { status, hash, swap } = useSwap(quote, () => setQuoteRev(r => r + 1));
+  // only the Tokens surface trades for now - receipts wait for a real quote
+  const trading = surface === 'tokens' && address !== undefined;
 
   const shown = isExpired(quote, now) ? { ...quote, state: 'expired' as const } : quote;
 
@@ -98,17 +114,23 @@ export default function SwapPage() {
         ];
 
   const action =
-    shown.state === 'idle' ? 'Enter an amount'
+    trading && status !== 'ready' ? SWAP_LABEL[status]
+    : shown.state === 'idle' ? 'Enter an amount'
     : shown.state === 'wontfill' ? 'Amount too large'
     : shown.state === 'unavailable' ? 'Not quotable'
     : shown.state === 'expired' ? 'Refresh quote'
+    : trading ? SWAP_LABEL.ready
     : label;
 
-  const disabled = shown.state === 'idle' || shown.state === 'wontfill' || shown.state === 'unavailable';
+  const busy = status === 'preparing' || status === 'approving' || status === 'swapping';
+  const disabled =
+    (trading && (busy || status === 'swapped')) ||
+    shown.state === 'idle' || shown.state === 'wontfill' || shown.state === 'unavailable';
 
   function onAction() {
-    // a stale quote is refreshed in place; a live one is a wallet's problem
-    if (shown.state === 'expired') setQuoteRev(r => r + 1);
+    if (trading && shown.state === 'firm') swap(TOKENS[pay.symbol as keyof typeof TOKENS], address);
+    // a stale quote is refreshed in place
+    else if (shown.state === 'expired') setQuoteRev(r => r + 1);
     else onConnect();
   }
 
@@ -222,6 +244,14 @@ export default function SwapPage() {
           <button type="button" className="act" disabled={disabled} onClick={onAction}>
             {action}
           </button>
+
+          {trading && status === 'swapped' && (
+            <p className="qnote">
+              <a href={`${chain.blockExplorers.default.url}/tx/${hash}`} target="_blank" rel="noreferrer">
+                View transaction
+              </a>
+            </p>
+          )}
         </div>
 
         <p className="swap-foot">

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import SwapPage from '../page';
 
 vi.mock('@/components/PrivyProvider', () => ({
+  privyConfigured: false,
   useConnect: () => ({ label: 'Connect wallet', onConnect: vi.fn() }),
 }));
 
