@@ -53,6 +53,43 @@ contract RedemptionMarketTest is RedemptionMarketFixture {
       assertEq(IERC20(receipt).balanceOf(address(router)), 0);
       assertEq(IERC20(receipt).allowance(address(executor), address(router)), 0);
     }
+    _measureReceiptLifecycle();
+  }
+
+  /// @dev Identical issuer setup across clone variants. Timers exclude request,
+  /// approval, synthetic finalization and assertions; report each operation alone.
+  function _measureReceiptLifecycle() private {
+    uint256[] memory amounts = new uint256[](1);
+    amounts[0] = 1 ether;
+    vm.startPrank(trader);
+    bases[0].approve(address(queue), amounts[0]);
+    uint256 id = queue.requestWithdrawalsWstETH(amounts, trader)[0];
+    queue.approve(address(adapter), id);
+    ClaimImport memory input = ClaimImport(CollateralKind.ERC721, address(queue), id, 1, "");
+    uint256 start = gasleft();
+    address receipt = factory.wrap(address(adapter), input, trader);
+    uint256 wrapping = start - gasleft();
+    vm.stopPrank();
+    assertEq(IHarborClaim(receipt).ADAPTER(), address(adapter));
+    assertEq(IHarborClaim(receipt).CLAIM_ID(), adapter.nativeClaimId(id));
+    assertEq(IERC20(receipt).balanceOf(trader), 1);
+    queue.setFinalized(id, 1.18 ether);
+    start = gasleft();
+    uint256 cash = IHarborClaim(receipt).recover(abi.encode(uint256(1)));
+    uint256 recovery = start - gasleft();
+    assertEq(cash, 1.18 ether);
+    uint256 beforeCash = weth.balanceOf(trader);
+    vm.prank(trader);
+    start = gasleft();
+    cash = IHarborClaim(receipt).redeem(trader);
+    uint256 redemption = start - gasleft();
+    assertEq(cash, 1.18 ether);
+    assertEq(weth.balanceOf(trader), beforeCash + cash);
+    assertEq(IERC20(receipt).totalSupply(), 0);
+    emit log_named_uint("receipt wrap gas", wrapping);
+    emit log_named_uint("receipt recover gas", recovery);
+    emit log_named_uint("receipt redeem gas", redemption);
+    emit log_named_uint("receipt clone runtime bytes", receipt.code.length);
   }
 
   /// @dev Compare every returned word and the evidence preimage with direct issuer-backed data.

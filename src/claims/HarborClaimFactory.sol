@@ -116,10 +116,12 @@ contract HarborClaimFactory is ReentrancyGuardTransient {
     if (!active(adapter) || id == bytes32(0) || receiver == address(0) || receiptOf[adapter][id] != address(0)) {
       revert InvalidImport();
     }
-    receipt = LibClone.cloneDeterministic(IMPLEMENTATION, keccak256(abi.encode(adapter, id)));
+    // Fixed-width immutable payload: adapter [0..19], claim ID [20..51].
+    // Solady appends it to clone runtime, not delegatecall calldata.
+    receipt =
+      LibClone.cloneDeterministic(IMPLEMENTATION, abi.encodePacked(adapter, id), keccak256(abi.encode(adapter, id)));
     receiptOf[adapter][id] = receipt; // Before custody callbacks; mint remains deferred.
     isReceipt[receipt] = true;
-    HarborClaimReceipt(receipt).initialize(adapter, id);
   }
 
   function _useTransientReentrancyGuardOnlyOnMainnet() internal pure override returns (bool) {

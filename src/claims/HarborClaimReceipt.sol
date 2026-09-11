@@ -9,13 +9,13 @@ import {ClaimObservation, ClaimDomain} from "src/types/ClaimTypes.sol";
 
 /// @title HarborClaimReceipt
 /// @notice One indivisible ERC-20 unit owns one adapter-custodied redemption right.
-/// @dev Non-upgradeable clones. No issuer code, custody, estimate publisher or admin payout.
+/// @dev Non-upgradeable Solady immutable-argument clones. Adapter/claim binding
+/// lives in code; custody and attributable cash remain in the canonical adapter.
 contract HarborClaimReceipt is ERC20, ReentrancyGuardTransient {
   address public immutable FACTORY;
   address public immutable ASSET;
   uint256 public immutable CHAIN_ID;
-  address public ADAPTER;
-  bytes32 public CLAIM_ID;
+  address private immutable _IMPLEMENTATION;
   bool private _activated;
   bool private transient _burning;
 
@@ -29,15 +29,18 @@ contract HarborClaimReceipt is ERC20, ReentrancyGuardTransient {
     FACTORY = msg.sender;
     ASSET = cashAsset;
     CHAIN_ID = block.chainid;
+    _IMPLEMENTATION = address(this);
     _activated = true; // Lock the implementation; clones start with empty storage.
   }
 
-  /// @notice Factory-only, write-once binding before collateral verification and mint.
-  function initialize(address adapter, bytes32 id) external {
-    if (msg.sender != FACTORY) revert Unauthorized();
-    if (_activated || ADAPTER != address(0) || adapter == address(0) || id == bytes32(0)) revert InvalidState();
-    ADAPTER = adapter;
-    CLAIM_ID = id;
+  /// @notice Fixed issuer adapter, encoded in this canonical clone's runtime.
+  function ADAPTER() public view returns (address adapter) {
+    (adapter,) = _binding();
+  }
+
+  /// @notice Fixed issuer-domain identity; the adapter retains its closed tombstone.
+  function CLAIM_ID() public view returns (bytes32 id) {
+    (, id) = _binding();
   }
 
   /// @notice Factory-only mint after the adapter proves a positive tokenized right.
@@ -45,14 +48,15 @@ contract HarborClaimReceipt is ERC20, ReentrancyGuardTransient {
   function activate(address receiver) external {
     if (msg.sender != FACTORY) revert Unauthorized();
     if (_activated || receiver == address(0) || receiver == address(this)) revert InvalidState();
-    ClaimObservation memory o = IHarborClaimAdapter(ADAPTER).claimState(CLAIM_ID);
+    (address adapter, bytes32 id) = _binding();
+    ClaimObservation memory o = IHarborClaimAdapter(adapter).claimState(id);
     if (
       o.domain != ClaimDomain.TOKENIZED
         || (o.status != IHarborClaim.Status.PENDING && o.status != IHarborClaim.Status.FINALIZED) || o.entitlement == 0
     ) revert InvalidState();
     _activated = true;
     _mint(receiver, 1);
-    emit Activated(CLAIM_ID, ADAPTER, receiver, o.entitlement);
+    emit Activated(id, adapter, receiver, o.entitlement);
   }
 
   function name() public pure override returns (string memory) {
@@ -68,33 +72,38 @@ contract HarborClaimReceipt is ERC20, ReentrancyGuardTransient {
   }
 
   function status() public view returns (IHarborClaim.Status) {
-    if (!_activated || ADAPTER == address(0)) return IHarborClaim.Status.UNINITIALIZED;
-    return IHarborClaimAdapter(ADAPTER).claimState(CLAIM_ID).status;
+    (address adapter, bytes32 id) = _binding();
+    if (!_activated || adapter == address(0)) return IHarborClaim.Status.UNINITIALIZED;
+    return IHarborClaimAdapter(adapter).claimState(id).status;
   }
 
   /// @notice Verified nominal settlement-token units, not guaranteed cash or a price.
   function entitlement() external view returns (uint256) {
-    return IHarborClaimAdapter(ADAPTER).claimState(CLAIM_ID).entitlement;
+    (address adapter, bytes32 id) = _binding();
+    return IHarborClaimAdapter(adapter).claimState(id).entitlement;
   }
 
   /// @notice This claim's unpaid adapter credit, in settlement-token raw units.
   function recovered() external view returns (uint256) {
-    return IHarborClaimAdapter(ADAPTER).claimState(CLAIM_ID).cash;
+    (address adapter, bytes32 id) = _binding();
+    return IHarborClaimAdapter(adapter).claimState(id).cash;
   }
 
   /// @notice Anyone can collect issuer cash; the caller cannot select its owner.
   function recover(bytes calldata data) external nonReentrant returns (uint256) {
-    return IHarborClaimAdapter(ADAPTER).recoverTokenized(CLAIM_ID, data);
+    (address adapter, bytes32 id) = _binding();
+    return IHarborClaimAdapter(adapter).recoverTokenized(id, data);
   }
 
   /// @notice Burn and pay atomically. An allowance never authorizes a holder payout.
   function redeem(address receiver) external nonReentrant returns (uint256 cash) {
     if (balanceOf(msg.sender) != 1 || status() != IHarborClaim.Status.CASH_READY) revert InvalidState();
-    if (receiver == address(0) || receiver == address(this) || receiver == ADAPTER) revert InvalidRecipient();
+    (address adapter, bytes32 id) = _binding();
+    if (receiver == address(0) || receiver == address(this) || receiver == adapter) revert InvalidRecipient();
     _burning = true;
     _burn(msg.sender, 1);
     _burning = false;
-    cash = IHarborClaimAdapter(ADAPTER).redeemTokenized(CLAIM_ID, receiver);
+    cash = IHarborClaimAdapter(adapter).redeemTokenized(id, receiver);
     emit Redeemed(msg.sender, receiver, cash);
   }
 
@@ -104,10 +113,27 @@ contract HarborClaimReceipt is ERC20, ReentrancyGuardTransient {
       if (!_burning) revert InvalidState();
     } else if (from != address(0)) {
       _idleTransfer();
-      if (IHarborClaimAdapter(ADAPTER).claimBusy(CLAIM_ID)) revert InvalidState();
+      (address adapter, bytes32 id) = _binding();
+      if (IHarborClaimAdapter(adapter).claimBusy(id)) revert InvalidState();
     }
   }
   function _idleTransfer() private view nonReadReentrant {}
+
+  /// @dev Safety considerations: factory creates only the pinned Solady CWIA
+  /// layout: 45 runtime bytes followed by address:20 + bytes32:32. It records
+  /// canonicality before custody callbacks and alone may activate. Arbitrary
+  /// clones are not trusted by the adapter/Book. Direct implementation getters
+  /// preserve zero bindings. EXTCODECOPY writes only scratch [0..51]; the ID
+  /// read [20..51] is fully initialized. No allocation, free-pointer/zero-word
+  /// mutation, storage access or arithmetic overflow. Calldata is irrelevant.
+  function _binding() private view returns (address adapter, bytes32 id) {
+    if (address(this) == _IMPLEMENTATION) return (address(0), bytes32(0));
+    assembly ("memory-safe") {
+      extcodecopy(address(), 0, 45, 52)
+      adapter := shr(96, mload(0))
+      id := mload(20)
+    }
+  }
 
   function _useTransientReentrancyGuardOnlyOnMainnet() internal pure override returns (bool) {
     return false;
