@@ -131,6 +131,19 @@ describe('/swap quote states', () => {
       vi.useRealTimers();
     }
   });
+
+  it('re-prices when an expired quote is refreshed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<SwapPage />);
+      await act(() => vi.advanceTimersByTimeAsync(31_000));
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.click(screen.getByRole('button', { name: 'Refresh quote' }));
+      expect(screen.getByText(/expires in/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('the derived leg', () => {

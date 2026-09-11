@@ -30,6 +30,8 @@ export default function SwapPage() {
   const [typed, setTyped] = useState('1');
   const [selectedId, setSelectedId] = useState<number | null>(RECEIPTS[0].requestId);
   const [now, setNow] = useState(() => Date.now());
+  // bumped to re-price: a refreshed quote is a new quote
+  const [quoteRev, setQuoteRev] = useState(0);
 
   // the countdown has to move: a firm signed quote genuinely dies
   useEffect(() => {
@@ -48,7 +50,7 @@ export default function SwapPage() {
         ? quoteReceipt(receipt?.markWei ?? null, now)
         : quoteTokens({ amountWei: parseWei(typed, 18) ?? 0n, mode, direction, now }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [surface, typed, mode, direction, receipt?.markWei],
+    [surface, typed, mode, direction, receipt?.markWei, quoteRev],
   );
 
   const shown = isExpired(quote, now) ? { ...quote, state: 'expired' as const } : quote;
@@ -106,7 +108,7 @@ export default function SwapPage() {
 
   function onAction() {
     // a stale quote is refreshed in place; a live one is a wallet's problem
-    if (shown.state === 'expired') setNow(Date.now());
+    if (shown.state === 'expired') setQuoteRev(r => r + 1);
     else onConnect();
   }
 
