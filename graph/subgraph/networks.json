@@ -1,1 +1,31 @@
-{}
+{
+  "hoodi": {
+    "chainId": 560048,
+    "environment": "TESTNET",
+    "asset": "0xE0decAa66aED871ac9eb924443D1Bf333Fdb062E",
+    "cashDecimals": 18,
+    "periphery": "0x7f66f42dff023f5BDb6F12E471F9Ac90c0011FB8",
+    "strategyMetadata": [{
+      "route": "0",
+      "base": "0x7E99eE3C66636DE415D2d7C880938F2f40f94De4",
+      "adapter": "0x3e6fA785B4c47E4FAFF6021D0D4aCbEF05913d8F",
+      "issuer": "Lido",
+      "tokenSymbol": "wstETH"
+    }],
+    "subgraphDeployment": {
+      "provider": "Subgraph Studio",
+      "slug": "harbor",
+      "version": "0.2.0-hoodi",
+      "id": "QmXa2RCMR7BR13SzYpc7poxqUvUVhbNBKiXUk6csRBfuqv",
+      "queryUrl": "https://api.studio.thegraph.com/query/75221/harbor/0.2.0-hoodi",
+      "publishedToGraphNetwork": false
+    },
+    "contracts": {
+      "Book": { "address": "0x5FB29F20ed466840Bd2416F15f7B5312089b8d6E", "startBlock": 3610937 },
+      "Vault": { "address": "0x40a83D1fEE0F7F293c658EB264a3681517a7D6C6", "startBlock": 3610938 },
+      "Executor": { "address": "0x4B5e79eE4AF0ea1B91Bf5FDac9187ff7d63d6ebE", "startBlock": 3610936 },
+      "Factory": { "address": "0xDaC4339B2286A9B88729b2B627f72415BEfdB3aE", "startBlock": 3610935 },
+      "Adapter": { "address": "0x3e6fA785B4c47E4FAFF6021D0D4aCbEF05913d8F", "startBlock": 3610940 }
+    }
+  }
+}

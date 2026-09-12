@@ -1,14 +1,15 @@
 import { Address, BigInt, Bytes, DataSourceContext, ethereum } from "@graphprotocol/graph-ts";
-import { assert, beforeEach, clearStore, dataSourceMock, newMockEvent, test } from "matchstick-as";
+import { assert, beforeEach, clearStore, createMockedFunction, dataSourceMock, newMockEvent, test } from "matchstick-as";
 import { LiquidityIssued, Transfer, WithdrawalQueued, WithdrawalFunded, Withdraw, ValuationCommitted } from "../generated/Vault/Vault";
 import { Pool, Trade } from "../generated/schema";
-import { FillSettled, IssuerRouteConfigured, PositionRealized, RedemptionRequested, RedemptionRecovered,
+import { NftPolicyConfigured, NftPricingPublished, NftTraded, FillSettled, IssuerRouteConfigured, PositionRealized, RedemptionRequested, RedemptionRecovered,
   ClaimIntegrationScheduled, IntegrationActivated, ClaimMarketRegistered, ReceiptAcquired, ReceiptDisposed, NativeClaimExported } from "../generated/Book/Book";
 import { ClaimWrapped } from "../generated/Factory/Factory";
 import { ClaimCashCollected } from "../generated/Adapter/Adapter";
 import { Transfer as ReceiptTransfer, Redeemed } from "../generated/templates/ReceiptToken/ReceiptToken";
 import { eventId, logId, poolId, ticketId, routeId, nativeId, nativeKey, uint256 } from "../src/common";
 import { handleFillSettled, topic } from "../src/trading";
+import { handleNftPolicyConfigured, handleNftPricingPublished, handleNftTraded, nftStrategyId } from "../src/nfts";
 import { handleIssuerRouteConfigured, handleIntegrationScheduled, handleIntegrationActivated, handleClaimMarketRegistered } from "../src/configuration";
 import { handleRedemptionRequested, handleRedemptionRecovered, handlePositionRealized, handleReceiptAcquired, handleReceiptDisposed, handleNativeClaimExported } from "../src/claims";
 import { handleClaimWrapped, handleReceiptTransfer, handleReceiptRedeemed, handleClaimCashCollected, receiptId } from "../src/receipts";
@@ -30,6 +31,8 @@ function configure(chain: i32, selectedBook: Address = book, decimals: i32 = 6, 
   c.setBigInt("chainId", BigInt.fromI32(chain)); c.setBytes("book", selectedBook); c.setBytes("vault", selectedVault); c.setBytes("executor", executor);
   c.setBytes("asset", Address.fromString("0x0000000000000000000000000000000000000103"));
   c.setI32("cashDecimals", decimals); c.setString("environment", "BUILD_FIXTURE");
+  c.setBytes("periphery", executor);
+  c.setString("strategyMetadata", '[{"route":"0","base":"0x0000000000000000000000000000000000000108","adapter":"0x0000000000000000000000000000000000000106","issuer":"Lido","tokenSymbol":"wstETH"}]');
   dataSourceMock.setReturnValues(vault.toHexString(), chain === 1 ? "mainnet" : "arbitrum-one", c);
 }
 
@@ -104,6 +107,66 @@ function deposit(): void {
 function checkpoint(nav: i32, supply: i32, cash: i32, reserved: i32): void {
   handleValuationCommitted(changetype<ValuationCommitted>(ev([n(nav), n(supply), n(cash), n(reserved), n(0), n(0), n(1000)])));
 }
+
+function nftPolicy(): void {
+  createMockedFunction(adapter, "ISSUER", "ISSUER():(address)").returns([a(token)]);
+  handleNftPolicyConfigured(changetype<NftPolicyConfigured>(ev([n(0), ethereum.Value.fromTuple(changetype<ethereum.Tuple>([n(95), n(100), n(1), n(1), n(0), n(0)]))])));
+}
+function nftFill(buy: boolean, cash: i32, basis: i32, generation: i32, actor: Address = alice): NftTraded {
+  const e = changetype<NftTraded>(ev([n(0), n(42), a(actor), a(actor), flag(buy), n(110), n(basis), n(cash), n(1), n(generation)]));
+  e.address = book; return e;
+}
+
+test("one issuer policy separates NFT inventory, resale and recovery from the token strategy", () => {
+  route(); assert.entityCount("Strategy", 1);
+  const native = routeId(BigInt.zero()).toHexString(), nft = nftStrategyId(BigInt.zero()).toHexString();
+  assert.fieldEquals("Strategy", native, "label", "Lido · wstETH");
+  nftPolicy(); assert.entityCount("Strategy", 2);
+  assert.fieldEquals("Strategy", nft, "label", "Lido · Withdrawal NFTs");
+  assert.fieldEquals("Strategy", nft, "settlementPath", "DIRECT_NFT");
+  const pricing = changetype<NftPricingPublished>(ev([n(0), ethereum.Value.fromTuple(changetype<ethereum.Tuple>([n(97), n(1000), n(2000), n(1), n(1)]))]));
+  handleNftPricingPublished(pricing); handleNftPricingPublished(pricing);
+  assert.entityCount("NftPricingUpdate", 1);
+  const buy = nftFill(true, 100, 101, 1);
+  handleNftTraded(buy); handleNftTraded(buy);
+  assert.fieldEquals("Strategy", nft, "pendingBasis", "101");
+  assert.fieldEquals("Strategy", nft, "heldNominal", "110");
+  assert.fieldEquals("Strategy", native, "pendingBasis", "0");
+  handleNftTraded(nftFill(false, 112, 101, 2));
+  assert.fieldEquals("Strategy", nft, "realizedResult", "10");
+  assert.fieldEquals("Strategy", nft, "inventoryUnits", "0");
+  handleNftTraded(nftFill(true, 99, 100, 3));
+  realize(1, 100, 90, 4, nativeKey(adapter, BigInt.fromI32(42)));
+  const recovered = changetype<RedemptionRecovered>(ev([n(0), n(42), n(90), n(0)]));
+  handleRedemptionRecovered(recovered); handleRedemptionRecovered(recovered);
+  assert.fieldEquals("Strategy", nft, "realizedResult", "0");
+  assert.fieldEquals("Strategy", nft, "recoveredCash", "90");
+  assert.fieldEquals("Strategy", nft, "heldNominal", "0");
+  assert.fieldEquals("Strategy", nft, "pendingBasis", "0");
+  assert.fieldEquals("Strategy", native, "recoveredCash", "0");
+  assert.fieldEquals("NativeClaim", nativeId(adapter, BigInt.fromI32(42)).toHexString(), "state", "CLOSED");
+  assert.entityCount("Trade", 3); assert.entityCount("Realization", 2); assert.entityCount("DataIssue", 0);
+});
+
+test("NFT native completion attributes the wallet without counting wrapper cash again", () => {
+  route(); nftPolicy();
+  const e = nftFill(true, 100, 101, 1, executor), completion = ev([]);
+  attach(e, [log(completion, executor,
+    [topic("NativeNftTrade(address,address,uint256,uint256,bool,uint256,uint256,uint256,uint256)"), addressWord(alice), addressWord(book), uint256(BigInt.fromI32(42))],
+    encoded([n(0), flag(true), n(1), n(100), n(1), n(0)]))]);
+  handleNftTraded(e);
+  assert.fieldEquals("Trade", eventId(e).toHexString(), "trader", alice.toHexString());
+  assert.fieldEquals("Trade", eventId(e).toHexString(), "settlementTrader", executor.toHexString());
+  assert.fieldEquals("Strategy", nftStrategyId(BigInt.zero()).toHexString(), "buyCashDebit", "101");
+  const sale = nftFill(false, 112, 101, 2, executor);
+  const spoof = ev([]);
+  attach(sale, [log(spoof, bob,
+    [topic("NativeNftTrade(address,address,uint256,uint256,bool,uint256,uint256,uint256,uint256)"), addressWord(alice), addressWord(book), uint256(BigInt.fromI32(42))],
+    encoded([n(0), flag(false), n(112), n(1), n(1), n(0)]))]);
+  handleNftTraded(sale);
+  assert.fieldEquals("Trade", eventId(sale).toHexString(), "trader", executor.toHexString());
+  assert.entityCount("DataIssue", 1);
+});
 
 test("LP deposit, partial funding and aggregate credit payout reconcile without duplicate burns", () => {
   deposit(); checkpoint(100, 100000000, 100, 0);

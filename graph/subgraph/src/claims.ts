@@ -17,6 +17,7 @@ export function handleRedemptionRequested(event: RedemptionRequested): void {
     issue(event, p, "MISSING_REQUEST_INVENTORY"); return;
   }
   const c = new NativeClaim(id); c.pool = p.id; c.strategy = s.id; c.issuerId = event.params.id;
+  c.representation = "NATIVE_REQUEST";
   c.bookKey = nativeKey(s.adapter, event.params.id); c.basis = event.params.basis;
   c.initialEntitlement = event.params.entitlement; c.remainingEntitlement = event.params.entitlement;
   c.recoveredCash = BigInt.zero(); c.state = "PENDING"; c.requestedAt = event.block.timestamp;
@@ -27,12 +28,14 @@ export function handleRedemptionRequested(event: RedemptionRequested): void {
 
 /** Only Book recovery increments pool recovery cash. Final realization proceeds are cumulative. */
 export function handleRedemptionRecovered(event: RedemptionRecovered): void {
-  const p = pool(), s = Strategy.load(routeId(event.params.route)), id = eventId(event);
+  const p = pool(), source = Strategy.load(routeId(event.params.route)), id = eventId(event);
   if (ClaimRecovery.load(id) != null) return;
   p.portfolioChangedSinceCheckpoint = true; p.save();
-  if (s == null) { issue(event, p, "MISSING_RECOVERY_ROUTE"); return; }
-  const c = NativeClaim.load(nativeId(s.adapter, event.params.id));
+  if (source == null) { issue(event, p, "MISSING_RECOVERY_ROUTE"); return; }
+  const c = NativeClaim.load(nativeId(source.adapter, event.params.id));
   if (c == null) { issue(event, p, "MISSING_NATIVE_CLAIM"); return; }
+  const s = Strategy.load(c.strategy);
+  if (s == null) { issue(event, p, "MISSING_RECOVERY_STRATEGY"); return; }
   if (c.state != "PENDING" || c.remainingEntitlement.lt(event.params.remaining)) {
     issue(event, p, "INVALID_NATIVE_RECOVERY"); return;
   }
@@ -44,6 +47,10 @@ export function handleRedemptionRecovered(event: RedemptionRecovered): void {
     if (final == null || !final.proceeds.equals(total)) { issue(event, p, "RECOVERY_RECONCILIATION"); return; }
     c.state = "CLOSED"; c.closedAt = event.block.timestamp;
   }
+  if (c.representation == "RAW_NFT") {
+    s.heldNominal = s.heldNominal.minus(c.remainingEntitlement.minus(event.params.remaining));
+    if (event.params.remaining.isZero()) s.inventoryUnits = s.inventoryUnits.minus(BigInt.fromI32(1));
+  }
   c.recoveredCash = total; c.remainingEntitlement = event.params.remaining; c.save();
   s.recoveredCash = s.recoveredCash.plus(event.params.cash); s.save();
   const recovery = new ClaimRecovery(id); recovery.pool = p.id; recovery.claim = c.id;
@@ -52,7 +59,12 @@ export function handleRedemptionRecovered(event: RedemptionRecovered): void {
 
 /** Emitted before FillSettled / RedemptionRecovered. Basis and proceeds already include fees. */
 export function handlePositionRealized(event: PositionRealized): void {
-  const p = pool(), s = Strategy.load(routeId(event.params.route)), id = eventId(event);
+  const p = pool(), id = eventId(event);
+  let s = Strategy.load(routeId(event.params.route));
+  if (event.params.kind == 1) {
+    const held = NativeClaim.load(poolId().concat(event.params.claimKey));
+    if (held != null) s = Strategy.load(held.strategy);
+  }
   if (Realization.load(id) != null) return;
   if (s == null) { issue(event, p, "MISSING_REALIZATION_ROUTE"); return; }
   if (event.params.kind == 0) {

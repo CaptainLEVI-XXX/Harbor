@@ -1,0 +1,13 @@
+# Last indexed holdings, not a promise of live availability. Read Book.quoteNft
+# before trading: Lido can finalize independently and the indexer can lag.
+# Pin all pages to the same block/hash; reset pagination after a reorg.
+query HarborNftInventory($pool: Bytes!, $after: Bytes!, $first: Int!, $block: Block_height!) {
+  _meta(block: $block) { deployment hasIndexingErrors block { number hash } }
+  nativeClaims(first: $first, orderBy: id, orderDirection: asc, block: $block,
+    where: { pool: $pool, representation: "RAW_NFT", state: "PENDING", id_gt: $after }) {
+    id issuerId generation basis initialEntitlement remainingEntitlement
+    requestedAt requestTransaction
+    strategy { id route label issuer adapter settlementPath }
+    pool { chainId book asset cashDecimals complete }
+  }
+}

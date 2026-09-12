@@ -5,7 +5,8 @@ query HarborClaim($nativeId: Bytes!, $receiptId: Bytes!, $after: Bytes!, $first:
     deployment hasIndexingErrors block { number hash }
   }
   nativeClaim(id: $nativeId, block: $block) {
-    id issuerId bookKey state basis initialEntitlement remainingEntitlement recoveredCash
+    id issuerId bookKey state representation generation lastRecipient basis initialEntitlement remainingEntitlement recoveredCash
+    strategy { id label kind settlementPath }
     pool { id chainId asset cashDecimals environment complete }
     requestedAt requestTransaction requestLogIndex closedAt
     exportedMarket { id base adapterClaimId }

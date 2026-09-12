@@ -1,0 +1,29 @@
+{
+  "chainId": 560048,
+  "environment": "TESTNET",
+  "provider": "Subgraph Studio",
+  "queryUrl": "https://api.studio.thegraph.com/query/75221/harbor/0.1.0-hoodi",
+  "deployment": "QmfAKejNrXFtVq2mTkBaeaYwRhbwdj2XkFrKiwYhcfbicp",
+  "block": {
+    "number": 3604601,
+    "hash": "0x95722aee89f93b78f99275a3ff512483690da1c999c3acfb6ae7755591031414"
+  },
+  "hasIndexingErrors": false,
+  "rpcHeaderMatched": true,
+  "shareSupplyMatched": true,
+  "shareSupply": "0",
+  "vaultCashRaw": "0",
+  "poolComplete": true,
+  "checkpoint": {
+    "block": 3604590,
+    "transactionHash": "0xa4f67d7fe6d277f61f2358c43a700089b3b57222f2f2b7732a7c3740ec16b032",
+    "nav": "0",
+    "cash": "0"
+  },
+  "scope": "Live bootstrap indexing and pinned share-supply reconciliation only",
+  "fundedTradingLifecycleVerified": false,
+  "dynamicReceiptLifecycleVerified": false,
+  "controlledReorgVerified": false,
+  "publishedToGraphNetwork": false,
+  "finalityAttested": false
+}

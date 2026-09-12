@@ -29,6 +29,16 @@ type Strategy @entity(immutable: false) {
   pool: Pool!
   route: BigInt!
   kind: String!
+  label: String!
+  issuerName: String
+  tokenSymbol: String
+  settlementPath: String!
+  issuer: Bytes
+  pricingVersion: BigInt
+  pricingDiscount: BigInt
+  pricingValidUntil: BigInt
+  pricingConfigVersion: BigInt
+  heldNominal: BigInt!
   base: Bytes!
   adapter: Bytes!
   source: Strategy
@@ -44,6 +54,7 @@ type Strategy @entity(immutable: false) {
   recoveredCash: BigInt!
   realizedResult: BigInt!
   currentEpisode: HoldingEpisode
+  # Legacy name: includes NFT policies too; filter kind=RECEIPT for wrapped markets.
   receiptMarkets: [Strategy!]! @derivedFrom(field: "source")
   trades: [Trade!]! @derivedFrom(field: "strategy")
   claims: [NativeClaim!]! @derivedFrom(field: "strategy")
@@ -63,7 +74,7 @@ type Trade @entity(immutable: true) {
   id: Bytes!
   pool: Pool!
   strategy: Strategy!
-  context: Bytes!
+  context: Bytes
   trader: Bytes!
   receiver: Bytes!
   buyBase: Boolean!
@@ -75,8 +86,12 @@ type Trade @entity(immutable: true) {
   fee: BigInt!
   customerCash: BigInt!
   vaultCash: BigInt!
-  pricingVersion: BigInt!
-  positionVersion: BigInt!
+  pricingVersion: BigInt
+  positionVersion: BigInt
+  tokenId: BigInt
+  generation: BigInt
+  settlementPath: String!
+  settlementTrader: Bytes
   settlementLogIndex: BigInt!
   blockNumber: BigInt!
   blockHash: Bytes!
@@ -96,6 +111,11 @@ type NativeClaim @entity(immutable: false) {
   remainingEntitlement: BigInt!
   recoveredCash: BigInt!
   state: String!
+  representation: String!
+  generation: BigInt
+  # Last observed Harbor sale recipient, not current ownership outside Harbor.
+  lastRecipient: Bytes
+  # Harbor entry time; raw NFT acquisitions are NOT issuer request timestamps.
   requestedAt: BigInt!
   requestTransaction: Bytes!
   requestLogIndex: BigInt!
@@ -103,6 +123,22 @@ type NativeClaim @entity(immutable: false) {
   exportedMarket: Strategy
   finalRealization: Realization
   recoveries: [ClaimRecovery!]! @derivedFrom(field: "claim")
+}
+
+type NftPricingUpdate @entity(immutable: true) {
+  id: Bytes!
+  pool: Pool!
+  strategy: Strategy!
+  version: BigInt!
+  discount: BigInt!
+  observedAt: BigInt!
+  validUntil: BigInt!
+  configVersion: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+  timestamp: BigInt!
 }
 
 type ClaimRecovery @entity(immutable: true) {
@@ -126,7 +162,7 @@ type Realization @entity(immutable: true) {
   basis: BigInt!
   proceeds: BigInt!
   result: BigInt!
-  positionVersion: BigInt!
+  positionVersion: BigInt
   blockNumber: BigInt!
   blockHash: Bytes!
   transactionHash: Bytes!

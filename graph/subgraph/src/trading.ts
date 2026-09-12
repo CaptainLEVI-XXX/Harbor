@@ -49,6 +49,7 @@ export function handleFillSettled(event: FillSettled): void {
     }
   }
   const trade = new Trade(id); trade.pool = p.id; trade.strategy = s.id; trade.context = event.params.digest;
+  trade.settlementPath = "AQUA_SWAP_VM";
   trade.trader = Bytes.fromUint8Array(matched.topics[3].subarray(12)); trade.receiver = values[0].toAddress();
   trade.buyBase = buy; trade.mode = "UNKNOWN"; // Multicalls do not expose reliable per-fill top-level calldata.
   trade.tokenIn = buy ? s.base : p.asset; trade.tokenOut = buy ? p.asset : s.base;

@@ -10,6 +10,7 @@
     "sources": "npm run build && node dist/src/cli.js list",
     "verify:live": "npm run build && node dist/src/cli.js inspect",
     "subgraph:build": "node scripts/build-subgraph.mjs",
+    "subgraph:build:hoodi": "node scripts/build-subgraph.mjs --deployment hoodi",
     "subgraph:test": "cd subgraph && graph test --version 0.6.0",
     "verify": "npm test && npm run subgraph:build && npm run subgraph:test"
   },

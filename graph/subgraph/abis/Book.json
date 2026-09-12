@@ -87,6 +87,170 @@
   },
   {
     "type": "event",
+    "name": "NftPolicyConfigured",
+    "inputs": [
+      {
+        "name": "route",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "policy",
+        "type": "tuple",
+        "indexed": false,
+        "internalType": "struct PricingPolicy",
+        "components": [
+          {
+            "name": "minDiscount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "maxDiscount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "buyMargin",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "sellMargin",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "buyCost",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "sellCost",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "NftPricingPublished",
+    "inputs": [
+      {
+        "name": "route",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "parameters",
+        "type": "tuple",
+        "indexed": false,
+        "internalType": "struct PricingParameters",
+        "components": [
+          {
+            "name": "discount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "observedAt",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "validUntil",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "version",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "configVersion",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "NftTraded",
+    "inputs": [
+      {
+        "name": "route",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tokenId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "trader",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "receiver",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "acquired",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      },
+      {
+        "name": "nominal",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "basis",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "cash",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "fee",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "generation",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "RedemptionRecovered",
     "inputs": [
       {

@@ -17,5 +17,18 @@
       }
     ],
     "anonymous": false
+  },
+  {
+    "type": "function",
+    "name": "ISSUER",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   }
 ]

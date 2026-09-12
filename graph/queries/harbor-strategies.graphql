@@ -6,13 +6,14 @@ query HarborStrategies($pool: Bytes!, $after: Bytes!, $first: Int!, $block: Bloc
   }
   strategies(first: $first, orderBy: id, orderDirection: asc,
     where: { pool: $pool, id_gt: $after }, block: $block) {
-    id route kind base adapter
+    id route kind label issuerName tokenSymbol base adapter issuer settlementPath
     pool { id chainId asset cashDecimals environment complete }
     source { id route }
     factory adapterClaimId
     inventoryUnits inventoryBasis pendingBasis
     customerCashVolume protocolFees buyCashDebit sellCashCredit
-    recoveredCash realizedResult
+    recoveredCash realizedResult heldNominal
+    pricingVersion pricingDiscount pricingValidUntil pricingConfigVersion
     currentEpisode { id basis exported acquiredAt acquisitionVersion }
   }
 }
