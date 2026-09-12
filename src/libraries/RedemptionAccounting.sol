@@ -20,6 +20,8 @@ library RedemptionAccounting {
   error InvalidIntent();
   error DailyLimit();
 
+  /// @dev Fixed linked validation keeps the full keeper-intent decoder out of
+  /// the Book runtime. Delegatecall retains Book identity and nonce ownership.
   function consume(
     State storage self,
     RedeemIntent calldata intent,
@@ -27,7 +29,7 @@ library RedemptionAccounting {
     address vault,
     address adapter,
     uint256 positionVersion
-  ) internal returns (bytes32 context) {
+  ) public returns (bytes32 context) {
     if (
       self.revoked || intent.chainId != block.chainid || intent.book != address(this) || intent.vault != vault
         || intent.adapter != adapter || intent.adapterVersion != 1 || intent.positionVersion != positionVersion

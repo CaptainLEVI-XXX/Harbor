@@ -310,13 +310,39 @@ abstract contract VaultCore is ERC4626 {
     _operation = Operation.NONE;
   }
 
+  /// @notice Direct-NFT cash settlement under the Book's distinct authenticated operation.
+  /// @dev Book has verified custody and limits. Buy cash includes the fee; sell cash is net revenue.
+  function settleNftTrade(bytes32 context, bool buy, address receiver, uint256 cash, uint256 fee) external {
+    if (msg.sender != address(BOOK)) revert Unauthorized();
+    if (_context != context || _operation != Operation.NFT_TRADE || !_tradeCheckpointed) revert InvalidContext();
+    _operation = Operation.NONE;
+    if (buy) {
+      _state.spendCash(cash, 0);
+      uint256 beforeReceiver = SafeTransfer.balanceOf(ASSET, receiver);
+      SafeTransfer.safeTransfer(ASSET, receiver, cash - fee);
+      if (SafeTransfer.balanceOf(ASSET, receiver) != beforeReceiver + cash - fee) revert AssetDeltaMismatch();
+      if (fee != 0) {
+        address recipient = BOOK.FEE_RECIPIENT();
+        uint256 beforeFee = SafeTransfer.balanceOf(ASSET, recipient);
+        SafeTransfer.safeTransfer(ASSET, recipient, fee);
+        if (SafeTransfer.balanceOf(ASSET, recipient) != beforeFee + fee) revert AssetDeltaMismatch();
+      }
+    } else {
+      _state.receiveCash(cash);
+    }
+    uint256 expected = buy ? _cashAtBegin - cash : _cashAtBegin + cash;
+    if (SafeTransfer.balanceOf(ASSET, address(this)) != expected) revert AssetDeltaMismatch();
+  }
+
   /// @notice Reuse Book's independent live snapshot, only before trade token movement.
   /// @dev Caller is immutable; no external party supplies a private NAV or arbitrary mark.
   function checkpointTrade(bytes32 context, uint256 inventory, uint256 claims, uint256 time, bytes32 evidence)
     external
   {
     if (msg.sender != address(BOOK)) revert Unauthorized();
-    if (_context != context || _operation != Operation.TRADE || _tradeCheckpointed) revert InvalidContext();
+    if (
+      _context != context || (_operation != Operation.TRADE && _operation != Operation.NFT_TRADE) || _tradeCheckpointed
+    ) revert InvalidContext();
     _tradeCheckpointed = true;
     _checkpoint(inventory, claims, time, evidence);
   }

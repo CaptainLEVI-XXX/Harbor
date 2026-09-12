@@ -10,14 +10,10 @@ import {ISwapVM} from "@1inch/swap-vm/src/interfaces/ISwapVM.sol";
 import {IMakerHooks} from "@1inch/swap-vm/src/interfaces/IMakerHooks.sol";
 import {IExtruction} from "@1inch/swap-vm/src/instructions/Extruction.sol";
 import {SwapQuery, SwapRegisters} from "@1inch/swap-vm/src/libs/VM.sol";
-import {HarborPricing} from "src/swapvm/instructions/HarborPricing.sol";
 import {HarborProgram} from "src/swapvm/HarborProgram.sol";
-import {Trade, FillAmounts, Side, Operation} from "src/types/HarborTypes.sol";
+import {Trade, Operation} from "src/types/HarborTypes.sol";
 import {BookPricing} from "src/book/base/BookPricing.sol";
 import {ClaimMarkets} from "src/libraries/ClaimMarkets.sol";
-import {BookPortfolio} from "src/libraries/BookPortfolio.sol";
-import {QuoteValidation} from "src/libraries/QuoteValidation.sol";
-import {IHarborClaimFactory} from "src/interfaces/IHarborClaimFactory.sol";
 
 /// @title BookSettlement
 /// @notice Aqua strategy publication, exact-fill authorization and transfer hooks.
@@ -65,17 +61,9 @@ abstract contract BookSettlement is BookPricing, IExtruction, IMakerHooks {
     if (msg.sender != address(VAULT) || Context.operation() != Operation.VAULT || requester != GOVERNOR) {
       revert Unauthorized();
     }
-    previous = strategyHash[id];
-    uint256 version = ++strategyVersion[id];
-    address factory = _claimMarkets.markets[id].factory;
-    if (factory != address(0)) {
-      strategyFactoryVersion[id] = IHarborClaimFactory(factory).version(_claimMarkets.markets[id].adapter);
-    }
-    order = _order(id, version);
-    base = ClaimMarkets.base(_claimMarkets, _routes, id);
-    managed = _state.positions[id].shares;
-    strategyHash[id] = keccak256(abi.encode(order));
-    emit StrategyPublished(id, strategyHash[id], version, strategyFactoryVersion[id], configVersion);
+    return BookExecution.publishStrategy(
+      _state, _claimMarkets, _routes, strategyVersion, strategyHash, strategyFactoryVersion, id, configVersion
+    );
   }
 
   /*//////////////////////////////////////////////////////////////
@@ -98,25 +86,9 @@ abstract contract BookSettlement is BookPricing, IExtruction, IMakerHooks {
     if (msg.sender != ROUTER || query.maker != address(VAULT) || query.taker != address(EXECUTOR)) {
       revert InvalidCallback();
     }
-    (Trade memory trade, bytes32 context) = QuoteValidation.intent(query, strategyHash, args, payload);
-    uint256 id = trade.route;
-    if (isStaticContext) {
-      if (Context.operation() != Operation.NONE) revert Busy();
-    } else if (
-      Context.operation() != Operation.TRADE || Context.phase() != Context.Phase.OPENED || Context.context() != context
-    ) {
-      revert InvalidCallback();
-    }
-    (FillAmounts memory a, BookPortfolio.Value memory value, bytes32 evidence) =
-      _quoteWithValue(trade, true, query.isExactIn ? swap.amountIn : swap.amountOut);
-    updatedSwap = HarborPricing.complete(
-      swap, trade, a.routerIn, a.routerOut, FEE_BPS, _claimMarkets.markets[id].factory != address(0)
+    updatedSwap = BookExecution.priceAndAuthorize(
+      _claimMarkets, strategyHash, isStaticContext, query, swap, args, payload, FEE_BPS, address(VAULT)
     );
-    if (!isStaticContext) {
-      BookExecution.authorize(
-        address(VAULT), id, trade.side == Side.BUY_BASE, query, a.routerIn, a.routerOut, value, evidence
-      );
-    }
     return (nextPC, payload.length, updatedSwap);
   }
 

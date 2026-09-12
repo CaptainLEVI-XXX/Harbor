@@ -230,7 +230,7 @@ abstract contract LidoViews is AdapterBase, IHarborValuation {
     o.valid = q.isFinalized || _fresh();
   }
 
-  function _fresh() private view returns (bool) {
+  function _fresh() internal view returns (bool) {
     return publisher != address(0) && version != 0 && observedAt <= block.timestamp && block.timestamp <= validUntil;
   }
 }

@@ -10,7 +10,8 @@ enum CollateralKind {
 enum ClaimDomain {
   NONE,
   NATIVE_VAULT,
-  TOKENIZED
+  TOKENIZED,
+  RAW_VAULT
 }
 enum ClaimStage {
   NONE,

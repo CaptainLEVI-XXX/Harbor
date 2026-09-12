@@ -12,6 +12,8 @@ import {IWETH} from "@1inch/solidity-utils/contracts/interfaces/IWETH.sol";
 import {ILidoWithdrawalQueue as Queue, IWstETHConversion} from "src/interfaces/ILidoWithdrawalQueue.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IHarborClaimFactory} from "src/interfaces/IHarborClaimFactory.sol";
+import {NftObservation} from "src/types/NftTypes.sol";
+import {FixedPointMathLib as Math} from "solady/utils/FixedPointMathLib.sol";
 
 /// @notice Pool-bound Lido custody, valuation and claim-attributed ASSET recovery.
 /// @dev Native claims pay the fixed Vault; tokenized claims pay their receipt holder.
@@ -30,6 +32,7 @@ contract LidoAdapter is LidoViews, IERC721Receiver {
   );
   event ClaimCashCollected(bytes32 indexed claimId, uint256 cash);
   event ClaimPaid(bytes32 indexed claimId, address indexed receiver, uint256 cash);
+  event RawNftCustody(uint256 indexed id, address indexed owner, bool acquired);
 
   constructor(address book, address vault, address wsteth, address weth, address queue, Config memory c)
     LidoViews(book, vault, wsteth, weth, queue, c)
@@ -96,7 +99,9 @@ contract LidoAdapter is LidoViews, IERC721Receiver {
   function claim(uint256 id, uint256 hint) external onlyBook nonReentrant returns (uint256 cash, uint256 remaining) {
     bytes32 key = nativeClaimId(id);
     IssuerClaimLedger.Claim storage c = _claims.claims[key];
-    if (c.domain != ClaimDomain.NATIVE_VAULT || c.stage != ClaimStage.PENDING) revert InvalidRequest();
+    if ((c.domain != ClaimDomain.NATIVE_VAULT && c.domain != ClaimDomain.RAW_VAULT) || c.stage != ClaimStage.PENDING) {
+      revert InvalidRequest();
+    }
     _busyClaim = key;
     cash = _collect(c, hint);
     c.stage = ClaimStage.CLOSED;
@@ -170,6 +175,54 @@ contract LidoAdapter is LidoViews, IERC721Receiver {
     ) revert Unauthorized();
     _importAccepted = true;
     return IERC721Receiver.onERC721Received.selector;
+  }
+
+  /// @notice Quote any pending issuer ID before custody; finalized/claimed or other-domain rights are ineligible.
+  function nftObservation(uint256 id) public view returns (NftObservation memory o) {
+    uint256[] memory ids = new uint256[](1);
+    ids[0] = id;
+    Queue.WithdrawalRequestStatus memory s = Queue(ISSUER).getWithdrawalStatus(ids)[0];
+    IssuerClaimLedger.Claim storage c = _claims.claims[nativeClaimId(id)];
+    o.owner = Queue(ISSUER).ownerOf(id);
+    o.nominal = s.amountOfStETH;
+    o.mark = Math.fullMulDiv(o.nominal, claimFactor, 1e18);
+    o.observedAt = observedAt;
+    o.valid = id != 0 && !s.isFinalized && !s.isClaimed && s.owner == o.owner && s.amountOfShares != 0 && o.nominal != 0
+      && _fresh()
+      && (c.domain == ClaimDomain.NONE || (c.domain == ClaimDomain.RAW_VAULT && c.stage == ClaimStage.PENDING))
+      && (o.owner != address(this) || (c.domain == ClaimDomain.RAW_VAULT && c.nominal == o.nominal));
+  }
+
+  /// @notice Book-only purchase into pooled custody. No factory, clone or ID-specific admission.
+  function acquireNft(address owner, uint256 id) external onlyBook nonReentrant returns (uint256 nominal) {
+    NftObservation memory o = nftObservation(id);
+    bytes32 key = nativeClaimId(id);
+    if (!o.valid || o.owner != owner || _claims.claims[key].domain != ClaimDomain.NONE) revert InvalidRequest();
+    _importId = id;
+    _importOwner = owner;
+    IERC721(ISSUER).safeTransferFrom(owner, address(this), id);
+    if (!_importAccepted || Queue(ISSUER).ownerOf(id) != address(this)) revert ReceiptMismatch();
+    _claims.claims[key] =
+      IssuerClaimLedger.Claim(id, o.nominal, 0, address(0), ClaimDomain.RAW_VAULT, ClaimStage.PENDING);
+    _importId = 0;
+    _importOwner = address(0);
+    _importAccepted = false;
+    emit RawNftCustody(id, owner, true);
+    return o.nominal;
+  }
+
+  /// @notice Return the original NFT; the buyer, not Harbor, then owns its recovery.
+  /// @dev Sale clears only raw custody, allowing a fresh acquisition later. Recovery keeps a CLOSED tombstone.
+  function releaseNft(address receiver, uint256 id) external onlyBook nonReentrant {
+    bytes32 key = nativeClaimId(id);
+    NftObservation memory o = nftObservation(id);
+    if (!o.valid || o.owner != address(this) || receiver == address(this) || receiver == address(0)) {
+      revert InvalidRequest();
+    }
+    delete _claims.claims[key];
+    IERC721(ISSUER).safeTransferFrom(address(this), receiver, id);
+    if (Queue(ISSUER).ownerOf(id) != receiver) revert ReceiptMismatch();
+    emit RawNftCustody(id, receiver, false);
   }
 
   /// @notice Anyone may collect cash; the recovery caller cannot select its owner.

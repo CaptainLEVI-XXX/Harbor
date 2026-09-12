@@ -6,7 +6,6 @@ import {BookContext as Context} from "src/libraries/BookContext.sol";
 import {BookState} from "src/book/base/BookState.sol";
 import {ClaimMarkets} from "src/libraries/ClaimMarkets.sol";
 import {Operation} from "src/types/HarborTypes.sol";
-import {IHarborAdapter} from "src/interfaces/IHarborAdapter.sol";
 
 /// @title BookClaims
 /// @notice Individually approved claim markets, custody exports and vault receipt recovery.
@@ -58,9 +57,6 @@ abstract contract BookClaims is BookState {
     _claimAdmin();
     if (stopped) revert Unauthorized();
     _open(keccak256(abi.encode(msg.sender, source, id, factory)), Operation.RECOVERY);
-    address adapter = _routes[source].adapter;
-    Context.set(Context.CLAIM_ADAPTER, uint160(adapter));
-    Context.set(Context.CLAIM_ID, uint256(IHarborAdapter(adapter).nativeClaimId(id)));
     route = ClaimMarkets.exportRight(_claimMarkets, _state, _routes, source, id, factory, address(VAULT), ASSET);
     VAULT.settleIssuer(Context.context(), 0);
     _release();
@@ -74,11 +70,7 @@ abstract contract BookClaims is BookState {
       revert InvalidConfiguration();
     }
     _open(keccak256(abi.encode(msg.sender, route, data)), Operation.RECOVERY);
-    Context.set(Context.CLAIM_ADAPTER, uint160(_claimMarkets.markets[route].adapter));
-    Context.set(Context.CLAIM_ID, uint256(_claimMarkets.markets[route].claimId));
-    cash = VAULT.recoverReceipt(Context.context(), _claimMarkets.markets[route].receipt, data);
-    ClaimMarkets.dispose(_claimMarkets, _state, route, cash, true);
-    VAULT.settleIssuer(Context.context(), cash);
+    cash = ClaimMarkets.recoverReceipt(_claimMarkets, _state, route, address(VAULT), data);
     _release();
   }
 

@@ -15,6 +15,11 @@ contract MockWrappedEther is TokenMock {
   function deposit() external payable {
     _mint(msg.sender, msg.value);
   }
+
+  function withdraw(uint256 amount) external {
+    _burn(msg.sender, amount);
+    payable(msg.sender).transfer(amount);
+  }
 }
 
 contract MockWstETH is TokenMock {
@@ -77,11 +82,15 @@ contract MockLidoQueue is Queue {
     getApproved[id] = spender;
   }
 
-  function safeTransferFrom(address from, address to, uint256 id) external {
+  function transferFrom(address from, address to, uint256 id) public {
     require(!_statuses[id].isClaimed && from == _statuses[id].owner && to != address(0));
     require(msg.sender == from || getApproved[id] == msg.sender);
     _statuses[id].owner = to;
     delete getApproved[id];
+  }
+
+  function safeTransferFrom(address from, address to, uint256 id) external {
+    transferFrom(from, to, id);
     if (to.code.length != 0) {
       require(
         IERC721Receiver(to).onERC721Received(msg.sender, from, id, "") == IERC721Receiver.onERC721Received.selector

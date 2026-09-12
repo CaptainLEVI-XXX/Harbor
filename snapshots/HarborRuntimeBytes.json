@@ -1,10 +1,10 @@
 {
-  "book": "23785",
-  "book-execution": "4216",
+  "book": "24446",
+  "book-execution": "7361",
   "claim-factory": "3631",
   "claim-receipt": "4934",
   "executor": "8499",
-  "lido-adapter": "16068",
+  "lido-adapter": "18348",
   "router": "20376",
-  "vault": "17679"
+  "vault": "19641"
 }

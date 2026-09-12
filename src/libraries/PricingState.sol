@@ -26,6 +26,8 @@ library PricingState {
   error InvalidConfiguration();
   error InvalidQuote();
   event PricingPolicyConfigured(uint256 indexed route, PricingPolicy policy);
+  event NftPolicyConfigured(uint256 indexed route, PricingPolicy policy);
+  event NftPricingPublished(uint256 indexed route, PricingParameters parameters);
   event PricingParametersPublished(
     uint256 indexed route,
     uint256 indexed version,
@@ -43,6 +45,19 @@ library PricingState {
     PricingCurve memory curve,
     uint256 assetUnit
   ) public {
+    configure(self, route, routeCount, policy, curve, assetUnit, false);
+  }
+
+  /// @dev Distinct event domains keep token and NFT policies independently reconstructible.
+  function configure(
+    State storage self,
+    uint256 route,
+    uint256 routeCount,
+    PricingPolicy memory policy,
+    PricingCurve memory curve,
+    uint256 assetUnit,
+    bool nft
+  ) public {
     if (
       route >= routeCount || self.policies[route].minDiscount != 0 || policy.buyCost > assetUnit
         || policy.sellCost > assetUnit
@@ -58,13 +73,25 @@ library PricingState {
       uint64(policy.buyCost),
       uint64(policy.sellCost)
     );
-    emit PricingPolicyConfigured(route, policy);
+    if (nft) emit NftPolicyConfigured(route, policy);
+    else emit PricingPolicyConfigured(route, policy);
   }
 
   /// @notice Current observation only; history is emitted, never accumulated in storage.
   function publish(State storage self, uint256 route, PricingParameters memory p, uint256 configVersion, uint256 maxAge)
     public
   {
+    publish(self, route, p, configVersion, maxAge, false);
+  }
+
+  function publish(
+    State storage self,
+    uint256 route,
+    PricingParameters memory p,
+    uint256 configVersion,
+    uint256 maxAge,
+    bool nft
+  ) public {
     StoredPolicy storage policy = self.policies[route];
     PricingParameters storage previous = self.parameters[route];
     if (
@@ -74,7 +101,8 @@ library PricingState {
         || p.observedAt < previous.observedAt
     ) revert InvalidQuote();
     self.parameters[route] = p;
-    emit PricingParametersPublished(route, p.version, p.configVersion, p.discount, p.observedAt, p.validUntil);
+    if (nft) emit NftPricingPublished(route, p);
+    else emit PricingParametersPublished(route, p.version, p.configVersion, p.discount, p.observedAt, p.validUntil);
   }
 
   /// @notice Expand the admitted packed policy without changing its public units.

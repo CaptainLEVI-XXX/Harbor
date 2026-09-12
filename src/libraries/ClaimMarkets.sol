@@ -9,6 +9,8 @@ import {IHarborAdapter} from "src/interfaces/IHarborAdapter.sol";
 import {BookAccounting as Accounting} from "src/libraries/BookAccounting.sol";
 import {ClaimAccounting} from "src/libraries/ClaimAccounting.sol";
 import {RouteConfig} from "src/types/HarborTypes.sol";
+import {BookContext as Context} from "src/libraries/BookContext.sol";
+import {HarborVault} from "src/vault/HarborVault.sol";
 
 /// @title ClaimMarkets
 /// @notice Book-owned admission, canonical receipt identity and issuer-wide risk totals.
@@ -273,6 +275,8 @@ library ClaimMarkets {
     address cashAsset
   ) public returns (uint256 route) {
     address adapter = routes[source].adapter;
+    Context.set(Context.CLAIM_ADAPTER, uint160(adapter));
+    Context.set(Context.CLAIM_ID, uint256(IHarborAdapter(adapter).nativeClaimId(id)));
     Integration storage i = self.integrations[factory][adapter];
     if (!i.enabled || i.sourceRoute != source) revert InvalidIntegration();
     bytes32 key = ClaimAccounting.key(adapter, id);
@@ -292,5 +296,22 @@ library ClaimMarkets {
     ++book.positions[source].version;
     acquire(self, book, route, basis, true);
     emit NativeClaimExported(source, id, route, receipt, basis);
+  }
+
+  /// @dev Book validates the held receipt and opens RECOVERY before delegation.
+  /// Cash attribution, basis disposal and treasury reconciliation share that context.
+  function recoverReceipt(
+    State storage self,
+    Accounting.State storage book,
+    uint256 route,
+    address vault,
+    bytes calldata data
+  ) public returns (uint256 cash) {
+    Market storage m = self.markets[route];
+    Context.set(Context.CLAIM_ADAPTER, uint160(m.adapter));
+    Context.set(Context.CLAIM_ID, uint256(m.claimId));
+    cash = HarborVault(vault).recoverReceipt(Context.context(), m.receipt, data);
+    dispose(self, book, route, cash, true);
+    HarborVault(vault).settleIssuer(Context.context(), cash);
   }
 }

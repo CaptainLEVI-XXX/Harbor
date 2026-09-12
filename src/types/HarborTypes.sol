@@ -19,7 +19,8 @@ enum Operation {
   VAULT,
   TRADE,
   REDEMPTION,
-  RECOVERY
+  RECOVERY,
+  NFT_TRADE
 }
 
 /// @notice Immutable route mandate. Numeric values require independent calibration.

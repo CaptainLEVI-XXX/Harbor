@@ -256,7 +256,8 @@ library BookPortfolio {
       _merge(
         v,
         o.observedAt,
-        o.valid && o.domain == ClaimDomain.NATIVE_VAULT && o.entitlement == c.remaining && o.mark <= c.remaining
+        o.valid && (o.domain == ClaimDomain.NATIVE_VAULT || o.domain == ClaimDomain.RAW_VAULT)
+          && o.entitlement == c.remaining && o.mark <= c.remaining
           && (o.status == IHarborClaim.Status.PENDING || o.status == IHarborClaim.Status.FINALIZED)
       );
     }

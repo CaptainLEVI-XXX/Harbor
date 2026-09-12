@@ -28,9 +28,9 @@ abstract contract HoodiFork is Test {
   address internal constant HISTORICAL_OWNER = 0xCE90a202b4bEE63e296224212f46d47Bc25D8478;
 
   function setUp() public virtual {
-    vm.createSelectFork("hoodi", FORK_BLOCK);
+    vm.createSelectFork("hoodi", forkBlock());
     assertEq(block.chainid, 560048);
-    assertEq(block.number, FORK_BLOCK);
+    assertEq(block.number, forkBlock());
     assertEq(sha256(AQUA.code), 0x706c1d4144d97a2b44f2c6ed15f0844d8c5b9f4ca9cb6496e889506ade128260);
     assertEq(sha256(ROUTER_ADDRESS.code), 0x3dc8de1feb9cad7f43a5c47d146b4974e71df2f13e61b7d5b8fc43e67a524237);
     assertEq(address(SwapVM(payable(ROUTER_ADDRESS)).AQUA()), AQUA);
@@ -39,6 +39,11 @@ abstract contract HoodiFork is Test {
     assertEq(Queue(QUEUE).WSTETH(), WSTETH);
     assertEq(ILidoQueueHistory(QUEUE).proxy__getImplementation(), IMPLEMENTATION);
     assertGt(IMPLEMENTATION.code.length, 0);
+  }
+
+  /// @dev New integration tests may pin a newer available snapshot without moving historical recovery tests.
+  function forkBlock() internal pure virtual returns (uint256) {
+    return FORK_BLOCK;
   }
 
   /// @dev Minimal Book binding for adapter-only recovery checks; no fake Router.
