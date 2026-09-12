@@ -273,13 +273,13 @@ contract RedemptionMarketTest is RedemptionMarketFixture {
     assertGt(vault.maxDeposit(alice), 0);
     queue.setFinalized(id, 0.8 ether);
     _assertReceiptObservation(route, receipt);
-    assertEq(vault.maxDeposit(alice), 0);
+    assertGt(vault.maxDeposit(alice), 0); // Fresh issuer recovery value is executable for issuance.
     vm.prank(trader);
     vm.expectRevert();
     executor.execute(address(book), t);
     IHarborClaim(receipt).recover(abi.encode(uint256(1)));
     _assertReceiptObservation(route, receipt);
-    assertEq(vault.maxDeposit(alice), 0);
+    assertGt(vault.maxDeposit(alice), 0);
     vault.checkpointValuation();
     (, uint256 claims,,,,) = _values();
     assertEq(claims, 0.8 ether);

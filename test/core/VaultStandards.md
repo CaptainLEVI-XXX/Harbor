@@ -4,7 +4,7 @@ Foundation: Solady v0.1.26 (`acd959aa4bd04720d640bf4e6a5c71037510cc4b`).
 Tests use synthetic assets and a mock Book. They do not certify live valuation,
 issuer integration, complete standards conformance, or production readiness.
 
-The retained `Vault.t.sol` contains five selected checks. The matrix below
+The retained `Vault.t.sol` contains selected lifecycle and arithmetic checks. The matrix below
 describes contract behavior; it does not claim that every row still has a
 dedicated test. Full standards-conformance and operator-mode matrices were cut
 from the hackathon suite.
@@ -27,13 +27,15 @@ limit, not inherit the deposit limit; the final mint exhausts both capacities.
 | ERC-20 balances, allowances, nonces, permit | Solady owns the only share ledger. Permit only changes allowance. Implicit infinite Permit2 allowance is disabled. |
 | totalSupply / totalAssets | Matching committed supply/NAV, including during asset callbacks. |
 | convertToShares / convertToAssets | Full-precision downward rounding, one virtual wei and 1e6 virtual shares. |
-| previewDeposit / previewMint | Downward issuance shares / upward required assets; no execution guarantee. |
+| previewDeposit / previewMint | Current authenticated marks, downward shares / upward assets; revert during operations or unavailable valuation. No execution guarantee. |
 | deposit / mint, both overloads | Common Book/Vault lock, fresh NAV and exact receipt. Caller supplies WETH. Overloads authenticate controller/operator and emit controller as deposit sender. |
-| maxDeposit / maxMint | Numeric asset/share headroom; zero when locked, stale, physically underbacked or orphaned. No configured deposit cap. |
+| maxDeposit / maxMint | Numeric headroom from current marks; zero when locked, underlying marks invalid/expired, physically underbacked or orphaned. Cached invalidation alone does not close issuance. |
 | withdraw / redeem | Claim already-funded receipts; never collect or burn shares again. |
 | previewWithdraw / previewRedeem | Always revert for asynchronous redemption. |
 | maxWithdraw / maxRedeem | Controller's reserved assets / receipt units, not wallet share balance. |
 | requestRedeem | Owner, share allowance, or operator permission; escrow without burning. All public request IDs are zero. |
+| fulfillWithdrawals | Refresh authenticated marks; fund at most eight oldest requests with actual unreserved cash. |
+| requestRedeemAndClaim | Caller-owned shares only; queue, fund FIFO, claim all caller credit as ASSET. Unfunded remainder persists when minAssets=0; unmet positive minimum rolls back the transaction. |
 | transfer / transferFrom | Same Vault context, without a Book round-trip; no external transfer into or out of escrow. |
 | _beforeTokenTransfer | Only an explicitly authorized internal share mutation inside the common lock. |
 | _withdraw | Synchronous base helper disabled as defense in depth. |

@@ -95,10 +95,13 @@ library VaultLedger {
 
   /// @notice Numeric headroom, not an economic deposit cap. Reserves remain in gross backing.
   /// @dev Bound both virtualized additions and exact ERC4626 floor/ceil issuance.
-  function headroom(State storage self) internal view returns (uint256 assets, uint256 shares) {
-    (uint256 assetRoom, uint256 shareRoom) = issuanceLimits(self);
-    uint256 n = self.nav + 1;
-    uint256 d = self.supply + VIRTUAL_SHARES;
+  /// @dev Caller proves gross < uint256.max and supply <= max - VIRTUAL_SHARES.
+  /// Scalar inputs let read-only issuance use current marks without storing them.
+  function headroom(uint256 nav, uint256 supply, uint256 gross) internal pure returns (uint256 assets, uint256 shares) {
+    uint256 assetRoom = type(uint256).max - 1 - gross;
+    uint256 shareRoom = type(uint256).max - VIRTUAL_SHARES - supply;
+    uint256 n = nav + 1;
+    uint256 d = supply + VIRTUAL_SHARES;
     // floor(((shareRoom + 1) * n - 1) / d) without overflowing the product.
     uint256 shareLimited = _mulDivCapped(shareRoom + 1, n, d);
     if (shareLimited != type(uint256).max && mulmod(shareRoom + 1, n, d) == 0) --shareLimited;

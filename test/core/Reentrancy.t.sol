@@ -153,6 +153,7 @@ contract TradingReentrancyTest is TradingFixture {
 contract CallbackAsset is ERC20 {
   HarborVault private target;
   bool private armed;
+  bool public mutateMark;
   uint256 private expectedNAV;
   uint256 private expectedSupply;
   uint256 public rejected;
@@ -176,6 +177,10 @@ contract CallbackAsset is ERC20 {
     armed = true;
   }
 
+  function setMutateMark() external {
+    mutateMark = true;
+  }
+
   function _afterTokenTransfer(address, address, uint256) internal override {
     if (!armed) return;
     bytes[] memory attacks = new bytes[](8);
@@ -194,6 +199,7 @@ contract CallbackAsset is ERC20 {
     }
     require(target.totalAssets() == expectedNAV && target.totalSupply() == expectedSupply, "incoherent snapshot");
     require(target.convertToAssets(1e6) == (expectedNAV + 1) * 1e6 / (expectedSupply + 1e6), "incoherent conversion");
+    if (mutateMark) MockVaultBook(address(target.BOOK())).setMark(1 ether, 0, block.timestamp, true);
   }
 }
 
@@ -224,5 +230,13 @@ contract VaultReentrancyTest is Test {
     token.arm(vault);
     vault.redeem(shares, address(this), address(this));
     assertEq(token.rejected(), 16);
+    token.approve(address(vault), 1 ether);
+    token.arm(vault);
+    token.setMutateMark();
+    vm.expectRevert(VaultCore.ValuationUnavailable.selector);
+    vault.deposit(1 ether, address(this));
+    assertEq(vault.totalSupply(), 0);
+    assertEq(token.balanceOf(address(this)), 10 ether);
+    assertEq(book.inventory(), 0); // The adversarial mark update rolled back too.
   }
 }

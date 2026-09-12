@@ -16,7 +16,6 @@ contract ERC4626DepositTest is VaultFixture {
 
     // Synthetic noncash gain creates a nontrivial exchange rate for mint rounding.
     book.setMark(1 ether, 0, block.timestamp, true);
-    vault.checkpointValuation();
     uint256 shares = expected / 3 + 1;
     uint256 numerator = shares * (amount + 1 ether + 1);
     uint256 denominator = expected + 1e6;
@@ -87,11 +86,107 @@ contract ERC4626DepositTest is VaultFixture {
     _deposit(bob, 1 ether);
     assertEq(vault.totalAssets(), 2 ether);
   }
+
+  function test_IssuanceRefreshesInvalidatedNavButRejectsBadMarksAndDeficits() public {
+    _deposit(alice, 2 ether);
+    vm.prank(address(book));
+    vault.invalidateValuation();
+    book.setMark(1 ether, 0, block.timestamp, true);
+    (,,, bool cachedValid,) = vault.accountingStatus();
+    assertFalse(cachedValid);
+    assertGt(vault.maxDeposit(bob), 0);
+    uint256 expected = uint256(1 ether) * (2 ether * 1e6 + 1e6) / (3 ether + 1);
+    assertEq(vault.previewDeposit(1 ether), expected);
+    vm.prank(bob);
+    assertEq(vault.deposit(1 ether, bob, bob), expected);
+    assertEq(vault.totalAssets(), 4 ether);
+    book.setMark(0.5 ether, 0, block.timestamp, true);
+    uint256 shares = 1e23;
+    uint256 numerator = shares * (3.5 ether + 1);
+    uint256 denominator = vault.totalSupply() + 1e6;
+    uint256 assets = (numerator - 1) / denominator + 1;
+    assertEq(vault.previewMint(shares), assets);
+    vm.prank(bob);
+    assertEq(vault.mint(shares, bob, bob), assets);
+    uint256 cash = weth.balanceOf(address(vault));
+    uint256 supply = vault.totalSupply();
+    book.setMark(0.5 ether, 0, block.timestamp, false);
+    assertEq(vault.maxDeposit(bob), 0);
+    vm.expectRevert(VaultCore.ValuationUnavailable.selector);
+    vault.previewDeposit(1 ether);
+    vm.expectRevert(VaultCore.ValuationUnavailable.selector);
+    vm.prank(bob);
+    vault.deposit(1 ether, bob);
+    book.setMark(0.5 ether, 0, block.timestamp - 61, true);
+    assertEq(vault.maxMint(bob), 0);
+    vm.expectRevert();
+    vm.prank(bob);
+    vault.mint(shares, bob);
+    assertEq(weth.balanceOf(address(vault)), cash);
+    assertEq(vault.totalSupply(), supply);
+    book.setMark(0.5 ether, 0, block.timestamp, true);
+    deal(address(weth), address(vault), cash - 1);
+    assertEq(vault.maxDeposit(bob), 0);
+    vm.expectRevert();
+    vm.prank(bob);
+    vault.deposit(1 ether, bob);
+    assertEq(vault.totalSupply(), supply);
+  }
 }
 
 /// @title ERC7540RedeemTest
 /// @notice Pending, funded and claimed states remain separate and controller-owned.
 contract ERC7540RedeemTest is VaultFixture {
+  function test_CombinedExitRefreshesAndPaysOrQueuesBehindEarlierRequests() public {
+    uint256 a = _deposit(alice, 2 ether);
+    uint256 b = _deposit(bob, 2 ether);
+    vm.prank(address(book));
+    vault.invalidateValuation();
+    vm.prank(alice);
+    assertEq(vault.requestRedeemAndClaim(a / 2, alice, 8, 1 ether), 1 ether);
+    assertEq(weth.balanceOf(alice), 99 ether);
+    assertEq(vault.balanceOf(alice), a / 2);
+    assertEq(vault.claimableRedeemRequest(0, alice), 0);
+    assertEq(vault.totalAssets(), 3 ether);
+
+    _request(bob, b);
+    // Independently observed noncash backing raises the exit value above cash.
+    // Funding must refresh the changed mark, reserve only cash and stop at Bob.
+    book.setMark(3 ether, 0, block.timestamp, true);
+    vm.expectRevert(VaultCore.InvalidAmount.selector);
+    vm.prank(alice);
+    vault.requestRedeemAndClaim(a / 2, alice, 8, 1);
+    assertEq(vault.pendingRedeemRequest(0, alice), 0);
+    assertEq(vault.pendingRedeemRequest(0, bob), b);
+    assertEq(vault.claimableRedeemRequest(0, bob), 0); // Minimum failure rolled back funding too.
+    vm.prank(alice);
+    assertEq(vault.requestRedeemAndClaim(a / 2, alice, 8, 0), 0);
+    assertEq(vault.pendingRedeemRequest(0, alice), a / 2);
+    assertGt(vault.pendingRedeemRequest(0, bob), 0);
+    assertEq(vault.maxWithdraw(bob), 3 ether);
+    assertEq(vault.maxWithdraw(alice), 0);
+    (uint256 cash, uint256 reserved,,,) = vault.accountingStatus();
+    assertEq(cash, reserved);
+    assertEq(reserved, 3 ether);
+
+    book.setMark(3 ether, 0, block.timestamp, false);
+    vm.expectRevert(VaultCore.ValuationUnavailable.selector);
+    vault.fulfillWithdrawals(8);
+    vm.expectRevert(VaultCore.Unauthorized.selector);
+    vm.prank(alice);
+    vault.withdraw(3 ether, alice, bob);
+    uint256 funded = vault.claimableRedeemRequest(0, bob);
+    vm.prank(bob);
+    assertEq(vault.redeem(funded, bob, bob), 3 ether);
+    assertEq(weth.balanceOf(bob), 101 ether);
+    assertEq(weth.balanceOf(address(vault)), 0);
+    assertEq(vault.maxWithdraw(bob), 0);
+    vm.expectRevert();
+    vm.prank(bob);
+    vault.withdraw(1, bob, bob);
+    assertEq(vault.pendingRedeemRequest(0, alice), a / 2);
+  }
+
   function test_AllowanceCanRequestButCannotClaimControllerCredit() public {
     uint256 shares = _deposit(alice, 10 ether);
     vm.prank(alice);

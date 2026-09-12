@@ -91,7 +91,7 @@ contract IssuerRecoveryTest is NativeValuationFixture {
     marks.publish(1e18, 0.98e18, nowTime, nowTime + 60, 2);
     (,, fresh) = vault.valuationIdentity();
     assertFalse(fresh); // Same timestamp, different actual mark: no stale LP issuance.
-    assertEq(vault.maxDeposit(alice), 0);
+    assertGt(vault.maxDeposit(alice), 0); // Issuance refreshes the changed, still-authorized mark.
     vault.checkpointValuation();
     (,, fresh) = vault.valuationIdentity();
     assertTrue(fresh);

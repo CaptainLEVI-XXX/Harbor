@@ -92,9 +92,18 @@ contract HarborVault is VaultCore {
     return Math.fullMulDiv(shares, _state.nav + 1, _state.supply + VIRTUAL_SHARES);
   }
 
-  /// @notice settlement-asset raw units required for exact LP shares, rounding up.
+  /// @notice Current-mark issuance preview; no checkpoint transaction is required.
+  function previewDeposit(uint256 assets) public view override returns (uint256) {
+    (uint256 nav,, bool valid) = _issuanceValue();
+    if (!valid) revert ValuationUnavailable();
+    return Math.fullMulDiv(assets, _state.supply + VIRTUAL_SHARES, nav + 1);
+  }
+
+  /// @notice Current-mark settlement assets for exact LP shares, rounding up.
   function previewMint(uint256 shares) public view override returns (uint256) {
-    return Math.fullMulDivUp(shares, _state.nav + 1, _state.supply + VIRTUAL_SHARES);
+    (uint256 nav,, bool valid) = _issuanceValue();
+    if (!valid) revert ValuationUnavailable();
+    return Math.fullMulDivUp(shares, nav + 1, _state.supply + VIRTUAL_SHARES);
   }
 
   /// @notice Revert: asynchronous exits have no synchronous asset-input preview.
@@ -131,16 +140,18 @@ contract HarborVault is VaultCore {
 
   /// @notice Available deposit capacity in settlement-asset raw units; zero while gated or stale.
   function maxDeposit(address receiver) public view override returns (uint256) {
-    if (!_issuanceAvailable(receiver)) return 0;
-    (uint256 assets,) = _state.headroom();
+    (uint256 nav, uint256 gross, bool valid) = _issuanceValue();
+    if (!valid || !_issuanceAvailable(receiver, nav)) return 0;
+    (uint256 assets,) = Accounting.headroom(nav, _state.supply, gross);
     return assets;
   }
 
   /// @notice Exact LP shares issuable within asset and share numerical headroom.
   /// @dev Mint rounds assets up: it may fit when no floor-rounded deposit fits.
   function maxMint(address receiver) public view override returns (uint256) {
-    if (!_issuanceAvailable(receiver)) return 0;
-    (, uint256 shares) = _state.headroom();
+    (uint256 nav, uint256 gross, bool valid) = _issuanceValue();
+    if (!valid || !_issuanceAvailable(receiver, nav)) return 0;
+    (, uint256 shares) = Accounting.headroom(nav, _state.supply, gross);
     return shares;
   }
 
@@ -165,7 +176,8 @@ contract HarborVault is VaultCore {
   /// @param receiver Beneficiary of newly minted LP shares.
   /// @return shares LP share raw units minted.
   function deposit(uint256 assets, address receiver) public override coordinated returns (uint256 shares) {
-    shares = previewDeposit(assets);
+    _refreshValuation();
+    shares = convertToShares(assets);
     _issue(assets, shares, receiver, msg.sender);
   }
 
@@ -174,7 +186,8 @@ contract HarborVault is VaultCore {
   /// @param receiver Beneficiary of newly minted LP shares.
   /// @return assets settlement-asset raw units collected.
   function mint(uint256 shares, address receiver) public override coordinated returns (uint256 assets) {
-    assets = previewMint(shares);
+    _refreshValuation();
+    assets = Math.fullMulDivUp(shares, _state.nav + 1, _state.supply + VIRTUAL_SHARES);
     _issue(assets, shares, receiver, msg.sender);
   }
 
@@ -185,7 +198,8 @@ contract HarborVault is VaultCore {
   /// @return shares LP share raw units minted.
   function deposit(uint256 assets, address receiver, address controller) external coordinated returns (uint256 shares) {
     _authorize(controller);
-    shares = previewDeposit(assets);
+    _refreshValuation();
+    shares = convertToShares(assets);
     _issue(assets, shares, receiver, controller);
   }
 
@@ -196,7 +210,8 @@ contract HarborVault is VaultCore {
   /// @return assets settlement-asset raw units collected.
   function mint(uint256 shares, address receiver, address controller) external coordinated returns (uint256 assets) {
     _authorize(controller);
-    assets = previewMint(shares);
+    _refreshValuation();
+    assets = Math.fullMulDivUp(shares, _state.nav + 1, _state.supply + VIRTUAL_SHARES);
     _issue(assets, shares, receiver, controller);
   }
 
@@ -212,6 +227,38 @@ contract HarborVault is VaultCore {
   /// @param owner Account whose LP shares are escrowed.
   /// @return Public request ID zero, aggregating this controller's internal tickets.
   function requestRedeem(uint256 shares, address controller, address owner) external coordinated returns (uint256) {
+    _requestRedeem(shares, controller, owner);
+    return 0;
+  }
+
+  /// @notice Queue caller-owned shares, process FIFO funding, and claim the caller's funded credit.
+  /// @dev Pays ASSET, not native ETH. Includes any previously funded caller credit.
+  /// With minAssets=0, an unfunded remainder stays queued; a positive minimum
+  /// reverts the entire operation if insufficient cash reaches this caller.
+  /// Invalid marks revert this convenience path; requestRedeem and funded claims
+  /// remain independently available during a valuation outage.
+  function requestRedeemAndClaim(uint256 shares, address receiver, uint256 maxTickets, uint256 minAssets)
+    external
+    coordinated
+    returns (uint256 assets)
+  {
+    if (!_receiverValid(receiver)) revert InvalidReceiver();
+    _requestRedeem(shares, msg.sender, msg.sender);
+    _fulfillWithdrawals(maxTickets);
+    uint256 units = _state.withdrawals.credits[msg.sender].units;
+    if (units != 0) {
+      uint256 balance = _claimChecks(receiver, msg.sender);
+      assets = _state.withdrawals.redeem(msg.sender, units);
+      if (assets < minAssets) revert InvalidAmount();
+      _payClaim(assets, units, receiver, msg.sender, balance);
+    } else if (minAssets != 0) {
+      revert InvalidAmount();
+    }
+  }
+
+  /// @dev Caller holds the shared Vault operation lock; standard and combined
+  /// requests use identical escrow, authorization and event semantics.
+  function _requestRedeem(uint256 shares, address controller, address owner) private {
     if (!_receiverValid(controller) || owner == address(this)) revert InvalidReceiver();
     if (shares == 0 || (shares < MIN_REQUEST_SHARES && shares != balanceOf(owner))) revert InvalidAmount();
     if (msg.sender != owner && !isOperator[owner][msg.sender]) _spendAllowance(owner, msg.sender, shares);
@@ -221,7 +268,6 @@ contract HarborVault is VaultCore {
     uint256 ticket = _state.withdrawals.append(controller, shares);
     emit RedeemRequest(controller, owner, 0, msg.sender, shares);
     emit WithdrawalQueued(ticket, controller, owner, msg.sender, shares);
-    return 0;
   }
 
   /// @notice Unfunded LP share units for requestId zero; other IDs return zero.
@@ -269,9 +315,15 @@ contract HarborVault is VaultCore {
   /// stops the batch; no later ticket may jump the queue.
   /// @param maxTickets Maximum tickets processed, between one and eight.
   function fulfillWithdrawals(uint256 maxTickets) external coordinated {
+    _fulfillWithdrawals(maxTickets);
+  }
+
+  /// @dev Refresh existing authenticated marks once, then process a bounded FIFO
+  /// batch at that rate. No keeper checkpoint or new price publication is needed.
+  function _fulfillWithdrawals(uint256 maxTickets) private {
     if (maxTickets == 0 || maxTickets > Queue.MAX_PROCESS) revert InvalidAmount();
-    _requireFresh();
-    _state.requireBacked(SafeTransfer.balanceOf(ASSET, address(this)));
+    _refreshValuation();
+    if (_state.insolvent) revert ValuationUnavailable();
     Queue.State storage q = _state.withdrawals;
     uint256 numerator = _state.nav == 0 ? 0 : _state.nav + 1;
     uint256 denominator = _state.supply + VIRTUAL_SHARES;
@@ -349,6 +401,12 @@ contract HarborVault is VaultCore {
   /// @notice Anyone may checkpoint authenticated public observations from the Book.
   /// @dev A fresh public mark is required, not a signer-supplied private NAV.
   function checkpointValuation() external coordinated {
+    _refreshValuation();
+  }
+
+  /// @dev Called under the Vault operation lock before pricing issuance. Existing
+  /// authenticated marks are reused, not republished. _issue rechecks after callbacks.
+  function _refreshValuation() private {
     (uint256 inventory, uint256 claims, uint256 time, bytes32 evidence, bool valid) = BOOK.valuation();
     if (!valid) revert ValuationUnavailable();
     _checkpoint(inventory, claims, time, evidence);
@@ -360,16 +418,38 @@ contract HarborVault is VaultCore {
 
   /// @dev Shared eligibility for idle max views, not a substitute for _issue's
   /// under-lock checks. Each view applies its own floor/ceil capacity afterward.
-  function _issuanceAvailable(address receiver) private view returns (bool) {
-    return _context == 0 && _receiverValid(receiver) && _fresh()
-      && SafeTransfer.balanceOf(ASSET, address(this)) >= _state.cash && !_orphaned();
+  function _issuanceAvailable(address receiver, uint256 nav) private view returns (bool) {
+    if (!_receiverValid(receiver)) return false;
+    if (_state.supply != 0) return nav != 0;
+    return nav == 0 && !BOOK.hasManagedPositions();
+  }
+
+  /// @dev Read-only counterpart of _refreshValuation. No stale cached NAV is
+  /// combined with new cash. During callbacks previews are unavailable and max
+  /// views return zero; committed totalAssets/totalSupply remain coherent.
+  function _issuanceValue() private view returns (uint256 nav, uint256 gross, bool available) {
+    if (_context != 0 || SafeTransfer.balanceOf(ASSET, address(this)) < _state.cash) return (0, 0, false);
+    try BOOK.valuation() returns (uint256 inventory, uint256 claims, uint256 time, bytes32, bool valid) {
+      if (!valid || time == 0 || time > block.timestamp || block.timestamp - time > MAX_MARK_AGE) return (0, 0, false);
+      // Leave one virtual asset wei and the virtual-share offset representable.
+      uint256 room = type(uint256).max - 1 - _state.cash;
+      if (inventory > room || claims > room - inventory || _state.supply > type(uint256).max - VIRTUAL_SHARES) {
+        return (0, 0, false);
+      }
+      gross = _state.cash + inventory + claims;
+      if (gross < _state.withdrawals.reserved) return (0, 0, false);
+      return (gross - _state.withdrawals.reserved, gross, true);
+    } catch {
+      return (0, 0, false);
+    }
   }
 
   /// @dev Collect exact settlement-asset raw units from msg.sender, then mint shares to receiver.
   /// Controller affects authorization/event identity, not who funds the deposit.
-  /// Caller supplies amounts computed with the public deposit/mint rounding rules.
+  /// Every caller has just refreshed under this lock and computed the rounded
+  /// amounts without an intervening external call. Reobserve after token transfer.
   function _issue(uint256 assets, uint256 shares, address receiver, address controller) private {
-    _requireFresh();
+    if (_state.insolvent) revert ValuationUnavailable();
     if (!_receiverValid(receiver)) revert InvalidReceiver();
     (uint256 assetRoom, uint256 shareRoom) = _state.issuanceLimits();
     if (assets == 0 || shares == 0 || assets > assetRoom || shares > shareRoom) {
