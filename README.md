@@ -11,8 +11,10 @@ Read-only Graph tooling lives in `graph/`, separate from Foundry and the client.
 It includes a shared standardized-vault source inspector, exact return arithmetic,
 and Harbor mappings for deposits, shares, exits, checkpoints, settled trades,
 native recoveries and canonical receipt ownership/holding episodes. Full policy
-history, daily rollups, read-service integration, comparison admission and public
-deployment remain unfinished. Analytics does not authorize settlement or publish prices.
+history, daily rollups, read-service integration and comparison admission remain
+unfinished. Harbor is deployed to Subgraph Studio on Hoodi; decentralized-network
+publication and a completed live issuer-recovery lifecycle remain unverified. Analytics does
+not authorize settlement or publish prices.
 
 With Node 22 or newer and the existing Foundry artifacts:
 
@@ -26,7 +28,47 @@ The verification command runs five analytics scenarios, builds the same Harbor
 schema/mappings with two synthetic network configurations, and runs seven mapping
 scenarios using pinned Matchstick 0.6.0. The runner may require a supported native
 platform and an initial download. Fixtures are **not public deployments**;
-`graph/subgraph/networks.json` intentionally contains no claimed deployed addresses.
+`graph/subgraph/networks.json` separately records the actual Hoodi contracts and
+Studio deployment. Default fixture builds never select those live addresses.
+
+### Live Hoodi indexing
+
+[Harbor Studio](https://thegraph.com/studio/subgraph/harbor) version
+`0.2.0-hoodi` indexes the new single-Book deployment from each contract's creation block.
+Query endpoint: `https://api.studio.thegraph.com/query/75221/harbor/0.2.0-hoodi`.
+Deployment CID: `QmXa2RCMR7BR13SzYpc7poxqUvUVhbNBKiXUk6csRBfuqv`.
+At indexed block 3,610,972, the provider returned the new Book/Vault, complete
+bootstrap history, zero LP supply and no indexing errors. Both strategies were
+present: **Lido · wstETH** through Aqua/SwapVM and **Lido · Withdrawal NFTs**
+through direct NFT settlement. Periphery attribution uses the new wrapper.
+This establishes bootstrap indexing before funding, not executed trading or
+reorg testing. The previous deployment and its historical records remain intact.
+Current contract receipts are recorded in `script/records/harbor-nft-hoodi.deployment.json`.
+After indexing was ready, two LPs deposited 0.198354844916264502 WETH each
+through Periphery. At indexed block 3,611,014, both deposit transaction hashes
+were available, pool history was complete, and no indexing errors were reported.
+The checkpoint at block 3,611,012 recorded 0.396709689832529004 WETH cash/NAV.
+Funding and Aqua publication receipts are in `script/records/hoodi-nft-lp-funding.json`.
+No trades were sent during deployment. Subsequent inventory seeding added
+0.096125125337130969 wstETH and pending NFTs #5048–#5052 through actual sales.
+At block 3,611,583 Graph had indexed all six seed trades without errors; live buy
+quotes succeeded for the token inventory and all six held NFTs (including #5047
+from separate activity). See the [seeding record](script/records/hoodi-inventory-seeding.json).
+This is controlled testnet activity, not organic volume or completed issuer recovery.
+
+```sh
+npm --prefix graph run subgraph:build:hoodi
+node --env-file=.env graph/scripts/verify-hoodi.mjs
+node --env-file=.env --env-file=graph/.env graph/scripts/check-hoodi-provider.mjs
+```
+
+For a deliberately approved new Studio version, put `GRAPH_DEPLOY_KEY` and
+`GRAPH_SUBGRAPH_SLUG` in ignored `graph/.env`, then run
+`node --env-file=graph/.env graph/scripts/deploy-hoodi.mjs <version>`.
+The wrapper rebuilds reviewed Hoodi inputs, uses the pinned CLI in-process and
+keeps credentials out of OS arguments/auth files. Deployment updates Studio;
+it does not publish onchain or configure billing. New versions can archive the
+previous Studio version, so inspect existing versions before redeploying.
 
 List catalogued candidates or inspect them through The Graph gateway:
 
@@ -125,6 +167,77 @@ Generic receipt factories are shared **per settlement asset**, not across curren
 Lido remains WETH-only. Six-decimal cash plus eighteen-decimal inventory/receipts
 is covered by a synthetic, explicitly funded issuer fixture—not a deployed USDC
 issuer integration. Cross-currency/FX trading is not implemented.
+
+## Native ETH periphery
+
+[`Periphery`](src/Periphery.sol) is an optional, immutable wrapper around the
+existing Executor and its registered WETH pools. It is deployed on Hoodi at
+`0x7f66f42dff023f5BDb6F12E471F9Ac90c0011FB8`, recorded with the
+[current pool](script/records/harbor-nft-hoodi.deployment.json). Its native deposits,
+token sales and raw-NFT sales were used in the recorded funding/seeding runs.
+Older Periphery deployments remain in `script/records/archive/`; do not use
+their addresses for the current pool. Approvals and Vault operator permissions
+are address-specific and do not carry over between deployments. Constructor
+arguments are the reviewed WETH and Executor addresses.
+
+| Call | Value and result |
+| --- | --- |
+| `deposit(book, minShares)` | Send exact ETH; receive floor-rounded LP shares directly. |
+| `mint(book, shares)` | Send maximum ETH; receive exact raw LP shares and an ETH refund. |
+| `execute(book, trade)` | ETH in: receive tokens/whole receipts and refund unused ETH. Tokens/receipts in: send no ETH; receive native ETH. |
+| `withdraw(book, assets)` | Claim exact funded WETH credit as ETH; returns claim units consumed. |
+| `redeem(book, shares, minAssets)` | Consume exact funded claim units, receive ETH subject to minimum proceeds. |
+
+For swaps, obtain the normal `Executor.quoteSwap(book, trade)` with
+`trade.trader = periphery`, `trade.receiver = connectedWallet`. Encode that same
+Trade into `Periphery.execute`. When WETH is input, exact input sends
+`amountSpecified` ETH; exact output sends `limitAmount` (`maxIn`) ETH. When WETH
+is output, approve the input token/receipt to Periphery and send zero ETH. The current VM
+still enforces pricing, versions, deadlines, fees and indivisible receipts.
+Periphery is the actual funding trader, not a trusted forwarder impersonating
+the wallet. `NativeTrade` identifies the paying wallet for indexers alongside
+the Executor event. For token/receipt sales the wrapper first quotes to validate
+the original recipient and size collection, then executes with itself as WETH
+receiver and unwraps to the caller. Only actual quoted input is pulled, so unused
+`maxIn` remains in the user's wallet—even if maxIn is two and the user owns one
+whole receipt. Locked execution must match this preview after token callbacks
+or the entire transaction reverts. There is no fractional receipt trading.
+
+LP exits remain asynchronous: call `Vault.requestRedeem` as the user, wait for
+funding, then claim through Periphery. First grant
+`Vault.setOperator(periphery, true)` from the controller wallet; ERC-20 share
+approval alone does not grant claim authority. Periphery fixes both controller
+and final ETH recipient to its caller. Operator authority can be revoked at any
+time. Withdrawal calls do not checkpoint NAV: already-funded cash stays claimable
+during a pricing/valuation outage. Receipt redemption is a separate issuer flow.
+
+Security boundaries: only registered WETH Vaults and the fixed Executor can be
+called, using typed entrypoints rather than arbitrary calldata. Allowances are
+bounded by supplied ETH or quoted token input and cleared after execution. The shared Solady transient
+guard remains held through unwrap/refund callbacks (Cancun required). Native
+refund rejection rolls back the entire operation, including claim consumption.
+Pre-existing donated WETH or forced ETH is never included in payouts; it has no
+sweep path and must not be deliberately sent here. WETH's exact 1:1 semantics and
+the Executor governor's reviewed registry remain trust assumptions. No unchecked
+math or custom assembly is introduced, and no gas-saving claim is made.
+
+Compact regression suite (real local Harbor/Aqua/VM, synthetic issuer marks):
+
+```sh
+forge test --match-contract PeripheryTest -vv
+```
+
+The fork tests are pinned to block 3,608,981. Three tests passed using the existing
+deployed Harbor, Aqua, SwapVM, WETH and Lido: deposit/mint/refund and funded native
+claims, all four inventory modes, and all four whole-receipt modes. Only the new
+Periphery is deployed inside the fork. Test ETH and receipt-route operator calls
+are fork-only; no token storage is edited. Nine local tests also passed, including
+native sell payout failure/reentrancy and donation isolation. Reproduction needs
+an RPC serving this block; missing historical state is not a pass.
+
+```sh
+FOUNDRY_PROFILE=fork forge test --match-path test/fork/Periphery.fork.t.sol -vv
+```
 
 ## Standing pricing
 
@@ -410,7 +523,7 @@ and no estimated or guaranteed APY is supplied.
 
 ### Hoodi dependency deployment
 
-[Hoodi configuration](script/hoodi.config.json) records two confirmed deployments
+[Hoodi configuration](script/config/hoodi.config.json) records two confirmed deployments
 on chain 560048, source revisions, compiler settings, transactions and verification:
 
 | Contract | Hoodi address |
@@ -429,17 +542,19 @@ are user-deployed upstream code, not claimed canonical 1inch deployments; sponso
 eligibility remains separately unconfirmed.
 
 Harbor core contracts have subsequently been deployed and the Book/Vault pair
-registered with Executor. The [deployment manifest](script/harbor-hoodi.deployment.json)
+registered with Executor. The [deployment manifest](script/records/archive/harbor-hoodi.deployment.json)
 records 17 successful transactions and 34 checked bindings/configuration values.
-Admission activation, price/mark publication, LP deposits and strategy allocations
-remain pending. No additional token mocks were deployed. Lido runtime provenance
+Admission activation and the approved 100-day price/mark publications succeeded
+in eight subsequent transactions. Two LPs subsequently deposited
+0.198241597034305708 WETH each, and route 0 was published as Aqua strategy version 1.
+The [funding verification](script/records/archive/hoodi-lp-funding.verification.json) records
+actual balances, fresh valuation, Aqua cash allocation and 16 successful receipts.
+No additional token mocks were deployed. Lido runtime provenance
 is not independently attested by this deployment record.
 
-Verify the Harbor receipts and configuration without sending transactions:
-
-```sh
-node --env-file=.env script/verify-harbor-hoodi.mjs
-```
+These are historical records for the previous pool, not the current deployment.
+Its one-off verification and funding runners have been removed. Retain the records
+for reconciliation; do not repeat that funding against the old pool.
 
 Use the official [SwapVM deployment guide](https://github.com/1inch/swap-vm/blob/main/DEPLOY.md)
 for constructor requirements. Harbor uses the pinned `AquaSwapVMRouter` through
@@ -466,7 +581,7 @@ delete that record to retry an uncertain transaction; check its receipt first.
 Recheck the deployed instances without sending transactions:
 
 ```sh
-node --env-file=.env script/hoodi-ops.mjs verify 0xf40826aFd0de1078bc4b39b77E87E42d3b35Fe6A 0x63C78337758eA9c98b4Ce6Cc9988E72e2D8F3303
+node --env-file=.env script/deploy/hoodi-ops.mjs verify 0xf40826aFd0de1078bc4b39b77E87E42d3b35Fe6A 0x63C78337758eA9c98b4Ce6Cc9988E72e2D8F3303
 ```
 
 SwapVM executes quotes/swaps on-chain without a continuously running 1inch backend.
@@ -500,10 +615,10 @@ valuation, exhaustive conformance testing or audit is claimed.
 
 ### Controlled Hoodi setup
 
-`script/DeployHarborHoodi.s.sol` reuses the recorded Aqua/router/WETH/Lido
+`script/deploy/DeployHarborHoodi.s.sol` reuses the recorded Aqua/router/WETH/Lido
 addresses. It deploys immutable Harbor contracts with zero protocol fees and
 the signer in every administrative role. Required public configuration names
-and units are in [hoodi-demo.env.example](script/hoodi-demo.env.example); fill
+and units are in [hoodi-demo.env.example](script/config/hoodi-demo.env.example); fill
 the existing ignored `.env`, never this example, with actual settings/credentials.
 
 On chain 560048 only, receipt admissions still require explicit scheduling and
@@ -533,7 +648,7 @@ Trader/receipt holder: `0x7c5437B3Ac402EE9316981a66f37Ce46E1468aea`.
 Simulation example (no broadcast):
 
 ```sh
-forge script script/DeployHarborHoodi.s.sol:DeployHarborHoodi --rpc-url hoodi --sig 'run()'
+forge script script/deploy/DeployHarborHoodi.s.sol:DeployHarborHoodi --rpc-url hoodi --sig 'run()'
 ```
 
 Review the explicit configuration, signer nonce, linked libraries, estimated gas
@@ -542,10 +657,50 @@ and transaction list before authorizing broadcast. The original local-only
 reconcile them before using `--resume`. Rerunning `run()` creates another pool.
 Configuration can renew marks/prices; it is not a no-op inspection command.
 
-There is no automated LP funding or seeding command. Users wrap/deposit through
-their frontend wallets using the selected WETH. The script does not buy wstETH,
-create withdrawal NFTs, trade, finalize claims or configure the frontend/indexer.
-Reverse-direction trading needs accounted inventory acquired through a trade;
-donations are not positions. Receipt markets require their own route policy and
-Aqua strategy after an eligible NFT is imported. A separate trader is required:
-the signer/fee recipient is excluded from trading even when the fee is zero.
+The historical two-LP setup used [SeedHarborHoodi](test/base/SeedHarborHoodi.s.sol),
+now retained only as a fork regression fixture. It wrapped
+deployer ETH, transferred WETH and gas to each LP, deposited from each LP wallet,
+refreshed valuation and published the Vault's Aqua strategy. The exact amounts
+and mainnet USD reference are in [the funding manifest](script/records/archive/hoodi-lp-funding.json);
+Hoodi assets have no monetary value. Keep broadcast records and do not repeat
+initial funding. Other users can wrap/deposit through their frontend wallets.
+
+The old funding/verification wrappers are removed. Current raw-NFT trading uses
+issuer-wide Book policy, not per-ID receipt admission or an Aqua strategy per NFT.
+Wrapped ERC-20 receipt markets remain a distinct, optional path.
+
+### Script directory and current workflow
+
+Run commands from the repository root. Keep credentials in ignored `.env`, never
+in command arguments or public records.
+
+```text
+script/
+  deploy/          local/core deployment, Hoodi setup and Aqua operations
+  seed/            current trader inventory seeding and its operating guide
+  config/          public network configuration and blank env templates
+  records/         current deployment, LP funding and inventory receipts
+    archive/       superseded deployment records; not active configuration
+  demo/            local redemption demonstration
+  pricing/         offchain pricing model and arithmetic tests
+```
+
+| Task | Entry point |
+| --- | --- |
+| Deploy/configure the current single-Book token + NFT pool | `script/deploy/deploy-nft-hoodi.mjs` |
+| Deploy/check the reused Aqua and SwapVM dependencies | `script/deploy/hoodi-ops.mjs` |
+| Add trader-owned wstETH and pending NFTs to existing inventory | `script/seed/seed-inventory-hoodi.mjs` |
+| Review seeding amounts, approvals and stage ordering | [Inventory seeding guide](script/seed/INVENTORY-SEEDING.md) |
+| Find current addresses | [Current deployment record](script/records/harbor-nft-hoodi.deployment.json) |
+| Review completed inventory trades | [Inventory run record](script/records/hoodi-inventory-seeding.json) |
+
+`DeployHarborNftHoodi` inherits the shared Hoodi/core deployment scripts; those
+parents are dependencies, not duplicate deployments to run separately. Its `setup`
+stage also deploys Periphery. Use the current wrapper's `run`, `setup`, and `seed`
+stages only for a newly authorized deployment; the existing pool is already funded.
+
+Moving source files has not moved or reset `broadcast/` or `cache/`. Script
+basenames and broadcast entrypoints are unchanged, so existing receipt journals
+still prevent accidental repeats. Never delete a journal to bypass reconciliation.
+Historical JSON fields record their original commands; they are evidence, not
+instructions to rerun removed scripts.

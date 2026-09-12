@@ -23,6 +23,7 @@ node_modules/
 /PLAN.md
 /IMPLEMENTATION_PLAN.md
 /implementation-plan.md
+/CONTRACT-REVIEWS.md
 
 # Local editor and agent configuration
 /.agents/
