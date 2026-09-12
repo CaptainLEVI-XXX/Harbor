@@ -3,7 +3,7 @@ pragma solidity 0.8.30;
 
 import {NativeValuationFixture} from "test/base/NativeValuationFixture.sol";
 import {DirectSettlementChecks} from "test/base/DirectSettlementChecks.sol";
-import {DeployHarbor} from "script/DeployHarbor.s.sol";
+import {DeployHarbor} from "script/deploy/DeployHarbor.s.sol";
 import {PrimitiveChecks} from "test/base/PrimitiveChecks.sol";
 import {BookExecution} from "src/libraries/BookExecution.sol";
 

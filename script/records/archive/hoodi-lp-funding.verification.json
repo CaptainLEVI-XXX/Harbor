@@ -1,0 +1,165 @@
+{
+  "status": "FUNDED_AND_PUBLISHED",
+  "chainId": 560048,
+  "verifiedAt": "2026-09-12T08:18:34.174Z",
+  "blockNumber": 3608052,
+  "blockHash": "0x22ae70e84b1b8785f57fc4acd5ca855b848b94aa7304801ad9adba4ecf970299",
+  "vault": "0x4c5bff5143aa26bbb84535df27704b32091ecd25",
+  "cashWei": "396483194068611416",
+  "navWei": "396483194068611416",
+  "sharesRaw": "396483194068611416000000",
+  "valuationValid": true,
+  "strategyVersion": "1",
+  "strategyHash": "0x50dc57f1c88b34523bb260a9d64648fc4b6f2c9903adf78069d360ab96d4bd73",
+  "aquaCashWei": "396483194068611416",
+  "lps": [
+    {
+      "label": "LP_A",
+      "address": "0x77d9608e7082b4168006af261beafc45c17ce2de",
+      "assetsWei": "198241597034305708",
+      "sharesRaw": "198241597034305708000000",
+      "remainingWethWei": "0",
+      "nativeEthWei": "1688874586744608"
+    },
+    {
+      "label": "LP_B",
+      "address": "0x98f39daff9ea3f56a7347c4607ca49422378f8ae",
+      "assetsWei": "198241597034305708",
+      "sharesRaw": "198241597034305708000000",
+      "remainingWethWei": "0",
+      "nativeEthWei": "1540357769803774"
+    }
+  ],
+  "transactions": [
+    {
+      "entry": "prepareLP1",
+      "hash": "0x47b61230874ba1cf32f2c835480e9f6023b5447f5313374a347f0fcccb5bc5df",
+      "from": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+      "to": "0xe0decaa66aed871ac9eb924443d1bf333fdb062e",
+      "block": 3607932,
+      "feeWei": "56877842987442"
+    },
+    {
+      "entry": "prepareLP1",
+      "hash": "0xd67703948e9937d526b102308f91f0e70608b2b433cf95cd18373fffcf12630d",
+      "from": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+      "to": "0x77d9608e7082b4168006af261beafc45c17ce2de",
+      "block": 3607933,
+      "feeWei": "20412884940000"
+    },
+    {
+      "entry": "prepareLP1",
+      "hash": "0xcc13c42172a3ce84b88c10d423cfea9195714490ba3624cf9d500afe1ac87ee5",
+      "from": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+      "to": "0xe0decaa66aed871ac9eb924443d1bf333fdb062e",
+      "block": 3607934,
+      "feeWei": "50601500829814"
+    },
+    {
+      "entry": "prepareLP2",
+      "hash": "0x466c190e814d9336887f87c1583c86306fd085ebf1f522d11569e696cbe9e6e6",
+      "from": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+      "to": "0xe0decaa66aed871ac9eb924443d1bf333fdb062e",
+      "block": 3607950,
+      "feeWei": "54956366816328"
+    },
+    {
+      "entry": "prepareLP2",
+      "hash": "0x65ad04c9492c3c5c54bbcca59298edd3e563920954de7a66cc9f2911fcc00c57",
+      "from": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+      "to": "0x98f39daff9ea3f56a7347c4607ca49422378f8ae",
+      "block": 3607951,
+      "feeWei": "24704774640000"
+    },
+    {
+      "entry": "prepareLP2",
+      "hash": "0x00692ebe5b4df46146c0df830e28b57b8725ce823e114bed4d120ccc11b05e6e",
+      "from": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+      "to": "0xe0decaa66aed871ac9eb924443d1bf333fdb062e",
+      "block": 3607952,
+      "feeWei": "48707392779650"
+    },
+    {
+      "entry": "fundLP1",
+      "hash": "0xae172caf39b2706c0f1bce25b22f3e60b3778c987e6d3cf68535fdfdce65b477",
+      "from": "0x77d9608e7082b4168006af261beafc45c17ce2de",
+      "to": "0x4c5bff5143aa26bbb84535df27704b32091ecd25",
+      "block": 3607951,
+      "feeWei": "178599464408316"
+    },
+    {
+      "entry": "fundLP1",
+      "hash": "0x82243adb75a665502d99bb4665420274e46330bb75297b244b5cf52ffb19ef23",
+      "from": "0x77d9608e7082b4168006af261beafc45c17ce2de",
+      "to": "0xe0decaa66aed871ac9eb924443d1bf333fdb062e",
+      "block": 3607952,
+      "feeWei": "46787718850353"
+    },
+    {
+      "entry": "topUpGas",
+      "hash": "0x5ef074e203a047836d50c094fc858221d3b00ffa2d079edcf155e2ed92e1ae54",
+      "from": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+      "to": "0x77d9608e7082b4168006af261beafc45c17ce2de",
+      "block": 3607978,
+      "feeWei": "20838311613000"
+    },
+    {
+      "entry": "topUpGas",
+      "hash": "0x37b91152ae29fbc0505088c6fcbf69277f2ec0b35b95d2a83531e46086311091",
+      "from": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+      "to": "0x98f39daff9ea3f56a7347c4607ca49422378f8ae",
+      "block": 3607979,
+      "feeWei": "23045792070000"
+    },
+    {
+      "entry": "resumeLP1",
+      "hash": "0xe32bbc87d0683c4c313b4f80732916279a9bc2844d132e2b10bef5b5502d852e",
+      "from": "0x77d9608e7082b4168006af261beafc45c17ce2de",
+      "to": "0x4c5bff5143aa26bbb84535df27704b32091ecd25",
+      "block": 3607999,
+      "feeWei": "311125413255392"
+    },
+    {
+      "entry": "fundLP2",
+      "hash": "0x17a1641e9fd590db26c44c44cf438362df4c1c52adb0944d72776e5b31e91cab",
+      "from": "0x98f39daff9ea3f56a7347c4607ca49422378f8ae",
+      "to": "0x4c5bff5143aa26bbb84535df27704b32091ecd25",
+      "block": 3608006,
+      "feeWei": "169245988981540"
+    },
+    {
+      "entry": "fundLP2",
+      "hash": "0xee9103e2a055f54eeaafecd26be671ea7f2e67b863768a15218bdb7b9e5c80be",
+      "from": "0x98f39daff9ea3f56a7347c4607ca49422378f8ae",
+      "to": "0xe0decaa66aed871ac9eb924443d1bf333fdb062e",
+      "block": 3608007,
+      "feeWei": "45298516937661"
+    },
+    {
+      "entry": "fundLP2",
+      "hash": "0x24fbd3fac1617011a7517b80632d78aa71197dde64db1c12c6ad621cde36cf63",
+      "from": "0x98f39daff9ea3f56a7347c4607ca49422378f8ae",
+      "to": "0x4c5bff5143aa26bbb84535df27704b32091ecd25",
+      "block": 3608008,
+      "feeWei": "245097724277025"
+    },
+    {
+      "entry": "publish",
+      "hash": "0xec44bd5d2dd38e531793957712ba2a73f0e7ccb205e61c8ea579dcec6b72529e",
+      "from": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+      "to": "0x4c5bff5143aa26bbb84535df27704b32091ecd25",
+      "block": 3608036,
+      "feeWei": "150671383103728"
+    },
+    {
+      "entry": "publish",
+      "hash": "0xfce33db514402b4e7935e28f1eabc40dc620af6c353c82b40f583af51c68ac1e",
+      "from": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+      "to": "0x4c5bff5143aa26bbb84535df27704b32091ecd25",
+      "block": 3608037,
+      "feeWei": "280579074463350"
+    }
+  ],
+  "totalFeesWei": "1727550150953599",
+  "finalityAttested": false
+}

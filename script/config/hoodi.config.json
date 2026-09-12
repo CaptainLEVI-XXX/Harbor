@@ -1,7 +1,10 @@
 {
-  "status": "HARBOR_DEPLOYED_NOT_CONFIGURED",
+  "status": "HARBOR_FUNDED_AND_PUBLISHED",
+  "fundingVerification": "hoodi-lp-funding.verification.json",
   "chainId": 560048,
   "network": "hoodi",
+  "periphery": "0xf8EeC3ABd95d281906e5A254b441393E9F0d1B7A",
+  "peripheryDeploymentManifest": "script/records/archive/periphery-v2-hoodi.deployment.json",
   "evmVersion": "cancun",
   "rpcEnvironmentVariable": "HOODI_RPC_URL",
   "privateKeyEnvironmentVariable": "HOODI_PRIVATE_KEY",
@@ -21,7 +24,7 @@
     "runtimeVerified": false
   },
   "harborContractsDeployed": true,
-  "harborDeploymentManifest": "script/harbor-hoodi.deployment.json",
+  "harborDeploymentManifest": "script/records/archive/harbor-hoodi.deployment.json",
   "sponsorEligibilityConfirmed": false,
   "sourceRevisions": {
     "aqua": "9c5c42e5840e8741fba3597c48456c9510212b66",

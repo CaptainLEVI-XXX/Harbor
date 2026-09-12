@@ -1,0 +1,193 @@
+{
+  "chainId": 560048,
+  "status": "CONFIGURED_FUNDED_AND_INDEXED",
+  "deployer": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+  "finalityAttested": false,
+  "transactions": [
+    {
+      "name": "BookPortfolio",
+      "type": "CREATE2",
+      "address": "0x707c6c77f03bdaa66f6d70bc6519364a7876ee9c",
+      "transactionHash": "0x05f3080994b5465cc3c875b95262a7573c85bd23695a44383d91d0e630852697",
+      "block": 3610921
+    },
+    {
+      "name": "RedemptionAccounting",
+      "type": "CREATE2",
+      "address": "0x822f2f73cb6281b9b588f65992973bf6bb3c1e3c",
+      "transactionHash": "0xe161e7bb66053581a0674e198c1d0422838dd4472d019faad7c3c785a7789ef7",
+      "block": 3610922
+    },
+    {
+      "name": "QuoteValidation",
+      "type": "CREATE2",
+      "address": "0x69b50f25a3940b1ef8f3f21e0963a1e9db9b08e2",
+      "transactionHash": "0xdb0d6c6d1453f5796e4116ea093774116723243c2292709dd7faf17c0265165f",
+      "block": 3610923
+    },
+    {
+      "name": "ClaimMarkets",
+      "type": "CREATE2",
+      "address": "0x1b590097ff6d44ca0eff5aabbd217cf4fa23e939",
+      "transactionHash": "0xc4226791c4d406ebf467e6cb2dc875cdbd6f3966cca124de687466e721343047",
+      "block": 3610924
+    },
+    {
+      "name": "PricingMath",
+      "type": "CREATE2",
+      "address": "0x41a1828408eb1ee1e005987260233ae194bee9d0",
+      "transactionHash": "0x0c225488cba62e3b628b6463951b7d00c457c342fe41b16c50bc210459c8a39a",
+      "block": 3610925
+    },
+    {
+      "name": "StandingPricing",
+      "type": "CREATE2",
+      "address": "0x46eb29634a4d0f0ba54f973cc3895ca240891773",
+      "transactionHash": "0x59a465cd4f2e460f84f779b8ff02550d1e1e4f2f7122d1e67c75d3588bce3710",
+      "block": 3610926
+    },
+    {
+      "name": "IssuerOperations",
+      "type": "CREATE2",
+      "address": "0x8b0bb3642d5d3e621044c1855e03d2f3a0355c67",
+      "transactionHash": "0xc98d8cd8c95cc77b0d557f22eef3e66f68b5fa54489b0d488059e318bdb37469",
+      "block": 3610927
+    },
+    {
+      "name": "HarborProgram",
+      "type": "CREATE2",
+      "address": "0x61b63f2ea3ac7c88ccaf46abb0f81450f027488e",
+      "transactionHash": "0xee5003019f542db9f4d5f7fb3fc57651dad6e432d8ebf29c1b4688904deab529",
+      "block": 3610928
+    },
+    {
+      "name": "HarborPricing",
+      "type": "CREATE2",
+      "address": "0xc786f9ca00482bb5814b46bf40d7e49324f331d0",
+      "transactionHash": "0x4be7101e74ec1e5ba927521d350b77cd8ff5fbe8d88783d4c16f9dd5ed69d077",
+      "block": 3610929
+    },
+    {
+      "name": "NftMarket",
+      "type": "CREATE2",
+      "address": "0x7ef0f7738a92cb6526d3ff3a629fb2e533b2f98d",
+      "transactionHash": "0x6cc1ce89c209990fdd27610ff5eb8c9175972d645e91efb02b96e0cc8dd18765",
+      "block": 3610931
+    },
+    {
+      "name": "PricingState",
+      "type": "CREATE2",
+      "address": "0x118adb067b2dfeb117f7eeb2928bf4c297cf7baa",
+      "transactionHash": "0xaf16d475524c16a17eeff0ca213809bd2d1b27c438e59fbd8c9c32a8a7791532",
+      "block": 3610933
+    },
+    {
+      "name": "BookExecution",
+      "type": "CREATE2",
+      "address": "0xd644a2d87935908d8a36156bb1357fa53af33731",
+      "transactionHash": "0x444d5d72574cd89728d401c97e5c933862fa31e6dc2df107d8cc60a90d2f5fb0",
+      "block": 3610934
+    },
+    {
+      "name": "HarborClaimFactory",
+      "type": "CREATE",
+      "address": "0xdac4339b2286a9b88729b2b627f72415befdb3ae",
+      "transactionHash": "0xfd20928c682af7e3a1fff986f0752ddf9d79eeb33fc4fc22ab3714d40e904c2d",
+      "block": 3610935
+    },
+    {
+      "name": "HarborExecutor",
+      "type": "CREATE",
+      "address": "0x4b5e79ee4af0ea1b91bf5fdac9187ff7d63d6ebe",
+      "transactionHash": "0xf9da9f4c4b4c94fa76d8033a3229e0c0ee01226d6cd222fb976560190c043886",
+      "block": 3610936
+    },
+    {
+      "name": "HarborBook",
+      "type": "CREATE",
+      "address": "0x5fb29f20ed466840bd2416f15f7b5312089b8d6e",
+      "transactionHash": "0x1abe196c54d2fa7d0fc8e5f1ef15f764d172f679005d3dd8b1c6fba9aa188bfa",
+      "block": 3610937
+    },
+    {
+      "name": "HarborVault",
+      "type": "CREATE",
+      "address": "0x40a83d1fee0f7f293c658eb264a3681517a7d6c6",
+      "transactionHash": "0x2d2b78daf85269e57885cdd166fd108f3f615dcbad04a97ba786602c3bf098f7",
+      "block": 3610938
+    },
+    {
+      "name": "HarborExecutor",
+      "type": "CALL",
+      "address": "0x4b5e79ee4af0ea1b91bf5fdac9187ff7d63d6ebe",
+      "transactionHash": "0x8df6a9370e815c2fc4d1a2e83211cdcea885dac86687766cce594c6bcc51e59c",
+      "block": 3610939
+    },
+    {
+      "name": "LidoAdapter",
+      "type": "CREATE",
+      "address": "0x3e6fa785b4c47e4faff6021d0d4acbef05913d8f",
+      "transactionHash": "0xae232ec78ea97238733f6628a2905907de4c8eb68310298ed3153ca308a2e0ee",
+      "block": 3610940
+    }
+  ],
+  "setupTransactions": [
+    {
+      "name": null,
+      "type": "CALL",
+      "address": "0x5fb29f20ed466840bd2416f15f7b5312089b8d6e",
+      "transactionHash": "0xfed676c59e535d5abb41a25b0fe7544d851bc34986cf022e65539993c9e9e519",
+      "block": 3610956
+    },
+    {
+      "name": null,
+      "type": "CALL",
+      "address": "0x5fb29f20ed466840bd2416f15f7b5312089b8d6e",
+      "transactionHash": "0x051209bd49df0159ed204773c5fe2ba11f0b7d5ebc4bd1ebcd274914cee0130d",
+      "block": 3610957
+    },
+    {
+      "name": null,
+      "type": "CALL",
+      "address": "0x3e6fa785b4c47e4faff6021d0d4acbef05913d8f",
+      "transactionHash": "0x6361f77aff65681cb839e8aee49e6a2ac5a415279c318c2c4ffb704ff640ca80",
+      "block": 3610958
+    },
+    {
+      "name": null,
+      "type": "CALL",
+      "address": "0x5fb29f20ed466840bd2416f15f7b5312089b8d6e",
+      "transactionHash": "0xdf30c2ac9fa90704925300f72877eeb13dde7314e1ef1da58dd39b5a3194d2f5",
+      "block": 3610959
+    },
+    {
+      "name": null,
+      "type": "CALL",
+      "address": "0x5fb29f20ed466840bd2416f15f7b5312089b8d6e",
+      "transactionHash": "0x9ab89cba33e324067ab1c3f524437d4d1deea678e88fb3a63d4b02b370b027fd",
+      "block": 3610960
+    },
+    {
+      "name": null,
+      "type": "CALL",
+      "address": "0x40a83d1fee0f7f293c658eb264a3681517a7d6c6",
+      "transactionHash": "0x40ddc471904172b7d6248a6723c10b8a480be5c9d208251eb16d32acb11035a5",
+      "block": 3610961
+    },
+    {
+      "name": "Periphery",
+      "type": "CREATE",
+      "address": "0x7f66f42dff023f5bdb6f12e471f9ac90c0011fb8",
+      "transactionHash": "0x8cd3de7d00bbca18ae3e3a40862e9a2ef702ac5b85f5c41e1a5fd2386b6a50a9",
+      "block": 3610962
+    }
+  ],
+  "periphery": "0x7f66f42dff023f5BDb6F12E471F9Ac90c0011FB8",
+  "fundingRecord": "hoodi-nft-lp-funding.json",
+  "graph": {
+    "version": "0.2.0-hoodi",
+    "deployment": "QmXa2RCMR7BR13SzYpc7poxqUvUVhbNBKiXUk6csRBfuqv",
+    "queryUrl": "https://api.studio.thegraph.com/query/75221/harbor/0.2.0-hoodi",
+    "indexedBlock": 3611014
+  }
+}

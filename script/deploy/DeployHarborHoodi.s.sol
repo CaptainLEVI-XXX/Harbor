@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {DeployHarbor} from "script/DeployHarbor.s.sol";
+import {DeployHarbor} from "script/deploy/DeployHarbor.s.sol";
 import {HarborBook} from "src/book/HarborBook.sol";
 import {HarborVault} from "src/vault/HarborVault.sol";
 import {HarborClaimFactory} from "src/claims/HarborClaimFactory.sol";
@@ -149,14 +149,14 @@ contract DeployHarborHoodi is DeployHarbor {
     // publishStrategy is separate so users can first fund the Vault from the frontend.
   }
 
-  function _signer() private view returns (uint256 key, address deployer) {
+  function _signer() internal view returns (uint256 key, address deployer) {
     if (block.chainid != 560048) revert InvalidDemoConfiguration();
     key = vm.envUint("HOODI_PRIVATE_KEY");
     deployer = vm.addr(key);
   }
 
   function _pool(address target, address deployer)
-    private
+    internal
     view
     returns (HarborBook book, HarborVault vault, LidoAdapter adapter)
   {

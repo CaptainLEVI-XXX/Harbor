@@ -1,0 +1,22 @@
+{
+  "chainId": 560048,
+  "contract": "Periphery",
+  "version": 2,
+  "address": "0xf8eec3abd95d281906e5a254b441393e9f0d1b7a",
+  "transactionHash": "0x9f82c17bf5b56d2a26ba8863bd391a32d6c65f195530ac71fb612238d77e2069",
+  "status": "0x1",
+  "blockNumber": 3609038,
+  "feeWei": "1168285415226216",
+  "weth": "0xe0decaa66aed871ac9eb924443d1bf333fdb062e",
+  "executor": "0xf7c2593ba433c261eee79eec4bcaeba97636083d",
+  "previousDeployment": "periphery-hoodi.deployment.json",
+  "receiptSource": "broadcast/DeployPeripheryHoodi.s.sol/560048/runV2-latest.json",
+  "forkTests": {
+    "block": 3608981,
+    "passed": 3
+  },
+  "localTestsPassed": 9,
+  "postDeploymentChecksPerformed": false,
+  "explorerSourceVerified": false,
+  "finalityAttested": false
+}

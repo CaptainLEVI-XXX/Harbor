@@ -1,6 +1,7 @@
 {
   "chainId": 560048,
-  "status": "DEPLOYED_NOT_CONFIGURED",
+  "status": "FUNDED_AND_PUBLISHED",
+  "fundingVerification": "hoodi-lp-funding.verification.json",
   "deployer": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
   "actualDeploymentFeeWei": "29243128745329738",
   "bindingAndConfigChecksPassed": 34,
@@ -125,5 +126,60 @@
       "transactionHash": "0x89058e79f2bff2e9f51efe3592d9ae4bca2881897cf41d2b9708af052ee130f1",
       "block": 3604368
     }
-  ]
+  ],
+  "configuration": {
+    "priceObservedAt": 1789155192,
+    "priceValidUntil": 1797795192,
+    "feeWei": "919519688626937",
+    "transactions": [
+      {
+        "function": "schedule(address)",
+        "target": "0xb9ea41104e528eb1967347169924b6a4c17c145e",
+        "transactionHash": "0xb2d4de1cae8e32df6b4ca2049ba1958f96d553f9a3a31d3b77bba3e55f605b41",
+        "block": 3604580
+      },
+      {
+        "function": "activate(address)",
+        "target": "0xb9ea41104e528eb1967347169924b6a4c17c145e",
+        "transactionHash": "0x7bc8b2e886ca8ffe09457035bf263cd69916550550a48ef643cd5b2608f2c558",
+        "block": 3604581
+      },
+      {
+        "function": "scheduleClaimFactory(address,uint256,uint256,uint256)",
+        "target": "0x056349edd023191eab7e9e93c376b08de34494db",
+        "transactionHash": "0xad006d4f5f273ac239e08f351ffed380bf620f159a4f847661270ce8746bc7d8",
+        "block": 3604582
+      },
+      {
+        "function": "activateClaimFactory(address,address)",
+        "target": "0x056349edd023191eab7e9e93c376b08de34494db",
+        "transactionHash": "0x7ef07030af4d150fd117cb8372970fffe7c6a8c7ede19503aabc1cf000aaf615",
+        "block": 3604584
+      },
+      {
+        "function": "publish(uint256,uint256,uint256,uint256,uint256)",
+        "target": "0xae79fb04ef04ecb1065e9c4ee64f0e8b96ccd3af",
+        "transactionHash": "0x35aefa877c1add943bf02e18b58896f9df4be937e76a74736a1ef28ccac3a751",
+        "block": 3604586
+      },
+      {
+        "function": "configurePricing(uint256,(uint256,uint256,uint256,uint256,uint256,uint256))",
+        "target": "0x056349edd023191eab7e9e93c376b08de34494db",
+        "transactionHash": "0xcc74f9f34c153e339cc6d063b655b3d599da3c0b1d4f6eb125d808eb7daad94a",
+        "block": 3604588
+      },
+      {
+        "function": "publishPricing(uint256,(uint256,uint256,uint256,uint256,uint256))",
+        "target": "0x056349edd023191eab7e9e93c376b08de34494db",
+        "transactionHash": "0x97c83413d94b6c99928f0541ec76789c46e849ce34c9fb9152f69974e64bf0d0",
+        "block": 3604589
+      },
+      {
+        "function": "checkpointValuation()",
+        "target": "0x4c5bff5143aa26bbb84535df27704b32091ecd25",
+        "transactionHash": "0xa4f67d7fe6d277f61f2358c43a700089b3b57222f2f2b7732a7c3740ec16b032",
+        "block": 3604590
+      }
+    ]
+  }
 }

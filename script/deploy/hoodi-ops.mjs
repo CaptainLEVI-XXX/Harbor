@@ -108,7 +108,7 @@ async function main() {
       throw new Error('BROADCAST_RECORD_EXISTS_CHECK_RECEIPTS_DO_NOT_REDEPLOY');
     }
   }
-  const command = ['script', 'script/DeployAquaHoodi.s.sol:DeployAquaHoodi', '--rpc-url', 'hoodi', '--sig', ...operations[mode]];
+  const command = ['script', 'script/deploy/DeployAquaHoodi.s.sol:DeployAquaHoodi', '--rpc-url', 'hoodi', '--sig', ...operations[mode]];
   if (mode.startsWith('broadcast-')) command.push('--broadcast', '--slow');
   const child = spawnSync('forge', command, {
     env: { ...process.env, ETH_RPC_URL: rpcUrl, RUST_LOG: 'off' },

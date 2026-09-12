@@ -1,0 +1,76 @@
+{
+  "chainId": 560048,
+  "status": "FUNDED_AND_AQUA_PUBLISHED",
+  "book": "0x5FB29F20ed466840Bd2416F15f7B5312089b8d6E",
+  "vault": "0x40a83D1fEE0F7F293c658EB264a3681517a7D6C6",
+  "periphery": "0x7f66f42dff023f5BDb6F12E471F9Ac90c0011FB8",
+  "lps": [
+    "0x77d9608e7082b4168006af261beafc45c17ce2de",
+    "0x98f39daff9ea3f56a7347c4607ca49422378f8ae"
+  ],
+  "priceSource": "https://api.coinbase.com/v2/prices/ETH-USD/spot",
+  "ethUsd6": "2520735000",
+  "observedAt": 1789239948,
+  "usdPerLP": 500,
+  "principalWeiPerLP": "198354844916264502",
+  "gasBalanceFloorWei": "2000000000000000",
+  "graphReadyBeforeFunding": {
+    "deployment": "QmXa2RCMR7BR13SzYpc7poxqUvUVhbNBKiXUk6csRBfuqv",
+    "indexedBlock": 3610972,
+    "hasIndexingErrors": false,
+    "poolComplete": true,
+    "shareSupply": "0",
+    "strategies": [
+      "NATIVE",
+      "NFT"
+    ]
+  },
+  "transactions": [
+    {
+      "type": "CALL",
+      "address": "0x77d9608e7082b4168006af261beafc45c17ce2de",
+      "transactionHash": "0xccc17850d8b487d3807f8b697c983346aa41c8c30c1413309c0d6511b4c90ac4",
+      "block": 3611006
+    },
+    {
+      "type": "CALL",
+      "address": "0x7f66f42dff023f5bdb6f12e471f9ac90c0011fb8",
+      "transactionHash": "0xfdd13d1375238db1d32d16cc846ea746238df7ed356c8ef2673b257ce49493e6",
+      "block": 3611007
+    },
+    {
+      "type": "CALL",
+      "address": "0x98f39daff9ea3f56a7347c4607ca49422378f8ae",
+      "transactionHash": "0xc4b0058b9e67e63e51b7f191b3506205d85a7e79d4e4396c52b95f2451258bb0",
+      "block": 3611008
+    },
+    {
+      "type": "CALL",
+      "address": "0x7f66f42dff023f5bdb6f12e471f9ac90c0011fb8",
+      "transactionHash": "0x19fd19ef681100292cf9e32e384fb958fa93d28d71e6a593a1e79e4cb7e1dd25",
+      "block": 3611010
+    },
+    {
+      "type": "CALL",
+      "address": "0x40a83d1fee0f7f293c658eb264a3681517a7d6c6",
+      "transactionHash": "0xb083f2a28633c977d65a229136b67ae84495f3ea1b47b4d101d6cc57b052f11d",
+      "block": 3611012
+    },
+    {
+      "type": "CALL",
+      "address": "0x40a83d1fee0f7f293c658eb264a3681517a7d6c6",
+      "transactionHash": "0x18c968afa70d487f5c50b885b6bc15e6f288ea512418c005407c93469a0630c2",
+      "block": 3611014
+    }
+  ],
+  "indexedAfterFunding": {
+    "block": 3611014,
+    "hasIndexingErrors": false,
+    "poolComplete": true,
+    "deposits": 2,
+    "depositedAssets": "396709689832529004",
+    "shareSupply": "396709689832529004000000",
+    "checkpointBlock": 3611012
+  },
+  "finalityAttested": false
+}

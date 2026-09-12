@@ -1,0 +1,20 @@
+{
+  "chainId": 560048,
+  "status": "FUNDED_AND_PUBLISHED",
+  "verification": "hoodi-lp-funding.verification.json",
+  "vault": "0x4c5bff5143aa26bbb84535df27704b32091ecd25",
+  "deployer": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+  "reference": {
+    "source": "https://api.coinbase.com/v2/prices/ETH-USD/spot",
+    "observedAt": "2026-09-12T07:47:20Z",
+    "ethUsd": "2522.175",
+    "usdPerLP": "500",
+    "rounding": "floor to WETH wei; Hoodi assets have no monetary value"
+  },
+  "nativeGasTopUpTargetWei": "2000000000000000",
+  "gasTopUpNote": "Initial 0.001 ETH per LP was insufficient for LP_A's maximum transaction gas cost. Both wallets were topped up to 0.002 ETH; WETH principal was unchanged.",
+  "lps": [
+    { "label": "LP_A", "address": "0x77d9608e7082b4168006af261beafc45c17ce2de", "assetsWei": "198241597034305708" },
+    { "label": "LP_B", "address": "0x98f39daff9ea3f56a7347c4607ca49422378f8ae", "assetsWei": "198241597034305708" }
+  ]
+}

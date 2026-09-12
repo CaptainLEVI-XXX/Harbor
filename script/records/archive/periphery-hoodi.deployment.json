@@ -1,0 +1,28 @@
+{
+  "chainId": 560048,
+  "network": "hoodi",
+  "contract": "Periphery",
+  "address": "0xefd1bf89ddb4d9172b5a3b3d1031536546d0aaa8",
+  "transactionHash": "0x5e966dd018ca863fc5f839d9203d8ccf51375c92b640e24762f1054277947047",
+  "deployer": "0x41363507931dd8963f5eb836e299d74272d0ccb0",
+  "blockNumber": 3608912,
+  "blockHash": "0xc08f1af6c5e2dd43ca065164523018396e7e6d2c6b8f8c44edfb061e88744b26",
+  "weth": "0xe0decaa66aed871ac9eb924443d1bf333fdb062e",
+  "executor": "0xf7c2593ba433c261eee79eec4bcaeba97636083d",
+  "runtimeBytes": 3682,
+  "runtimeSha256": "e0d355f320aba8ac73106d8da9b79869e961e4b1d60ff6c57ffd1db60301fecb",
+  "creationInputMatched": true,
+  "normalizedRuntimeMatched": true,
+  "immutableGettersMatched": true,
+  "gasUsed": "0xd0732",
+  "feeWei": "942496653486500",
+  "verifiedAt": "2026-09-12T11:30:28.509Z",
+  "compiler": {
+    "version": "0.8.30",
+    "optimizerRuns": 700,
+    "viaIR": true,
+    "evmVersion": "cancun"
+  },
+  "explorerSourceVerified": false,
+  "finalityAttested": false
+}
