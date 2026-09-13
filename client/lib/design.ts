@@ -24,9 +24,6 @@ const COINS: Coin[] = [
   { leftPct: 46.1, topPct: 85.9, widthPct: 7.4,  rotationDeg: 6,   pale: true  },
 ];
 
-/** the content block the coins must stay clear of, as % of the stage */
-export const CONTENT_BOX = { left: 35.85, right: 64.15, top: 28, bottom: 72 };
-
 export const DESIGN = {
   /** the viewport the spec's pixel measurements were taken at */
   referenceWidth: 1413,

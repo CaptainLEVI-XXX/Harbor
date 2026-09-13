@@ -20,7 +20,7 @@ import { DESIGN } from './design';
  *   - the ground is exactly two blooms, not a stack of washes
  */
 
-export function roundedRect(
+function roundedRect(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, w: number, h: number, r: number,
 ): void {
@@ -34,7 +34,7 @@ export function roundedRect(
 }
 
 /** crumbs' relief mask: invisible at the centre, full strength past 80% */
-export function maskAt(x: number, y: number, w: number, h: number): number {
+function maskAt(x: number, y: number, w: number, h: number): number {
   const d = Math.hypot((x - w / 2) / (w * 0.46), (y - h / 2) / (h * 0.38));
   if (d <= 0) return 0;
   if (d >= 0.80) return 1;
