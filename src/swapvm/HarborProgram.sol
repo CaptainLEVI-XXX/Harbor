@@ -10,8 +10,7 @@ import {HarborPricing} from "src/swapvm/instructions/HarborPricing.sol";
 
 /// @title HarborProgram
 /// @notice Canonical bidirectional Aqua order using official Extruction and FeeProtocol.
-/// @dev Requires the pinned Aqua router instruction set; no private opcode slots.
-/// This builder grants no registration authority. The vault publishes through Aqua.ship.
+/// @dev Requires the pinned Aqua router instruction set. The vault publishes through Aqua.ship.
 library HarborProgram {
   /// @notice A token or authority address is zero, or the pair is degenerate.
   error InvalidConfiguration();

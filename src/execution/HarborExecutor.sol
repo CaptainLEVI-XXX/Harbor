@@ -77,7 +77,7 @@ contract HarborExecutor is ReentrancyGuardTransient {
   }
 
   /// @notice Execute the caller's unsigned intent against the current strategy.
-  /// @dev Collect actual input, never the whole maxIn. No publisher participates.
+  /// @dev Collect actual input rather than maxIn.
   /// Book checkpoints the independently observed pre-trade NAV under the same lock.
   function execute(address book, Trade calldata trade)
     external
@@ -150,7 +150,7 @@ contract HarborExecutor is ReentrancyGuardTransient {
     SafeTransfer.safeApprove(tokenIn, address(ROUTER), amountIn);
   }
 
-  /// @notice Compatibility preview with a fee breakdown, using the same core kernel.
+  /// @notice Preview trade amounts and fees using the shared pricing kernel.
   /// @dev Token callbacks require execute simulation; quotes do not reserve cash.
   function quote(address book, Trade calldata trade) external view returns (FillAmounts memory a) {
     _pool(book);

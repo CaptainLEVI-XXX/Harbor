@@ -7,8 +7,7 @@ import {Trade, Side, AmountMode} from "src/types/HarborTypes.sol";
 
 /// @title HarborPricing
 /// @notice Official Extruction encoding and strict core-register completion.
-/// @dev The Book is the immutable pricing target. Native FeeProtocol surrounds
-/// this extension; no private opcode number or replacement VM dispatcher is used.
+/// @dev The Book is the immutable pricing target; FeeProtocol handles VM fees.
 library HarborPricing {
   error InvalidArgumentsLength(uint256 length);
   error InvalidAuthority();
@@ -21,7 +20,6 @@ library HarborPricing {
   }
 
   /// @notice Decode exactly two full-width ABI words, after upstream strips the target.
-  /// @dev Solidity's decoder supplies the required behavior; no custom assembly.
   function parse(bytes calldata args) internal pure returns (uint256 route, uint256 version) {
     if (args.length != 64) revert InvalidArgumentsLength(args.length);
     return abi.decode(args, (uint256, uint256));

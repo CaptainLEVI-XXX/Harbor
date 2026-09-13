@@ -119,13 +119,10 @@ contract HarborClaimReceipt is ERC20, ReentrancyGuardTransient {
   }
   function _idleTransfer() private view nonReadReentrant {}
 
-  /// @dev Safety considerations: factory creates only the pinned Solady CWIA
-  /// layout: 45 runtime bytes followed by address:20 + bytes32:32. It records
-  /// canonicality before custody callbacks and alone may activate. Arbitrary
-  /// clones are not trusted by the adapter/Book. Direct implementation getters
-  /// preserve zero bindings. EXTCODECOPY writes only scratch [0..51]; the ID
-  /// read [20..51] is fully initialized. No allocation, free-pointer/zero-word
-  /// mutation, storage access or arithmetic overflow. Calldata is irrelevant.
+  /// @dev Reads the factory's Solady clone layout: 45 runtime bytes, then address:20 + bytes32:32.
+  /// The implementation returns zero bindings. EXTCODECOPY initializes scratch [0..51];
+  /// both reads stay within it. The free-memory pointer, zero word and storage are unchanged.
+  /// Adapter/Book admission accepts only factory-recognized clones.
   function _binding() private view returns (address adapter, bytes32 id) {
     if (address(this) == _IMPLEMENTATION) return (address(0), bytes32(0));
     assembly ("memory-safe") {

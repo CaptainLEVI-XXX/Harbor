@@ -236,7 +236,7 @@ library PricingMath {
     return lo;
   }
 
-  /// @dev Safety considerations for both bounded helpers: validateCurve fixes
+  /// @dev Bounds for both helpers: validateCurve fixes
   /// K <= 1e27, target <= .9e18, kappa <= .01e18; quoteConfigured requires x <= 2K.
   /// Thus excess <= 2e36, its square <= 4e72, and the cubing product <= 8e72.
   /// The coefficient product <= 1e70 and cube*coefficient < 4e72. Every product

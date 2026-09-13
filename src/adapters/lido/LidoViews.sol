@@ -205,7 +205,7 @@ abstract contract LidoViews is AdapterBase, IHarborValuation {
       if (c.stage == ClaimStage.NONE) revert InvalidObservation();
       if (c.stage == ClaimStage.PENDING) nativeIds[cursor++] = c.issuerId;
     }
-    // Safety considerations: <=64 inputs, at most one write per input. The
+    // At most 64 inputs and one write per input. The
     // shortened array exposes only initialized IDs, in unchanged caller order.
     assembly ("memory-safe") {
       mstore(nativeIds, cursor)

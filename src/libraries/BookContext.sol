@@ -35,13 +35,13 @@ library BookContext {
     OUTPUT_SENT
   }
 
-  /// @dev Safety considerations: all callers use the declared 0..12 indices;
+  /// @dev All callers use the declared 0..12 indices;
   /// ROOT+12 fits uint256. TLOAD changes no memory or persistent state.
   function get(uint256 index) internal view returns (uint256 value) {
     assembly ("memory-safe") { value := tload(add(ROOT, index)) }
   }
 
-  /// @dev Safety considerations: same closed slot domain as get. TSTORE requires
+  /// @dev Uses the same slot domain as get. TSTORE requires
   /// Cancun and a non-static frame; only authenticated mutation paths call set.
   function set(uint256 index, uint256 value) internal {
     assembly ("memory-safe") { tstore(add(ROOT, index), value) }
@@ -74,7 +74,7 @@ library BookContext {
     set(CONTROL, (get(CONTROL) & ~uint256(56)) | (uint256(step) << 3));
   }
 
-  /// @dev Safety considerations: fixed 13-word range, no memory effects. Explicit
+  /// @dev Clears a fixed 13-word range with no memory effects. Explicit
   /// cleanup is required for sequential operations in the same transaction.
   function clear() internal {
     assembly ("memory-safe") {

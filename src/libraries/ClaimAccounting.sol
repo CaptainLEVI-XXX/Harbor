@@ -30,8 +30,8 @@ library ClaimAccounting {
   error InvalidRemainingRight();
 
   /// @notice Domain separates protocol request IDs by immutable adapter identity.
-  /// @dev Safety considerations: use exactly 64 scratch bytes, clean the address
-  /// lane, and preserve the free-memory pointer/zero word. Full-width IDs do not
+  /// @dev Uses exactly 64 scratch bytes, cleans the address
+  /// lane, and preserves the free-memory pointer/zero word. Full-width IDs do not
   /// overlap the ABI-padded address. No allocation, storage, or external calls.
   function key(address adapter, uint256 id) internal pure returns (bytes32 result) {
     assembly ("memory-safe") {

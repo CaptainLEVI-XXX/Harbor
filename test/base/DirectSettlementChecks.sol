@@ -36,8 +36,7 @@ contract SettlementCallbackWeth is MockWrappedEther {
 }
 
 /// @notice Shared checks over production Harbor and unmodified official VM dispatch.
-/// @dev Replaces the superseded private-opcode/direct-call prototype. Invoked by
-/// existing test entrypoints; synthetic issuer state is never real fork evidence.
+/// @dev Uses synthetic issuer state and token callbacks to exercise settlement boundaries.
 contract DirectSettlementChecks is RedemptionMarketFixture {
   uint256 private _rejected;
   bool private _failCallback;

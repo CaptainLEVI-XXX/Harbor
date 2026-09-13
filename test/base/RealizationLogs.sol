@@ -4,7 +4,7 @@ pragma solidity 0.8.30;
 import {Vm} from "forge-std/Vm.sol";
 import {BookAccounting} from "src/libraries/BookAccounting.sol";
 
-/// @notice Independent event projection used instead of a production gain-history counter.
+/// @notice Reconstructs realized gains from emitted events for test assertions.
 library RealizationLogs {
   bytes32 internal constant TOPIC = keccak256("PositionRealized(uint256,bytes32,uint8,uint256,uint256,uint256)");
 

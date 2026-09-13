@@ -94,7 +94,7 @@ contract HarborClaimFactory is ReentrancyGuardTransient {
   /// @notice Atomically import caller-owned collateral and mint its one canonical unit.
   /// @param adapter Individually admitted custody implementation.
   /// @param input Typed collateral descriptor; the adapter verifies actual ownership/backing.
-  /// @param receiver Owner of the newly issued unit, not a recovery caller privilege.
+  /// @param receiver Owner of the newly issued unit.
   /// @return receipt Generic ERC-20 clone; raw supply is exactly one.
   function wrap(address adapter, ClaimImport calldata input, address receiver)
     external

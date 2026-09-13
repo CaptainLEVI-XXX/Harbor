@@ -34,7 +34,7 @@ contract HarborVault is VaultCore {
     return "Harbor Vault";
   }
 
-  /// @notice LP share ticker; not a promise of a fixed asset/share exchange rate.
+  /// @notice LP share ticker.
   function symbol() public pure override returns (string memory) {
     return "hVAULT";
   }
@@ -399,7 +399,7 @@ contract HarborVault is VaultCore {
   }
 
   /// @notice Anyone may checkpoint authenticated public observations from the Book.
-  /// @dev A fresh public mark is required, not a signer-supplied private NAV.
+  /// @dev Requires a fresh public mark from the Book.
   function checkpointValuation() external coordinated {
     _refreshValuation();
   }

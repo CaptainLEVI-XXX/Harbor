@@ -156,9 +156,7 @@ library BookPortfolio {
       return IHarborValuation(routes[route].adapter).inventory(routes[route].base, quantity);
     }
     if (quantity != 1) revert InvalidQuote();
-    // Canonical receipt/adapter/id bindings are immutable after registration.
-    // The receipt's entitlement getter calls this same adapter again; read one
-    // coherent live observation instead. Neither mark nor status is cached here.
+    // Registered receipt bindings are immutable; read current entitlement, mark and status together.
     ClaimObservation memory o = IHarborClaimAdapter(m.adapter).claimState(m.claimId);
     return _receiptObservation(m, o);
   }
@@ -230,7 +228,7 @@ library BookPortfolio {
       ClaimMarkets.Market storage m = markets.markets[markets.active[i]];
       if (m.sourceRoute == route) ids[cursor++] = m.claimId;
     }
-    // Safety considerations: each live entry appends at most one initialized
+    // Each live entry appends at most one initialized
     // word; cursor <= allocated capacity. Only shorten this unaliased array.
     assembly ("memory-safe") {
       mstore(ids, cursor)

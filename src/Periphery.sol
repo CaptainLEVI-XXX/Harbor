@@ -13,7 +13,7 @@ import {NftTrade} from "src/types/NftTypes.sol";
 import {Trade, AmountMode, Side, FillAmounts} from "src/types/HarborTypes.sol";
 
 /// @title Periphery
-/// @notice Native ETH entrypoints for registered WETH pools; never an arbitrary-call wallet.
+/// @notice Native ETH deposits, swaps and claims for registered WETH pools.
 /// @dev Trusts the fixed WETH's 1:1 wrap/unwrap semantics and Executor's reviewed pool registry.
 /// No durable balances, owner, sweep or delegated execution. Outputs belong to msg.sender.
 contract Periphery is ReentrancyGuardTransient {

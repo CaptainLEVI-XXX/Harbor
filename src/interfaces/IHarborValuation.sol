@@ -21,7 +21,7 @@ interface IHarborValuation {
   /// @return observedAt Oldest required observation timestamp.
   /// @return policyVersion Immutable/public marking policy version.
   /// @return observationHash Commitment to the public observations used.
-  /// @return valid Issuer evidence and estimate freshness are valid; not a launch or audit approval.
+  /// @return valid Whether issuer evidence and estimate freshness pass validation.
   function inventory(address base, uint256 shares)
     external
     view

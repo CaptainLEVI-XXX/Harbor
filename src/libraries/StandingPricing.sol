@@ -114,8 +114,7 @@ library StandingPricing {
       (a.routerIn, a.routerOut) =
         PricingMath.quoteConfigured(buy, t.mode == AmountMode.EXACT_IN, c.specified, c.curve, m);
     } else {
-      // Compatibility preview only. Executions enter through Extruction and let
-      // upstream FeeProtocol normalize the registers exactly once.
+      // Preview includes fees; execution uses Extruction with FeeProtocol-normalized registers.
       a = PricingMath.quote(t, c.curve, m, c.feeBps);
     }
     uint256 quantity = buy ? a.routerIn : a.routerOut;

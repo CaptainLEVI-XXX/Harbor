@@ -13,8 +13,7 @@ import {PricingPolicy, PricingParameters, PricingCurve} from "src/types/PricingT
 
 /// @title BookPricing
 /// @notice Bounded publication and live-state pricing under the Book's single authority.
-/// @dev Public reads and SwapVM execution share the pricing kernel. No quote signatures,
-/// historical price ledger, private NAV or discretionary per-trade permits.
+/// @dev Public reads and SwapVM execution share the pricing kernel.
 abstract contract BookPricing is BookState {
   /// @notice Configure one admitted route exactly once, independently of its updater.
   function configurePricing(uint256 route, PricingPolicy calldata policy) external {
