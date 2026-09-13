@@ -198,7 +198,7 @@ are model baselines, not four competing live protocols; the results are not APY.
 The analytics presentation separates valuation accuracy, cumulative simulated
 profit, per-trade surplus and maker/seller tradeoffs. The historical pipeline
 reconciles issuer facts and checks artifact provenance before publication. See
-[historical data pipeline](docs/OPERATIONS.md#historical-issuer-subgraph)
+[historical data pipeline](graph/history/)
 and the [benchmark publication code](graph/scripts/publish-history-analytics.mjs).
 The research runner and full input archive are maintained separately; this
 checkout alone does not reproduce the complete study.
@@ -235,11 +235,10 @@ script/       Deployment, inventory seeding, configuration and run records
 test/         Contract lifecycle, arithmetic, invariant and fork tests
 snapshots/    Committed gas and runtime-size measurements
 lib/          Pinned third-party Solidity dependencies
-docs/         Detailed specifications and operating reference
 client/       Next.js frontend, Privy wallets, trading, vaults and analytics
 ```
 
 Start with the [Graph source](graph/), [contract source](src/),
-[contribution guide](CONTRIBUTING.md), or [operating reference](docs/OPERATIONS.md).
+[contribution guide](CONTRIBUTING.md).
 Current deployment addresses are recorded in the
 [Hoodi manifest](script/records/harbor-nft-hoodi.deployment.json).

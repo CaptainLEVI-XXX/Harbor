@@ -13,8 +13,7 @@ node_modules/
 /broadcast/**/dry-run/
 
 # Private working material — keep local, never publish
-/docs/*
-!/docs/OPERATIONS.md
+/docs/
 /research/
 /notes/
 /internal/
