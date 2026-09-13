@@ -1,3 +1,5 @@
+![Harbor cover](client/public/brand/harbor-cover-1280x720.png)
+
 # Harbor
 
 ### Instant liquidity for redeemable assets and pending withdrawal rights
