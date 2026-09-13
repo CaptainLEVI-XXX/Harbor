@@ -52,3 +52,9 @@ tools/
 
 # Isolated issuer-history manifests, WASM, mapping fixtures and replay caches
 /graph/history/.build/
+
+# Client working material
+client/.superpowers/
+client/docs/
+
+client/internal/

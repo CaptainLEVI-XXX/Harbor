@@ -236,7 +236,7 @@ test/         Contract lifecycle, arithmetic, invariant and fork tests
 snapshots/    Committed gas and runtime-size measurements
 lib/          Pinned third-party Solidity dependencies
 docs/         Detailed specifications and operating reference
-client/       Frontend on feat/client-foundation; not merged into this branch yet
+client/       Next.js frontend, Privy wallets, trading, vaults and analytics
 ```
 
 Start with the [Graph source](graph/), [contract source](src/),

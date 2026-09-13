@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="i" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#63428C"/><stop offset=".55" stop-color="#4A2F6B"/><stop offset="1" stop-color="#3B2456"/>
+    </linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/><stop offset=".52" stop-color="#F4EDFC"/><stop offset="1" stop-color="#E2D6F5"/>
+    </linearGradient>
+    <radialGradient id="f" cx="34%" cy="28%" r="78%">
+      <stop offset="0" stop-color="#F0EBFA"/><stop offset=".62" stop-color="#E4DBF3"/><stop offset="1" stop-color="#CBBEEA"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- the Harbor symbol at rest (variant 2d, fading rim) - see components/HarborMark.tsx -->
+  <g transform="translate(32 32) scale(0.4)">
+    <path d="M -23.48 -44.15 A 50 50 0 1 0 23.48 -44.15 L 15.78 -29.67 A 33.64 33.64 0 1 1 -15.78 -29.67 Z" fill="url(#i)"/>
+    <path d="M -23.48 -44.15 A 50 50 0 0 0 -43.30 -25.00 L -29.13 -16.82 A 33.64 33.64 0 0 1 -15.80 -29.70 Z" fill="#B097D8"/>
+    <path d="M -43.30 -25.00 A 50 50 0 0 0 -49.97 1.75 L -33.62 1.17 A 33.64 33.64 0 0 1 -29.13 -16.82 Z" fill="#8B6BB8"/>
+    <g transform="translate(0 11.8)">
+      <circle cx="1.5" cy="1.9" r="21.8" fill="#4A2F6B"/>
+      <circle r="21.8" fill="#8E6FC8"/>
+      <circle r="20.2" fill="url(#f)"/>
+      <circle r="16.4" fill="none" stroke="#A98CD6" stroke-width="2.8"/>
+    </g>
+  </g>
+</svg>
