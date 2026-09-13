@@ -111,9 +111,9 @@ export const DESIGN = {
   copy: {
     headline: 'One pool, both sides of the trade.',
     subcopy:
-      'Deposit WETH. Harbor quotes inventory in both directions and funds exits in order.',
+      'Deposit WETH. harbor quotes inventory in both directions and funds exits in order.',
     connect: 'Connect wallet',
     availability: 'Unaudited contracts. Ethereum and Sepolia.',
-    nav: ['Swap', 'Earn', 'Portfolio', 'Analytics', 'Docs'],
+    nav: ['Swap', 'Earn', 'Testnet', 'Portfolio', 'Analytics', 'Docs'],
   },
 } as const;

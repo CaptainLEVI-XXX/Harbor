@@ -3,11 +3,14 @@
     <linearGradient id="i" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#63428C"/><stop offset=".55" stop-color="#4A2F6B"/><stop offset="1" stop-color="#3B2456"/>
     </linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/><stop offset=".52" stop-color="#F4EDFC"/><stop offset="1" stop-color="#E2D6F5"/>
+    </linearGradient>
     <radialGradient id="f" cx="34%" cy="28%" r="78%">
       <stop offset="0" stop-color="#F0EBFA"/><stop offset=".62" stop-color="#E4DBF3"/><stop offset="1" stop-color="#CBBEEA"/>
     </radialGradient>
   </defs>
-  <rect width="64" height="64" rx="14" fill="#FFFFFF"/>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
   <!-- the Harbor symbol at rest (variant 2d, fading rim) - see components/HarborMark.tsx -->
   <g transform="translate(32 32) scale(0.4)">
     <path d="M -23.48 -44.15 A 50 50 0 1 0 23.48 -44.15 L 15.78 -29.67 A 33.64 33.64 0 1 1 -15.78 -29.67 Z" fill="url(#i)"/>
