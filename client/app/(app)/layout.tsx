@@ -7,7 +7,7 @@ import { useConnect } from '@/lib/wallet';
 import { DisplayPriceProvider } from '@/lib/harbor/DisplayPriceProvider';
 
 /** Route -> the nav destination it lights up. The landing page lights none. */
-const ACTIVE: Record<string, string> = { '/swap': 'Swap', '/earn': 'Earn', '/testnet': 'Testnet' };
+const ACTIVE: Record<string, string> = { '/swap': 'trade', '/earn': 'earn', '/testnet': 'testnet' };
 
 /** Routes that scroll. Every other route stays exactly one viewport. */
 const SCROLLS = new Set(['/earn', '/swap', '/testnet']);

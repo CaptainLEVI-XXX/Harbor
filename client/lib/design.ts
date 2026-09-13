@@ -110,6 +110,6 @@ export const DESIGN = {
     subcopy:
       'Swap redeemable assets or sell pending withdrawal claims for instant liquidity. Supply the pool to earn from trading.',
     connect: 'Connect wallet',
-    nav: ['Swap', 'Earn', 'Testnet', 'Portfolio', 'Analytics', 'Docs'],
+    nav: ['trade', 'earn', 'testnet', 'analytics', 'portfolio', 'docs'],
   },
 } as const;

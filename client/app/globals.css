@@ -136,6 +136,11 @@ canvas.layer {
   background: linear-gradient(160deg, rgba(198,178,238,.34) 0%, rgba(214,199,240,.14) 100%);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.42);
 }
+/* named, not yet a destination, and no promise of one: the plain word */
+.navlinks .navlabel {
+  padding: 0.62em 1.12em; line-height: 1;
+  color: #9086A8; cursor: default; user-select: none;
+}
 .navlinks .soon {
   font-style: normal; font-size: 0.66em; font-weight: 600; letter-spacing: .03em;
   padding: 0.30em 0.54em; border-radius: 0.62em; color: #6A3FD1;
