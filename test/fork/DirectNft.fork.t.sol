@@ -5,6 +5,7 @@ import {Periphery} from "src/Periphery.sol";
 import {DeployHarborNftHoodi} from "script/deploy/DeployHarborNftHoodi.s.sol";
 import {DeployHarbor} from "script/deploy/DeployHarbor.s.sol";
 import {SeedInventoryHoodi} from "script/seed/SeedInventoryHoodi.s.sol";
+import {PopulateEarnHoodi} from "script/seed/PopulateEarnHoodi.s.sol";
 
 import {HoodiFork} from "test/base/HoodiFork.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -27,7 +28,7 @@ contract DirectNftForkTest is HoodiFork {
   receive() external payable {}
 
   function forkBlock() internal pure override returns (uint256) {
-    return 3_611_419;
+    return 3_612_478;
   }
 
   function test_ForkDeploymentScriptTwoLPsPoliciesAllocationAndFreshNftQuote() public {
@@ -144,6 +145,84 @@ contract DirectNftForkTest is HoodiFork {
     inventory.sellNfts(seededIds, floors, 0.2 ether);
     vm.expectRevert(SeedInventoryHoodi.InvalidSeed.selector);
     inventory.sellToken(0.001 ether, 1, cashBefore);
+    _exerciseEarnStages(d.book, periphery, seededIds[0]);
+  }
+
+  /// @dev Extend the existing real-dependency lifecycle rather than deploy another test suite.
+  function _exerciseEarnStages(HarborBook book, Periphery periphery, uint256 id) private {
+    PopulateEarnHoodi activity = new PopulateEarnHoodi();
+    HarborVault vault = book.VAULT();
+    address a = vm.addr(2001);
+    address b = vm.addr(2002);
+    address lp = vm.addr(1001);
+    activity.topUp(true, true, 0.004 ether);
+    assertEq(lp.balance, 0.004 ether);
+    activity.topUp(true, true, 0.004 ether); // No duplicate transfer once the floor is met.
+    assertEq(lp.balance, 0.004 ether);
+    uint256 cash = IERC20(ASSET).balanceOf(address(vault));
+    uint256 lpShares = vault.balanceOf(lp);
+    activity.depositLp(true, 0.001 ether, 1);
+    assertEq(IERC20(ASSET).balanceOf(address(vault)), cash + 0.001 ether);
+    assertGt(vault.balanceOf(lp), lpShares);
+
+    uint256 beforeBase = book.getPosition(0).shares;
+    uint256 traderBase = IERC20(WSTETH).balanceOf(a);
+    activity.tradeToken(true, true, true, 0.001 ether, 0.0008 ether, 0.2 ether, 0.001 ether);
+    assertEq(book.getPosition(0).shares, beforeBase + 0.001 ether);
+    assertEq(IERC20(WSTETH).balanceOf(a), traderBase - 0.001 ether);
+    uint256 nativeBefore = a.balance;
+    activity.tradeToken(true, true, false, 0.0005 ether, 0.001 ether, 0.2 ether, 0.001 ether);
+    assertEq(a.balance, nativeBefore + 0.0005 ether);
+    traderBase = IERC20(WSTETH).balanceOf(a);
+    activity.tradeToken(true, false, false, 0.0005 ether, 0.001 ether, 0.2 ether, 0.001 ether);
+    assertEq(IERC20(WSTETH).balanceOf(a), traderBase + 0.0005 ether);
+    nativeBefore = a.balance;
+    activity.tradeToken(true, false, true, 0.0005 ether, 0.0003 ether, 0.2 ether, 0.001 ether);
+    assertEq(a.balance, nativeBefore - 0.0005 ether);
+    vm.expectRevert(SeedInventoryHoodi.InvalidSeed.selector);
+    activity.tradeToken(true, false, false, 0.0005 ether, 0.001 ether, 0.2 ether, 1 ether);
+
+    activity.tradeNft(true, false, false, id, 0.01 ether, 0.2 ether);
+    assertEq(IERC721(QUEUE).ownerOf(id), a);
+    activity.tradeNft(true, true, false, id, 0.003 ether, 0.2 ether);
+    assertEq(IERC721(QUEUE).ownerOf(id), book.route(0).adapter);
+    activity.tradeNft(false, false, true, id, 0.01 ether, 0.2 ether);
+    assertEq(IERC721(QUEUE).ownerOf(id), b);
+    activity.tradeNft(false, true, true, id, 0.003 ether, 0.2 ether);
+    assertEq(IERC721(QUEUE).ownerOf(id), book.route(0).adapter);
+    uint256[] memory pendingId = new uint256[](1);
+    pendingId[0] = id;
+    vm.expectRevert(SeedInventoryHoodi.InvalidSeed.selector);
+    activity.recoverIssuer(pendingId); // No test-only finalized state or made-up recovery.
+
+    uint256 requested = 1e20;
+    activity.requestExit(true, requested);
+    assertEq(vault.pendingRedeemRequest(0, lp), requested);
+    vm.expectRevert(SeedInventoryHoodi.InvalidSeed.selector);
+    activity.requestExit(true, requested); // Existing pending request cannot be blindly repeated.
+    activity.fundExits();
+    assertEq(vault.pendingRedeemRequest(0, lp), 0);
+    uint256 payout = vault.maxWithdraw(lp);
+    assertGt(payout, 0);
+    nativeBefore = lp.balance;
+    activity.claimExit(true, payout);
+    assertEq(lp.balance, nativeBefore + payout);
+    assertEq(vault.maxWithdraw(lp), 0);
+    assertEq(IERC20(ASSET).balanceOf(lp), 0); // Claim arrived as ETH, not WETH.
+    vm.expectRevert(SeedInventoryHoodi.InvalidSeed.selector);
+    activity.claimExit(true, payout);
+
+    cash = IERC20(ASSET).balanceOf(address(vault));
+    beforeBase = book.getPosition(0).shares;
+    activity.requestIssuer(0.001 ether, 0.0008 ether, 4242, 0.001 ether);
+    assertEq(book.getPosition(0).shares, beforeBase - 0.001 ether);
+    assertEq(IERC20(ASSET).balanceOf(address(vault)), cash); // Pending entitlement is not new cash.
+    assertTrue(book.usedRedemptionNonce(book.redemptionEpoch(), 4242));
+    activity.checkpoint();
+    (,,, bool valid,) = vault.accountingStatus();
+    assertTrue(valid);
+    assertEq(IERC20(ASSET).balanceOf(address(periphery)), 0);
+    activity.publish();
   }
 
   function test_ForkFreshIdsWithoutAdmissionAndSharedTokenTrading() public {

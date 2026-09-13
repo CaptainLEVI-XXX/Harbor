@@ -156,7 +156,7 @@ contract SeedInventoryHoodi is Script {
     vm.stopBroadcast();
   }
 
-  function _context() private view returns (Context memory c) {
+  function _context() internal view returns (Context memory c) {
     if (block.chainid != 560048) revert InvalidSeed();
     c.book = HarborBook(vm.envOr("INVENTORY_BOOK", address(0x5FB29F20ed466840Bd2416F15f7B5312089b8d6E)));
     c.vault = c.book.VAULT();
