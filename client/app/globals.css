@@ -279,7 +279,9 @@ canvas.layer {
   align-items: center; justify-content: center;
   text-align: center; padding-bottom: 2.4%;
 }
-.colw { width: 28.3%; }
+/* as wide as the longest headline line, so each sentence holds one line and
+   the subcopy wraps to the same measure */
+.colw { width: min-content; }
 
 .headline {
   margin: 0;
@@ -287,16 +289,11 @@ canvas.layer {
   font-size: 2.50em; font-weight: 700;       /* 46px - guidelines display */
   line-height: 0.96; letter-spacing: -0.03em;
 }
+.headline span { display: block; white-space: nowrap; }
 .subcopy {
   margin: 1.10em 0 0;
   font-size: 0.924em; line-height: 1.6;      /* 17/1.6 - guidelines body */
   font-weight: 400; color: #6F6689;
-}
-.availability {
-  margin-top: 2.3em;
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.60em; font-weight: 400;       /* 11px - guidelines mono caption */
-  letter-spacing: 0.01em; color: #9086A8;
 }
 
 @media (prefers-reduced-motion: reduce) {

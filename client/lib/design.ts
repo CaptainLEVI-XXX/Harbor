@@ -42,7 +42,6 @@ export const DESIGN = {
     wordmarkEm: 1.06,
     navItemEm: 0.72,
     connectEm: 0.72,
-    availabilityEm: 0.68,
     betaEm: 0.44,
   },
 
@@ -106,11 +105,11 @@ export const DESIGN = {
   coins: COINS,
 
   copy: {
-    headline: 'One pool, both sides of the trade.',
+    /** one sentence, broken where it reads naturally */
+    headline: ['Get instant liquidity', 'for your assets at the best price.'],
     subcopy:
-      'Deposit WETH. harbor quotes inventory in both directions and funds exits in order.',
+      'Swap redeemable assets or sell pending withdrawal claims for instant liquidity. Supply the pool to earn from trading.',
     connect: 'Connect wallet',
-    availability: 'Unaudited contracts. Ethereum and Sepolia.',
     nav: ['Swap', 'Earn', 'Testnet', 'Portfolio', 'Analytics', 'Docs'],
   },
 } as const;
