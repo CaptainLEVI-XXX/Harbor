@@ -8,10 +8,10 @@ type Props = { onConnect: () => void; connectLabel: string; active?: string };
 /**
  * Items that are not routes are spans, not dead links: an anchor to "#" is
  * focusable, clickable and lies about arriving somewhere. portfolio and docs
- * are announced as coming; analytics is named before it is a route.
+ * are announced as coming; analytics opens the historical pricing benchmarks.
  * trade keeps the /swap address so existing links still land.
  */
-const HREF: Record<string, string> = { trade: '/swap', earn: '/earn', testnet: '/testnet' };
+const HREF: Record<string, string> = { trade: '/swap', earn: '/earn', analytics: '/analytics', testnet: '/testnet' };
 const SOON = new Set(['portfolio', 'docs']);
 
 export default function Nav({ onConnect, connectLabel, active }: Props) {

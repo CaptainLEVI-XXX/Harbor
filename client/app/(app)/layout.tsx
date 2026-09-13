@@ -7,10 +7,10 @@ import { useConnect } from '@/lib/wallet';
 import { DisplayPriceProvider } from '@/lib/harbor/DisplayPriceProvider';
 
 /** Route -> the nav destination it lights up. The landing page lights none. */
-const ACTIVE: Record<string, string> = { '/swap': 'trade', '/earn': 'earn', '/testnet': 'testnet' };
+const ACTIVE: Record<string, string> = { '/swap': 'trade', '/earn': 'earn', '/testnet': 'testnet', '/analytics': 'analytics' };
 
 /** Routes that scroll. Every other route stays exactly one viewport. */
-const SCROLLS = new Set(['/earn', '/swap', '/testnet']);
+const SCROLLS = new Set(['/earn', '/swap', '/testnet', '/analytics']);
 
 /**
  * The shell every route shares. Ground renders here, once, so the canvas is
