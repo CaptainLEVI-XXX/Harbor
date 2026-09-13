@@ -1,63 +1,68 @@
-import YieldChart from '@/components/charts/YieldChart';
-import type { YieldPoint } from '@/lib/earn/derive';
+import HarborMark from '@/components/HarborMark';
 import { ASSET_DECIMALS } from '@/lib/earn/types';
 import { formatWeiFixed, group } from '@/lib/format';
+import { useDisplayPrice } from '@/lib/harbor/DisplayPriceProvider';
 
 type Props = {
-  apyPct: number;
-  /** change in the trailing APY against a month ago */
-  deltaPct: number;
-  navWei: bigint;
-  volume30dWei: bigint;
-  priceWad: bigint;
-  points: YieldPoint[];
+  apyPct: number | null;
+  /** set when the APY is an estimate from short history, and says how short */
+  apyNote?: string;
+  navWei: bigint | null;
+  tradedWei: bigint | null;
+  priceWad: bigint | null;
 };
 
 /**
- * Name, headline, three stats and the yield chart share ONE modal. They are one
- * argument, not four widgets - chopping them into equal cards is the default.
+ * The name sits on the page itself; each figure gets its own pane of glass.
+ * The APY leads the row because it is the question a depositor arrives with,
+ * and a missing figure stays a dash - never a zero.
  */
-export default function VaultHero({ apyPct, deltaPct, navWei, volume30dWei, priceWad, points }: Props) {
-  const volume = Number(volume30dWei / 10n ** BigInt(ASSET_DECIMALS));
-  const sign = deltaPct < 0 ? 'loss' : 'gain';
-  const delta = `${deltaPct < 0 ? '−' : '+'}${Math.abs(deltaPct).toFixed(2)} vs last month`;
+export default function VaultHero({ apyPct, apyNote, navWei, tradedWei, priceWad }: Props) {
+  const { usd } = useDisplayPrice();
+  const traded = tradedWei === null ? null : Number(tradedWei / 10n ** BigInt(ASSET_DECIMALS));
 
   return (
-    <section className="modal">
-      <div className="ident">
-        <div className="vname">
-          <div className="badge">hW</div>
-          <div>
-            <h1>Harbor WETH</h1>
-            <p>Deposit WETH, hold hWETH. One vault, live since 12 August.</p>
+    <section className="hero">
+      <div className="vname">
+        <div className="vaultmark" aria-hidden="true"><HarborMark face="weth" /></div>
+        <div>
+          <h1>harbor WETH</h1>
+          <p>Deposit ETH, hold hWETH.</p>
+        </div>
+      </div>
+
+      <div className="metrics">
+        <div className="metric hero-apy">
+          <span className="lab">{apyNote ? 'Est. 30-day APY' : '30-day APY'}</span>
+          <b>{apyPct === null ? '—' : `${apyPct.toFixed(2)}%`}</b>
+          {/* no history is not a gain: the note is set in neutral ink */}
+          <span className="delta none">{apyNote ?? 'Insufficient history'}</span>
+        </div>
+        <div className="metric">
+          <span className="lab">Total value</span>
+          <div className="fig">
+            <b>{navWei === null ? '—' : group(formatWeiFixed(navWei, ASSET_DECIMALS, 3))}</b>
+            <i>WETH</i>
           </div>
+          {navWei !== null && <small className="usd">{usd(navWei)}</small>}
         </div>
-        <div className="hero-apy">
-          <b>{apyPct.toFixed(2)}%</b>
-          <span className="lab">30-day APY</span>
-          <span className={`delta ${sign}`}>{delta}</span>
+        <div className="metric">
+          <span className="lab">Traded, all time</span>
+          <div className="fig">
+            <b>{traded === null || tradedWei === null ? '—' : traded >= 10_000 ? `${(traded / 1000).toFixed(2)}k` : group(formatWeiFixed(tradedWei, ASSET_DECIMALS, 3))}</b>
+            <i>WETH</i>
+          </div>
+          {tradedWei !== null && <small className="usd">{usd(tradedWei)}</small>}
         </div>
-      </div>
-
-      <div className="stats">
-        <div className="stat">
-          <span>Total value</span>
-          <b>{group(formatWeiFixed(navWei, ASSET_DECIMALS, 3))}</b>
-          <i>WETH</i>
-        </div>
-        <div className="stat">
-          <span>Traded, 30 days</span>
-          <b>{volume >= 10_000 ? `${(volume / 1000).toFixed(2)}k` : volume.toFixed(0)}</b>
-          <i>WETH</i>
-        </div>
-        <div className="stat">
-          <span>hWETH price</span>
-          <b>{formatWeiFixed(priceWad, 18, 4)}</b>
-          <i>WETH</i>
+        <div className="metric">
+          <span className="lab">hWETH price</span>
+          <div className="fig">
+            <b>{priceWad === null ? '—' : formatWeiFixed(priceWad, 18, 4)}</b>
+            <i>WETH</i>
+          </div>
+          {priceWad !== null && <small className="usd">{usd(priceWad)}</small>}
         </div>
       </div>
-
-      <YieldChart points={points} />
     </section>
   );
 }

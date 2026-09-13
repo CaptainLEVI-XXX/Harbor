@@ -1,17 +1,13 @@
 import type { ExitTicket } from './types';
-import { ASSET_DECIMALS, SHARE_DECIMALS } from './types';
-import { formatWeiFixed } from '@/lib/format';
 
 export type Tab = 'deposit' | 'withdraw';
 
-export type PanelState = 'visitor' | 'paused' | 'inFlight' | 'needsApproval' | 'idle' | 'entered';
+type PanelState = 'visitor' | 'paused' | 'inFlight' | 'idle' | 'entered';
 
-export type PanelInput = {
+type PanelInput = {
   connected: boolean;
-  /** whether the vault already has a WETH allowance from this wallet */
-  approved: boolean;
   tab: Tab;
-  /** WETH wei on the deposit tab, hWETH raw units on the withdraw tab */
+  /** ETH wei on the deposit tab, hWETH raw units on the withdraw tab */
   amountWei: bigint;
   ticket: ExitTicket | null;
   /** the vault is not accepting deposits. The reason is never surfaced. */
@@ -28,12 +24,13 @@ export function panelState(input: PanelInput): PanelState {
   if (input.paused && input.tab === 'deposit') return 'paused';
   if (input.tab === 'withdraw' && input.ticket) return 'inFlight';
   if (input.amountWei === 0n) return 'idle';
-  if (input.tab === 'deposit' && !input.approved) return 'needsApproval';
+  // Depositing ETH needs no allowance: the periphery is paid in the call itself.
   return 'entered';
 }
 
 /**
- * The action always names what it is about to do.
+ * The action names the verb, not the amount: the panels above already show
+ * the figure, and a button that restates it changes on every keystroke.
  *
  * On the withdraw tab it says Request, never Withdraw: withdrawing is
  * asynchronous, and a button that promises something synchronous is a lie the
@@ -48,18 +45,12 @@ export function actionLabel(input: PanelInput, connectLabel: string): string {
       return 'Deposits are closed';
     case 'inFlight': {
       const funded = input.ticket?.fundedWei ?? 0n;
-      return funded > 0n
-        ? `Claim ${formatWeiFixed(funded, ASSET_DECIMALS, 4)} WETH`
-        : 'Waiting to be funded';
+      return funded > 0n ? 'Claim' : 'Waiting to be funded';
     }
-    case 'needsApproval':
-      return 'Approve WETH';
     case 'idle':
       return 'Enter an amount';
     case 'entered':
-      return input.tab === 'deposit'
-        ? `Deposit ${formatWeiFixed(input.amountWei, ASSET_DECIMALS, 4)} WETH`
-        : `Request ${formatWeiFixed(input.amountWei, SHARE_DECIMALS, 4)} hWETH`;
+      return input.tab === 'deposit' ? 'Deposit' : 'Request withdrawal';
   }
 }
 

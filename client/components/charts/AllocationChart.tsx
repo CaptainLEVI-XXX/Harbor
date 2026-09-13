@@ -1,31 +1,29 @@
 'use client';
 
 import { useState } from 'react';
-import type { AllocationPoint } from '@/lib/earn/derive';
-import type { Strategy } from '@/lib/earn/types';
+import type { AllocationPoint, Band } from '@/lib/earn/types';
 import { ASSET_DECIMALS } from '@/lib/earn/types';
 import { formatWeiFixed, group } from '@/lib/format';
+import { useDisplayPrice } from '@/lib/harbor/DisplayPriceProvider';
 import { PLOT, linear, evenTicks, linePath, bandPath, indexAt } from '@/lib/charts/scale';
-import { fullDate, shortDate } from '@/lib/charts/dates';
+import { moment, rangeLabel, since, tickLabel } from '@/lib/charts/dates';
+import RangeTabs from './RangeTabs';
 
-const RANGES = [
-  { label: '1M', days: 30 },
-  { label: '6M', days: 180 },
-  { label: '1Y', days: 365 },
-];
 
 const HEIGHT = 180;
 
 type Props = {
   points: AllocationPoint[];
-  strategies: Strategy[];
+  strategies: Band[];
   focus: string | null;
   onFocus: (id: string | null) => void;
+  /** the window is measured back from now */
+  now: number;
 };
 
 /** Axis ticks: whole WETH, abbreviated above a thousand. */
 function tick(whole: number): string {
-  return whole >= 1000 ? `${(whole / 1000).toFixed(2)}k` : whole.toFixed(0);
+  return whole >= 1000 ? `${(whole / 1000).toFixed(2)}k` : whole >= 10 ? whole.toFixed(0) : whole.toFixed(2);
 }
 
 /**
@@ -35,12 +33,15 @@ function tick(whole: number): string {
  * Bands are ONE hue at six lightnesses, darkest at the bottom, taken from the
  * strategy fixture in fixture order. Six distinct hues would be six accents.
  */
-export default function AllocationChart({ points, strategies, focus, onFocus }: Props) {
+export default function AllocationChart({ points, strategies, focus, onFocus, now }: Props) {
   const [split, setSplit] = useState(true);
-  const [days, setDays] = useState(30);
+  const [hours, setHours] = useState(24);
   const [hover, setHover] = useState<number | null>(null);
 
-  const shown = points.slice(-days);
+  const { usd } = useDisplayPrice();
+  // the composition in force when the window opens is its first point
+  const opening = [...points].reverse().find(p => p.at <= now - hours * 3_600_000);
+  const shown = [...(opening ? [{ ...opening, at: now - hours * 3_600_000 }] : []), ...since(points, hours, now)];
   const plotWidth = PLOT.width - PLOT.left - PLOT.right;
   const plotHeight = HEIGHT - PLOT.top - PLOT.bottom;
   const step = plotWidth / Math.max(1, shown.length - 1);
@@ -77,6 +78,7 @@ export default function AllocationChart({ points, strategies, focus, onFocus }: 
   const first = shown[0];
   const last = shown[shown.length - 1];
   const labelEvery = Math.ceil(shown.length / 5);
+  const span = first && last ? last.at - first.at : 0;
   const outline: [number, number][] = shown.map((p, i) => [x(i), y(eth(p.totalWei))]);
 
   return (
@@ -84,16 +86,16 @@ export default function AllocationChart({ points, strategies, focus, onFocus }: 
       <div className="chead">
         <div className="clabel">
           <div className="when">
-            {hovered ? fullDate(hovered.at) : split ? 'Split across strategies' : 'Total value'}
+            {hovered ? moment(hovered.at, span) : split ? 'Split across strategies' : 'Total value'}
           </div>
           {hovered ? (
             <div className="now">
               {group(formatWeiFixed(hovered.totalWei, ASSET_DECIMALS, 3))}
-              <small>WETH</small>
+              <small>WETH · {usd(hovered.totalWei)}</small>
             </div>
           ) : (
             <div className="now rest">
-              {first && last ? `${shortDate(first.at)} – ${shortDate(last.at)}` : ''}
+              {first && last ? rangeLabel(first.at, last.at) : ''}
             </div>
           )}
         </div>
@@ -106,18 +108,7 @@ export default function AllocationChart({ points, strategies, focus, onFocus }: 
               Total
             </button>
           </div>
-          <div className="seg glass" role="group" aria-label="Value range">
-            {RANGES.map(r => (
-              <button
-                key={r.label}
-                type="button"
-                aria-pressed={days === r.days}
-                onClick={() => setDays(r.days)}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
+          <RangeTabs hours={hours} onChange={h => { setHours(h); setHover(null); }} />
         </div>
       </div>
 
@@ -206,7 +197,7 @@ export default function AllocationChart({ points, strategies, focus, onFocus }: 
                  viewBox and is clipped - the first one read "Aug" */
               textAnchor={i === 0 ? 'start' : i === shown.length - 1 ? 'end' : 'middle'}
             >
-              {shortDate(p.at)}
+              {tickLabel(p.at, span)}
             </text>
           ),
         )}

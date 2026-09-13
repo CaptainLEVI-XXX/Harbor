@@ -1,6 +1,7 @@
 import type { ExitTicket } from '@/lib/earn/types';
 import { ASSET_DECIMALS } from '@/lib/earn/types';
 import { formatWeiFixed } from '@/lib/format';
+import { useDisplayPrice } from '@/lib/harbor/DisplayPriceProvider';
 
 /**
  * Three states of the same money: requested, funded, claimed.
@@ -11,6 +12,7 @@ import { formatWeiFixed } from '@/lib/format';
  * and stops at a partial head.
  */
 export default function ExitTracker({ ticket }: { ticket: ExitTicket }) {
+  const { usd } = useDisplayPrice();
   const funded = ticket.fundedWei > 0n;
   const amount = (wei: bigint) => formatWeiFixed(wei, ASSET_DECIMALS, 4);
 
@@ -26,11 +28,13 @@ export default function ExitTracker({ ticket }: { ticket: ExitTicket }) {
       </div>
       <div className="tlabs">
         <div>
-          Requested<b>{amount(ticket.requestedWei)} WETH</b>
+          Requested (estimate)<b>{ticket.requestedWei === null ? 'Value unavailable' : `${amount(ticket.requestedWei)} ETH`}</b>
+          {ticket.requestedWei !== null && <small className="usd">{usd(ticket.requestedWei)}</small>}
         </div>
         <div>
           Funded
-          <b>{funded ? `${amount(ticket.fundedWei)} of ${amount(ticket.requestedWei)}` : 'not yet'}</b>
+          <b>{funded ? ticket.requestedWei === null ? `${amount(ticket.fundedWei)} ETH` : `${amount(ticket.fundedWei)} of ${amount(ticket.requestedWei)}` : 'not yet'}</b>
+          {funded && <small className="usd">{usd(ticket.fundedWei)}</small>}
         </div>
         <div className="idle">
           Claim<b>—</b>

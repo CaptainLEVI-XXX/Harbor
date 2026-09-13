@@ -76,3 +76,8 @@ export function group(value: string): string {
   const separated = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return fraction ? `${sign}${separated}.${fraction}` : `${sign}${separated}`;
 }
+
+/** The state class a signed figure wears: `gain`, `loss`, or nothing at zero. */
+export function tone(value: bigint | number): 'gain' | 'loss' | '' {
+  return value > 0 ? 'gain' : value < 0 ? 'loss' : '';
+}

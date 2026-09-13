@@ -28,9 +28,9 @@ describe('panelState', () => {
     expect(panelState(base)).toBe('idle');
   });
 
-  it('needs approval before the first deposit only', () => {
-    expect(panelState({ ...base, approved: false, amountWei: WEI })).toBe('needsApproval');
-    expect(panelState({ ...base, approved: false, amountWei: SHARE, tab: 'withdraw' })).toBe('entered');
+  it('asks for no allowance, because ETH is paid in the call itself', () => {
+    expect(panelState({ ...base, amountWei: WEI })).toBe('entered');
+    expect(panelState({ ...base, amountWei: SHARE, tab: 'withdraw' })).toBe('entered');
   });
 
   it('shows an exit in flight on the withdraw tab', () => {
@@ -53,19 +53,19 @@ describe('actionLabel', () => {
     expect(actionLabel(base, 'Connect wallet')).toBe('Enter an amount');
   });
 
-  it('names the amount it is about to move', () => {
-    expect(actionLabel({ ...base, amountWei: (25n * WEI) / 10n }, 'x')).toBe('Deposit 2.5000 WETH');
+  it('names the verb, and leaves the amount to the panels', () => {
+    expect(actionLabel({ ...base, amountWei: (25n * WEI) / 10n }, 'x')).toBe('Deposit');
   });
 
   it('says Request on the withdraw tab - never Withdraw, which promises something synchronous', () => {
     const label = actionLabel({ ...base, tab: 'withdraw', amountWei: 3n * SHARE }, 'x');
-    expect(label).toBe('Request 3.0000 hWETH');
-    expect(label).not.toContain('Withdraw');
+    expect(label).toBe('Request withdrawal');
+    expect(label.startsWith('Withdraw')).toBe(false);
   });
 
-  it('offers the funded part of an exit, not the whole request', () => {
+  it('offers a claim once part of an exit is funded', () => {
     const ticket = { requestedWei: 8n * WEI, fundedWei: (32n * WEI) / 10n };
-    expect(actionLabel({ ...base, tab: 'withdraw', ticket }, 'x')).toBe('Claim 3.2000 WETH');
+    expect(actionLabel({ ...base, tab: 'withdraw', ticket }, 'x')).toBe('Claim');
   });
 
   it('says deposits are closed without naming a mechanism', () => {
@@ -83,6 +83,5 @@ describe('actionDisabled', () => {
     expect(actionDisabled('visitor')).toBe(false);
     expect(actionDisabled('entered')).toBe(false);
     expect(actionDisabled('inFlight')).toBe(false);
-    expect(actionDisabled('needsApproval')).toBe(false);
   });
 });
