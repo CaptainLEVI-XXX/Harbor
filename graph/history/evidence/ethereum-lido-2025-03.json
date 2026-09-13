@@ -1,0 +1,24 @@
+{
+  "series": "ethereum-lido-2025-03",
+  "mode": "CACHED_RESEARCH",
+  "cutoffHash": "0xfc429da12e414c0e8348fd9bb760b1a118b4dcf73419f021d4ccc2c3b793e05c",
+  "cutoffBlock": 22000000,
+  "sourceFilesSha256": {
+    "work/raw/study_snapshot.json": "31b491aa79d4fa203789feb7268104a8049f9467ed2aa48791370d7a6fcbe0ea",
+    "work/raw/requested_complete.json.gz": "ee7d7a9cfa637cd944fe26de92cceea263342190ea0c0268651bb5c4d207c9d9",
+    "work/raw/finalized_complete.json.gz": "7b9a602345258fd221e8954777abcaaa19546a9c38efba81dd4d2c1531bec07a",
+    "work/raw/claimed_complete.json.gz": "13d55199d242229302feee13197cb3eb117e6ae6a22a1f7f7ff67cfcdec54575",
+    "work/raw/checkpoint_rates.json": "396dede5894a9d3616c5366a1ab0c73a579fde15a14c964e4ba791b56b7225b0",
+    "outputs/boundary_audit.json": "0dc158c05d44378e540a906b238786c6fc4259ff34b22daad6d1a9f2c585f623",
+    "work/decoded/requests.csv": "9606cd0341d11de4caa7800706b3f7b4e8586377c0b6c0eb910e3a0d87d5c271",
+    "work/decoded/finalizations.csv": "5231602a6ca0ba649db00262038ae2f9a61ff115f69c417486ad6e6468b3305b",
+    "work/decoded/claims.csv": "b840af64987eba5349ed02e14c996bd9e6e20b3502c7ebe512cc7b9789fbae5d",
+    "work/raw/queue-deployed-base.sol": "68d8919f89198c3d39272b2259a3144bf87a4aa48c570624b025fd86da47d2bb",
+    "work/raw/queue-implementation.json": "39865b8a3d05fff2bf223c3ac9a851377ccbabb45f738bbf658ab2bf4902e935",
+    "outputs/checkpoints.py": "7c7e3bdca2d78db736a0afe122c0d607fdadea8e1fea76cfeda8dbcc91cd90ae",
+    "outputs/decode.py": "709ae9cce3502258b02b6d3778f4236ab3ded72566c4a03216716a2de5c0163e"
+  },
+  "abiSha256": "57d1c1bc8a752c09b64f667afd8dbd4dfc6c7cf35b766e558f4987b5a838ffcb",
+  "sourceReference": "https://github.com/lidofinance/core/blob/master/contracts/0.8.9/WithdrawalQueueBase.sol",
+  "admissionNote": "Historical deployed-source and storage evidence remain in the external frozen research archive. ABI signatures match all cached event topics. New live Graph indexing and controlled reorg verification are pending."
+}

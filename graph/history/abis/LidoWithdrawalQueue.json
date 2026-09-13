@@ -1,0 +1,93 @@
+[
+  {
+    "type": "event",
+    "name": "WithdrawalRequested",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "requestId",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "requestor",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "amountOfStETH",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "amountOfShares",
+        "type": "uint256",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "WithdrawalsFinalized",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "from",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "to",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "amountOfETH",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "sharesToBurn",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "timestamp",
+        "type": "uint256",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "WithdrawalClaimed",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "requestId",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "receiver",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "amountOfETH",
+        "type": "uint256",
+        "indexed": false
+      }
+    ]
+  }
+]

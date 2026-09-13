@@ -1,0 +1,40 @@
+[
+  {
+    "id": "ethereum-lido-2025-03",
+    "chainId": "1",
+    "network": "mainnet",
+    "environment": "MAINNET",
+    "issuer": "0x889edc2edab5f40e902b864ad4d7ade8e412f9b1",
+    "adapterVersion": "lido-inclusive-v1",
+    "sourceAsset": "eip155:1/erc20:0xae7ab96520de3a18e5e111b5eaab095312d7fe84",
+    "settlementAsset": "eip155:1/slip44:60",
+    "decimals": 18,
+    "startBlock": 17240000,
+    "endBlock": 22000000,
+    "cutoffHash": "0xfc429da12e414c0e8348fd9bb760b1a118b4dcf73419f021d4ccc2c3b793e05c",
+    "cutoffTimestamp": "1741410875",
+    "coverageOrigin": "FROM_FIRST_REQUEST",
+    "evidence": "CACHED_RESEARCH",
+    "finalityPolicy": "RPC_FINALIZED",
+    "expectedDeployment": null
+  },
+  {
+    "id": "fixture-arbitrum",
+    "chainId": "42161",
+    "network": "arbitrum-one",
+    "environment": "BUILD_FIXTURE",
+    "issuer": "0x0000000000000000000000000000000000000101",
+    "adapterVersion": "lido-inclusive-v1",
+    "sourceAsset": "eip155:42161/erc20:0x0000000000000000000000000000000000000102",
+    "settlementAsset": "eip155:42161/erc20:0x0000000000000000000000000000000000000103",
+    "decimals": 6,
+    "startBlock": 0,
+    "endBlock": 100,
+    "cutoffHash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "cutoffTimestamp": "1000",
+    "coverageOrigin": "FROM_FIRST_REQUEST",
+    "evidence": "FIXTURE",
+    "finalityPolicy": "RPC_FINALIZED",
+    "expectedDeployment": null
+  }
+]

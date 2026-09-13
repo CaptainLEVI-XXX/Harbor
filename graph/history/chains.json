@@ -1,0 +1,8 @@
+{
+  "1": {
+    "network": "mainnet"
+  },
+  "42161": {
+    "network": "arbitrum-one"
+  }
+}

@@ -1,0 +1,80 @@
+# Issuer facts only. No forecasts, synthetic Harbor trades or simulated PnL.
+type HistorySeries @entity(immutable: false) {
+  id: Bytes!
+  chainId: BigInt!
+  issuer: Bytes!
+  adapterVersion: String!
+  environment: String!
+  sourceAsset: String!
+  settlementAsset: String!
+  decimals: Int!
+  complete: Boolean!
+  requestCount: BigInt!
+  batchCount: BigInt!
+  claimCount: BigInt!
+  lastRequest: BigInt!
+  lastFinalized: BigInt!
+  cumulativeFace: BigInt!
+  cumulativeShares: BigInt!
+  locked: BigInt!
+  paid: BigInt!
+}
+type WithdrawalRequest @entity(immutable: true) {
+  id: Bytes!
+  series: HistorySeries!
+  requestId: BigInt!
+  face: BigInt!
+  shares: BigInt!
+  requestor: Bytes!
+  ownerAtRequest: Bytes!
+  prefixFace: BigInt!
+  prefixShares: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  transactionIndex: BigInt!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
+type FinalizationBatch @entity(immutable: true) {
+  id: Bytes!
+  series: HistorySeries!
+  sequence: BigInt!
+  firstRequest: BigInt!
+  lastRequest: BigInt!
+  locked: BigInt!
+  shares: BigInt!
+  requestedFace: BigInt!
+  finalizedAt: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  transactionIndex: BigInt!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
+type WithdrawalClaim @entity(immutable: true) {
+  id: Bytes!
+  series: HistorySeries!
+  requestId: BigInt!
+  ownerAtClaim: Bytes!
+  receiver: Bytes!
+  amount: BigInt!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  transactionIndex: BigInt!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
+type HistoryIssue @entity(immutable: true) {
+  id: Bytes!
+  series: HistorySeries!
+  code: String!
+  blockNumber: BigInt!
+  blockHash: Bytes!
+  transactionHash: Bytes!
+  transactionIndex: BigInt!
+  logIndex: BigInt!
+  timestamp: BigInt!
+}
