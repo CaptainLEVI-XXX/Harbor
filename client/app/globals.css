@@ -805,8 +805,10 @@ canvas.layer {
 /* the title is gone: the tabs are the only thing above the deck, and they
    keep the panels' content column so nothing looks adrift */
 .swapx .swap-head { justify-content: flex-end; margin: 0 0 clamp(8px, 1.5vh, 13px); }
-.swapx .seg { padding: 4px; border-radius: 17px; }
-.swapx .seg button { padding: clamp(7px, 1.1vh, 10px) clamp(14px, 2.2vh, 20px); border-radius: clamp(12px, 1.7vh, 15px); font-size: clamp(13px, 1.65vh, 15.5px); }
+/* full deck width, the two options splitting it evenly - the same size as
+   Earn's Deposit / Withdraw */
+.swapx .seg { display: flex; flex: 1; padding: 3px; border-radius: 19px; }
+.swapx .seg button { flex: 1; padding: 10px 0; border-radius: 15px; font-size: 14.5px; }
 .swapx .seg button { transition: color .16s ease, background .16s ease; }
 
 /* no hairline: a rule floating on the lattice reads as a seam in the page */
@@ -1177,7 +1179,6 @@ canvas.layer {
 .earn .modal,
 .earn .metric,
 .earn .pane,
-.earn .tabs,
 .earn .alert {
   background:
     linear-gradient(155deg, rgba(255,255,255,.62) 0%, rgba(252,249,255,.48) 40%, rgba(230,218,248,.40) 100%);
@@ -1400,14 +1401,14 @@ canvas.layer {
 .earn .pos .pnl .usd{margin:0;font-size:12.5px}
 .earn .pos .pnl .chip{margin-left:auto}
 
-.earn .tabs{display:flex;gap:2px;padding:4px;border-radius:19px;margin-bottom:12px}
-.earn .tabs button{flex:1;padding:10px 0;border:0;border-radius:15px;background:none;
-  font-family:var(--font-body), system-ui, sans-serif;font-weight:500;font-size:14.5px;color:#6F6689;
-  transition:color .16s ease,background .16s ease,box-shadow .16s ease}
-.earn .tabs button:hover{color:#4A2F6B;background:rgba(255,255,255,.34)}
-.earn .tabs button[aria-pressed=true]{background:linear-gradient(135deg,#fff,rgba(255,255,255,.76));
-  color:#4A2F6B;font-weight:600;box-shadow:inset 0 1px 0 #fff,0 2px 6px -2px rgba(74,47,107,.16)}
-.earn .tabs button:active{background:rgba(255,255,255,.5)}
+/* the segmented control's material, at the panel's full width: the same
+   size on Earn as on Swap, the two options splitting it evenly */
+.earn .panelhead{margin:0 0 12px}
+/* 3px, not 4: the material's 1px edge would otherwise make it 2px taller than before */
+.earn .panelhead .seg{display:flex;width:100%;padding:3px;border-radius:19px}
+.earn .panelhead .seg button{flex:1;padding:10px 0;border-radius:15px;font-size:14.5px;
+  color:#6F6689;transition:color .16s ease, background .16s ease}
+.earn .panelhead .seg button[aria-pressed=true]{background:linear-gradient(135deg, #fff, rgba(255,255,255,.7));color:#4A2F6B}
 
 /* ---------- the carved pair ----------
    The swap deck's glass, at a rail's proportions. Geometry comes from

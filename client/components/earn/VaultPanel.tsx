@@ -203,9 +203,12 @@ export default function VaultPanel({
 
   return (
     <div className="panelcard">
-      <div className="tabs" role="group" aria-label="Deposit or withdraw">
-        <button type="button" aria-pressed={depositing} onClick={() => switchTo('deposit')}>Deposit</button>
-        <button type="button" aria-pressed={!depositing} onClick={() => switchTo('withdraw')}>Withdraw</button>
+      {/* the same control as Swap's Tokens / Receipts, in the same place */}
+      <div className="panelhead">
+        <div className="seg" role="group" aria-label="Deposit or withdraw">
+          <button type="button" aria-pressed={depositing} onClick={() => switchTo('deposit')}>Deposit</button>
+          <button type="button" aria-pressed={!depositing} onClick={() => switchTo('withdraw')}>Withdraw</button>
+        </div>
       </div>
 
       <CarvedDeck pay={panel('top')} receive={panel('bottom')} flow={depositing ? 'down' : 'up'} />
