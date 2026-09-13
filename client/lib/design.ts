@@ -106,9 +106,9 @@ export const DESIGN = {
 
   copy: {
     /** one sentence, broken where it reads naturally */
-    headline: ['Get instant liquidity', 'for your assets at the best price.'],
+    headline: ['Your assets can wait.', 'You don’t have to.'],
     subcopy:
-      'Swap redeemable assets or sell pending withdrawal claims for instant liquidity. Supply the pool to earn from trading.',
+      'Swap redeemable assets or sell pending withdrawal rights for immediate liquidity.',
     connect: 'Connect wallet',
     nav: ['trade', 'earn', 'testnet', 'analytics', 'portfolio', 'docs'],
   },

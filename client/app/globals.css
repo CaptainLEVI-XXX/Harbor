@@ -296,9 +296,11 @@ canvas.layer {
 }
 .headline span { display: block; white-space: nowrap; }
 .subcopy {
-  margin: 1.10em 0 0;
+  /* a little wider than the short headline, balanced so no word sits alone */
+  margin: 1.10em -12% 0;
   font-size: 0.924em; line-height: 1.6;      /* 17/1.6 - guidelines body */
   font-weight: 400; color: #6F6689;
+  text-wrap: balance;
 }
 
 @media (prefers-reduced-motion: reduce) {
