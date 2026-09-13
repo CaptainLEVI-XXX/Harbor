@@ -22,7 +22,8 @@
     "history:export": "npm run build && node dist/src/history/cli.js export",
     "history:verify": "npm test && npm run history:test && npm run history:build && npm run history:mapping:test",
     "history:replay": "npm run build && node scripts/replay-history-subgraph.mjs",
-    "history:deploy": "npm run build && node scripts/deploy-history.mjs"
+    "history:deploy": "npm run build && node scripts/deploy-history.mjs",
+    "history:publish-analytics": "npm run build && node scripts/publish-history-analytics.mjs"
   },
   "devDependencies": {
     "@types/node": "22.10.2",
