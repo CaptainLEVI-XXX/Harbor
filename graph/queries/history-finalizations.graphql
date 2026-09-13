@@ -1,0 +1,6 @@
+query HistoryFinalizations($series: String!, $after: Bytes!, $first: Int!, $block: Block_height!) {
+  _meta(block: $block) { deployment hasIndexingErrors block { number hash } }
+  finalizationBatches(block: $block, first: $first, orderBy: id, orderDirection: asc, where: {series: $series, id_gt: $after}) {
+    id series { id } blockNumber blockHash transactionHash transactionIndex logIndex timestamp sequence firstRequest lastRequest locked shares requestedFace finalizedAt
+  }
+}

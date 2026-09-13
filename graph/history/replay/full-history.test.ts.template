@@ -1,0 +1,40 @@
+import {Address,BigInt,Bytes,DataSourceContext,ethereum,json,JSONValue,TypedMap,store,ValueKind} from '@graphprotocol/graph-ts';
+import {assert,clearStore,dataSourceMock,newMockEvent,readFile,test} from 'matchstick-as';
+import {WithdrawalRequested,WithdrawalsFinalized,WithdrawalClaimed} from '../generated/Queue/LidoWithdrawalQueue';
+import {handleRequest,handleFinalization,handleClaim} from '../src/lido';
+import {HistorySeries,WithdrawalRequest} from '../generated/schema';
+import {seriesId,requestId,claimId,eventId} from '../src/identity';
+function s(row:TypedMap<string,JSONValue>,key:string):string{return row.get(key)!.toString();}
+function n(row:TypedMap<string,JSONValue>,key:string):ethereum.Value{return ethereum.Value.fromUnsignedBigInt(BigInt.fromString(s(row,key)));}
+function a(row:TypedMap<string,JSONValue>,key:string):ethereum.Value{return ethereum.Value.fromAddress(Address.fromString(s(row,key)));}
+test('bounded historical window matches each stored entity from a reconciled bootstrap',()=>{
+ clearStore();const info=json.fromBytes(readFile('tests/fixtures/current.json')).toObject();const conf=info.get('config')!.toObject();const c=new DataSourceContext();
+ c.setBigInt('chainId',BigInt.fromString(s(conf,'chainId')));c.setBytes('issuer',Bytes.fromHexString(s(conf,'issuer')));c.setString('adapterVersion',s(conf,'adapterVersion'));c.setString('environment',s(conf,'environment'));c.setString('sourceAsset',s(conf,'sourceAsset'));c.setString('settlementAsset',s(conf,'settlementAsset'));c.setI32('decimals',conf.get('decimals')!.toI64() as i32);
+ dataSourceMock.setReturnValues(s(conf,'issuer'),s(conf,'network'),c);
+ const seed=info.get('before')!.toObject();const state=new HistorySeries(seriesId());
+ state.chainId=BigInt.fromString(s(conf,'chainId'));state.issuer=Bytes.fromHexString(s(conf,'issuer'));state.adapterVersion=s(conf,'adapterVersion');state.environment=s(conf,'environment');state.sourceAsset=s(conf,'sourceAsset');state.settlementAsset=s(conf,'settlementAsset');state.decimals=conf.get('decimals')!.toI64() as i32;state.complete=true;
+ state.requestCount=BigInt.fromString(s(seed,'requestCount'));state.batchCount=BigInt.fromString(s(seed,'batchCount'));state.claimCount=BigInt.fromString(s(seed,'claimCount'));state.lastRequest=BigInt.fromString(s(seed,'lastRequest'));state.lastFinalized=BigInt.fromString(s(seed,'lastFinalized'));state.cumulativeFace=BigInt.fromString(s(seed,'cumulativeFace'));state.cumulativeShares=BigInt.fromString(s(seed,'cumulativeShares'));state.locked=BigInt.fromString(s(seed,'locked'));state.paid=BigInt.fromString(s(seed,'paid'));state.save();
+ const parents=info.get('parents')!.toArray();
+ for(let k=0;k<parents.length;k++) {
+  const p=parents[k].toObject();const row=new WithdrawalRequest(requestId(BigInt.fromString(s(p,'requestId'))));row.series=seriesId();row.requestId=BigInt.fromString(s(p,'requestId'));row.face=BigInt.fromString(s(p,'face'));row.shares=BigInt.fromString(s(p,'shares'));row.requestor=Bytes.fromHexString(s(p,'requestor'));row.ownerAtRequest=Bytes.fromHexString(s(p,'ownerAtRequest'));row.prefixFace=BigInt.fromString(s(p,'prefixFace'));row.prefixShares=BigInt.fromString(s(p,'prefixShares'));row.blockNumber=BigInt.fromString(s(p,'blockNumber'));row.blockHash=Bytes.fromHexString(s(p,'blockHash'));row.timestamp=BigInt.fromString(s(p,'timestamp'));row.transactionHash=Bytes.fromHexString(s(p,'transactionHash'));row.transactionIndex=BigInt.fromString(s(p,'transactionIndex'));row.logIndex=BigInt.fromString(s(p,'logIndex'));row.save();
+ }
+ const rows=info.get('rows')!.toArray();
+  for(let i=0;i<rows.length;i++) {
+   const row=rows[i].toObject();const e=newMockEvent();e.address=Address.fromString(s(conf,'issuer'));e.block.number=BigInt.fromString(s(row,'blockNumber'));e.block.hash=Bytes.fromHexString(s(row,'blockHash'));e.block.timestamp=BigInt.fromString(s(row,'timestamp'));e.transaction.hash=Bytes.fromHexString(s(row,'transactionHash'));e.transaction.index=BigInt.fromString(s(row,'transactionIndex'));e.logIndex=BigInt.fromString(s(row,'logIndex'));
+   let values:ethereum.Value[]=[];const kind=s(row,'kind');
+   if(kind=='request')values=[n(row,'requestId'),a(row,'requestor'),a(row,'ownerAtRequest'),n(row,'face'),n(row,'shares')];
+   else if(kind=='batch')values=[n(row,'firstRequest'),n(row,'lastRequest'),n(row,'locked'),n(row,'shares'),n(row,'finalizedAt')];
+   else values=[n(row,'requestId'),a(row,'ownerAtClaim'),a(row,'receiver'),n(row,'amount')];
+   e.parameters=[];for(let j=0;j<values.length;j++)e.parameters.push(new ethereum.EventParam('arg',values[j]));
+   let entity='',id='';let fields:string[]=[];
+   if(kind=='request'){handleRequest(changetype<WithdrawalRequested>(e));entity='WithdrawalRequest';id=requestId(BigInt.fromString(s(row,'requestId'))).toHexString();fields=['face','shares','requestor','ownerAtRequest','prefixFace','prefixShares'];}
+   else if(kind=='batch'){handleFinalization(changetype<WithdrawalsFinalized>(e));entity='FinalizationBatch';id=eventId(e,'finalization').toHexString();fields=['sequence','firstRequest','lastRequest','locked','shares','requestedFace','finalizedAt'];}
+   else {handleClaim(changetype<WithdrawalClaimed>(e));entity='WithdrawalClaim';id=claimId(BigInt.fromString(s(row,'requestId'))).toHexString();fields=['requestId','ownerAtClaim','receiver','amount'];}
+   fields=fields.concat(['blockNumber','blockHash','transactionHash','transactionIndex','logIndex','timestamp']);
+   const stored=store.get(entity,id);if(stored==null)assert.assertTrue(false,'MISSING_REPLAY_ENTITY');
+   for(let k=0;k<fields.length;k++){const v=stored!.get(fields[k])!;const actual=v.kind==ValueKind.BYTES?v.toBytes().toHexString():v.toBigInt().toString();const expected=s(row,fields[k]);if(actual!=expected)assert.stringEquals(actual,expected);}
+  }
+ assert.entityCount('HistoryIssue',0);const expected=info.get('after')!.toObject();const keys=expected.entries;
+ for(let i=0;i<keys.length;i++)assert.fieldEquals('HistorySeries',seriesId().toHexString(),keys[i].key,keys[i].value.toString());
+ assert.fieldEquals('HistorySeries',seriesId().toHexString(),'complete','true');
+});

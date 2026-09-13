@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/tests/analytics.test.js",
@@ -12,13 +14,22 @@
     "subgraph:build": "node scripts/build-subgraph.mjs",
     "subgraph:build:hoodi": "node scripts/build-subgraph.mjs --deployment hoodi",
     "subgraph:test": "cd subgraph && graph test --version 0.6.0",
-    "verify": "npm test && npm run subgraph:build && npm run subgraph:test"
+    "verify": "npm test && npm run subgraph:build && npm run subgraph:test",
+    "history:build": "npm run build && node scripts/build-history-subgraph.mjs",
+    "history:test": "npm run build && node --test dist/tests/history.test.js",
+    "history:mapping:test": "node scripts/test-history-subgraph.mjs",
+    "history:cache": "npm run build && node dist/src/history/cli.js cache",
+    "history:export": "npm run build && node dist/src/history/cli.js export",
+    "history:verify": "npm test && npm run history:test && npm run history:build && npm run history:mapping:test",
+    "history:replay": "npm run build && node scripts/replay-history-subgraph.mjs",
+    "history:deploy": "npm run build && node scripts/deploy-history.mjs"
   },
   "devDependencies": {
     "@types/node": "22.10.2",
     "@graphprotocol/graph-cli": "0.98.1",
     "@graphprotocol/graph-ts": "0.38.2",
     "matchstick-as": "0.6.0",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "graphql": "16.11.0"
   }
 }

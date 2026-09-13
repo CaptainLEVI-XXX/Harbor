@@ -48,3 +48,6 @@ tools/
 /graph/.local/
 /graph/subgraph/tests/.latest.json
 /graph/subgraph/tests/.bin/
+
+# Isolated issuer-history manifests, WASM, mapping fixtures and replay caches
+/graph/history/.build/

@@ -1,0 +1,7 @@
+query HistorySeries($id: ID!, $block: Block_height!) {
+  _meta(block: $block) { deployment hasIndexingErrors block { number hash } }
+  historySeries(id: $id, block: $block) {
+    id chainId issuer adapterVersion environment sourceAsset settlementAsset decimals complete
+    requestCount batchCount claimCount lastRequest lastFinalized cumulativeFace cumulativeShares locked paid
+  }
+}
