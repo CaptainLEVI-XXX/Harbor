@@ -3,13 +3,14 @@
 import { usePathname } from 'next/navigation';
 import Ground from '@/components/Ground';
 import Nav from '@/components/Nav';
-import { useConnect } from '@/components/PrivyProvider';
+import { useConnect } from '@/lib/wallet';
+import { DisplayPriceProvider } from '@/lib/harbor/DisplayPriceProvider';
 
 /** Route -> the nav destination it lights up. The landing page lights none. */
-const ACTIVE: Record<string, string> = { '/swap': 'Swap', '/earn': 'Earn' };
+const ACTIVE: Record<string, string> = { '/swap': 'Swap', '/earn': 'Earn', '/testnet': 'Testnet' };
 
 /** Routes that scroll. Every other route stays exactly one viewport. */
-const SCROLLS = new Set(['/earn']);
+const SCROLLS = new Set(['/earn', '/swap', '/testnet']);
 
 /**
  * The shell every route shares. Ground renders here, once, so the canvas is
@@ -27,7 +28,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const scrolls = SCROLLS.has(pathname);
 
   return (
-    <main className={scrolls ? 'stage stage--scroll' : 'stage'}>
+    <DisplayPriceProvider><main className={scrolls ? 'stage stage--scroll' : 'stage'}>
       <div className="groundbox">
         <Ground />
       </div>
@@ -35,6 +36,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <Nav onConnect={onConnect} connectLabel={label} active={active} />
         {children}
       </div>
-    </main>
+    </main></DisplayPriceProvider>
   );
 }
