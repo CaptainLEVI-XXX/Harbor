@@ -1,56 +1,58 @@
-import { useState } from 'react';
-import type { Address, Hex } from 'viem';
+'use client';
+
+import { useRef, useState } from 'react';
+import type { Hex } from 'viem';
 import { useSend } from '@/lib/wallet/useSend';
-import { buildSteps, isRejection, readAllowance, runSteps } from './execute';
-import type { Quote } from './types';
+import { pending, type Deltas } from '@/lib/wallet/pending';
+import { errorMessage } from '@/lib/harbor/config';
+import type { ExecutableQuote } from '@/lib/harbor/quote';
+import { executeQuote, isRejection, type Step } from './execute';
 
-export type SwapStatus =
-  | 'ready'
-  | 'preparing'
-  | 'approving'
-  | 'swapping'
-  | 'swapped'
-  | 'repriced'
-  | 'failed';
+type SwapStatus = 'ready' | 'preparing' | 'approving' | 'swapping' | 'confirming' | 'swapped' | 'repriced' | 'failed';
 
-/** One block. A quote with less left than this cannot land in time. */
-const BLOCK_MS = 12_000;
+const statusOf: Record<Step['kind'], SwapStatus> = { approve: 'approving', swap: 'swapping' };
 
-type Run = { quote: Quote | null; status: SwapStatus; hash?: Hex };
+/** what the trade moves, per asset, as the quote states it. A receipt is not a balance. */
+function swapDeltas(quote: ExecutableQuote): Deltas {
+  const token = quote.nft ? undefined : 'wstETH';
+  return quote.input.direction === 'sell'
+    ? { ETH: quote.receiveWei, ...(token && { [token]: -quote.payWei }) }
+    : { ETH: -quote.payWei, ...(token && { [token]: quote.receiveWei }) };
+}
 
-/** The click-to-Swapped flow for the quote on screen. */
-export function useSwap(quote: Quote, onRepriced: () => void) {
+/**
+ * The page is held only while the wallet is still being asked. Once the swap
+ * is broadcast the run is `confirming`: the button and the deck are free again,
+ * and the outcome arrives as a notice when the block does.
+ */
+export function useSwap(quote: ExecutableQuote | undefined, onComplete: () => void, upgradeAccount = false) {
   const send = useSend();
-  const [run, setRun] = useState<Run>({ quote, status: 'ready' });
-
-  // A status belongs to the quote it was reached with, so a new quote starts
-  // fresh - except the re-quote a veto asked for (quote: null), which keeps it.
-  if (run.quote !== quote) setRun({ quote, status: run.quote === null ? run.status : 'ready' });
-
-  async function swap(token: Address, owner: Address) {
-    // what was on screen at the click is what the user agreed to
-    const clicked = quote;
-    const expiresAt = clicked.expiresAt as number;
-    const set = (status: SwapStatus, hash?: Hex) => setRun({ quote: clicked, status, hash });
-
-    set('preparing');
+  const active = useRef(false);
+  const latest = useRef(0);
+  const [run, setRun] = useState<{ status: SwapStatus; hash?: Hex; error?: string }>({ status: 'ready' });
+  async function swap() {
+    if (!quote || active.current) return;
+    active.current = true;
+    const id = ++latest.current;
+    // a later run owns the notice; an earlier one still refreshes balances when it lands
+    const mine = (next: typeof run) => { if (latest.current === id) setRun(next); };
+    mine({ status: 'preparing' });
+    let broadcast: Hex | undefined;
     try {
-      const allowance = await readAllowance(token, owner);
-      const steps = buildSteps({ allowance, payWei: clicked.payWei, token });
-      const hash = await runSteps(steps, send, step => {
-        if (expiresAt - Date.now() < BLOCK_MS) return false;
-        set(step.kind === 'approve' ? 'approving' : 'swapping');
-        return true;
+      const hash = await executeQuote(quote, send, step => mine({ status: statusOf[step.kind] }), upgradeAccount, submitted => {
+        broadcast = submitted;
+        active.current = false;
+        pending.add(submitted, quote.trade.receiver, swapDeltas(quote));
+        mine({ status: 'confirming', hash: submitted });
       });
-      if (hash) return set('swapped', hash);
-      setRun({ quote: null, status: 'repriced' });
-      onRepriced();
+      pending.settle(broadcast, true);
+      mine({ status: 'swapped', hash });
+      onComplete();
     } catch (error) {
-      if (isRejection(error)) return set('ready');
-      console.error(error);
-      set('failed');
-    }
+      pending.settle(broadcast, false);
+      mine(isRejection(error) ? { status: 'ready' } : { status: 'failed', error: errorMessage(error) });
+    } finally { if (latest.current === id) active.current = false; }
   }
-
-  return { status: run.status, hash: run.hash, swap };
+  const settled: SwapStatus[] = ['ready', 'confirming', 'swapped', 'failed', 'repriced'];
+  return { ...run, swap, busy: !settled.includes(run.status) };
 }

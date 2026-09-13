@@ -61,7 +61,7 @@ const spinTransform = (p: Pose) => `rotate(${deg(-p.spin).toFixed(2)})`;
 const START: Pose = { tilt: tilt(0), phi: PHI_START, spin: 0 };
 const REST: Pose = { tilt: 0, phi: PHI_REST, spin: 0 };
 
-function useSettle() {
+function useSettle(still: boolean) {
   const bowl = useRef<SVGGElement>(null);
   const coin = useRef<SVGGElement>(null);
   const spin = useRef<SVGGElement>(null);
@@ -73,7 +73,7 @@ function useSettle() {
       spin.current?.setAttribute('transform', spinTransform(p));
     };
 
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (still || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       paint(REST);
       return;
     }
@@ -119,16 +119,24 @@ function useSettle() {
 
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [still]);
 
   return { bowl, coin, spin };
 }
 
-export default function HarborMark() {
-  const { bowl, coin, spin } = useSettle();
+/**
+ * `face="weth"` strikes the coin as WETH - the vault's own asset held in the
+ * bowl - rather than badging a second logo beside the mark. It keeps the coin's
+ * geometry and rolls with it, so the ticker settles upright with the coin.
+ *
+ * `still` draws it at rest from the first frame: a token mark repeated in
+ * controls should not replay the settle every time it mounts.
+ */
+export default function HarborMark({ face = 'harbor', still = false }: { face?: 'harbor' | 'weth'; still?: boolean }) {
+  const { bowl, coin, spin } = useSettle(still);
   const id = useId();
   const ink = `${id}-ink`;
-  const face = `${id}-face`;
+  const coinFace = `${id}-face`;
 
   return (
     <svg
@@ -143,25 +151,31 @@ export default function HarborMark() {
           <stop offset="0.55" stopColor="#4A2F6B" />
           <stop offset="1" stopColor="#3B2456" />
         </linearGradient>
-        <radialGradient id={face} cx="34%" cy="28%" r="78%">
+        <radialGradient id={coinFace} cx="34%" cy="28%" r="78%">
           <stop offset="0" stopColor="#F0EBFA" />
           <stop offset="0.62" stopColor="#E4DBF3" />
           <stop offset="1" stopColor="#CBBEEA" />
         </radialGradient>
       </defs>
 
-      <g ref={bowl} transform={bowlTransform(START)}>
+      <g ref={bowl} transform={bowlTransform(still ? REST : START)}>
         <path d={BOWL} fill={`url(#${ink})`} />
         <path d={FADE_NEAR} fill="#B097D8" />
         <path d={FADE_FAR} fill="#8B6BB8" />
       </g>
 
-      <g ref={coin} transform={coinTransform(START)}>
+      <g ref={coin} transform={coinTransform(still ? REST : START)}>
         <g ref={spin}>
-          <circle cx="1.5" cy="1.9" r="21.8" fill="#4A2F6B" />
-          <circle r="21.8" fill="#8E6FC8" />
-          <circle r="20.2" fill={`url(#${face})`} />
-          <circle r="16.4" fill="none" stroke="#A98CD6" strokeWidth="2.8" />
+          {face === 'weth' ? <>
+            <circle cx="-2.6" cy="0.6" r="21.8" fill="#EC1C79" />
+            <circle r="21.8" fill="#FFF" stroke="#16121C" strokeWidth="2.4" />
+            <text y="4.6" textAnchor="middle" fontFamily="Arial Black, Arial, sans-serif" fontWeight="900" fontSize="12.4" letterSpacing="-.4" fill="#16121C">WETH</text>
+          </> : <>
+            <circle cx="1.5" cy="1.9" r="21.8" fill="#4A2F6B" />
+            <circle r="21.8" fill="#8E6FC8" />
+            <circle r="20.2" fill={`url(#${coinFace})`} />
+            <circle r="16.4" fill="none" stroke="#A98CD6" strokeWidth="2.8" />
+          </>}
         </g>
       </g>
     </svg>

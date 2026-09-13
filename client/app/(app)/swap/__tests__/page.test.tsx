@@ -1,173 +1,177 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import SwapPage from '../page';
-
-vi.mock('@/components/PrivyProvider', () => ({
-  privyConfigured: false,
-  useConnect: () => ({ label: 'Connect wallet', onConnect: vi.fn() }),
-}));
-
-beforeAll(() => {
-  window.HTMLElement.prototype.scrollIntoView = vi.fn();
-  window.HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
-  window.HTMLElement.prototype.releasePointerCapture = vi.fn();
-});
-
-const receipts = () => userEvent.click(screen.getByRole('button', { name: 'Receipts' }));
-
-describe('/swap', () => {
-  it('opens on the Tokens surface', () => {
-    render(<SwapPage />);
-    expect(screen.getByRole('button', { name: 'Tokens' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByLabelText('Amount you pay')).toBeInTheDocument();
+const quoteHook = vi.hoisted(() => vi.fn<(...args: unknown[]) => unknown>(() => ({ quote: { state: 'requesting', payWei: 0n, receiveWei: 0n, feeWei: 0n, rate: '', expiresAt: null }, executable: undefined })));
+const display = vi.hoisted(() => ({ enabled: false }));
+vi.mock('@/lib/harbor/DisplayPriceProvider', () => ({ useDisplayPrice: () => ({ prices: display.enabled ? { WETH: 2500n * 10n ** 18n, wstETH: 3000n * 10n ** 18n, fetchedAt: Date.now() } : null, usd: () => 'Reference USD' }) }));
+const ctl = vi.hoisted(() => ({ address: undefined as string | undefined, atomic: null as string | null }));
+vi.mock('@/lib/wallet', () => ({ privyConfigured: false, useSigner: () => null, truncateAddress: (a: string) => a, useConnect: () => ({ label: 'Connect wallet', onConnect: vi.fn(), address: ctl.address }) }));
+const funder = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/harbor/withdrawals', () => ({ fundWithdrawals: funder }));
+vi.mock('@/lib/harbor/useLiveQuote', () => ({ useLiveQuote: quoteHook }));
+vi.mock('@/lib/harbor/useResource', () => ({ useResource: (key: string) => ({ loading: false, refresh: vi.fn(), data: key.startsWith('atomic:') ? ctl.atomic : key.startsWith('nfts:') ? { rows: [], truncated: false } : null }) }));
+const run = vi.hoisted(() => ({ busy: false, status: 'ready' as string, hash: undefined as string | undefined, error: undefined as string | undefined }));
+vi.mock('@/lib/swap/useSwap', () => ({ useSwap: () => ({ ...run, swap: vi.fn() }) }));
+vi.mock('@/lib/wallet/useSend', () => ({ useSend: () => Object.assign(vi.fn(), { atomic: vi.fn() }) }));
+describe('live swap interface', () => {
+  it('preserves exact token wei when flipping units and converts typed dollars to tokens', async () => {
+    display.enabled = true;
+    try {
+      render(<SwapPage />);
+      const input = screen.getByLabelText('Amount you pay');
+      await userEvent.clear(input); await userEvent.type(input, '1.000000000000000001');
+      await userEvent.click(screen.getAllByRole('button', { name: 'Enter amount in dollars' })[0]);
+      expect(quoteHook.mock.lastCall?.[0]).toMatchObject({ amountWei: 1000000000000000001n });
+      await userEvent.click(screen.getByRole('button', { name: 'Enter amount in wstETH' }));
+      expect(input).toHaveValue('1.000000000000000001');
+      await userEvent.click(screen.getAllByRole('button', { name: 'Enter amount in dollars' })[0]);
+      await userEvent.clear(input); await userEvent.type(input, '30');
+      expect(quoteHook.mock.lastCall?.[0]).toMatchObject({ amountWei: 10n ** 16n });
+    } finally { display.enabled = false; }
   });
-
-  it('derives the receive amount from the pay amount', async () => {
+  it('does not invent a received amount while a quote is loading', () => {
     render(<SwapPage />);
-    const pay = screen.getByLabelText('Amount you pay');
-    await userEvent.clear(pay);
-    await userEvent.type(pay, '2');
-    expect(screen.getByLabelText('Amount you receive')).toHaveValue('2.365751');
+    expect(screen.getByLabelText('Amount you receive')).toHaveValue('');
+    expect(screen.getByText(/canonical SwapVM/)).toBeInTheDocument();
   });
-
-  it('typing in the receive well sets exact output and derives the pay leg', async () => {
+  it('switches direction and exactness without frontend pricing arithmetic', async () => {
     render(<SwapPage />);
-    const recv = screen.getByLabelText('Amount you receive');
-    await userEvent.clear(recv);
-    await userEvent.type(recv, '1');
-    expect(screen.getByLabelText('Amount you receive')).toHaveValue('1');
-    expect(screen.getByLabelText('Amount you pay')).not.toHaveValue('');
-    // the accent follows the derived leg - under exact output that is the pay side
-    expect(screen.getByText('You pay')).toBeInTheDocument();
-    expect(screen.getByLabelText('Amount you pay')).toHaveClass('out');
-    expect(screen.getByLabelText('Amount you receive')).not.toHaveClass('out');
+    await userEvent.click(screen.getByRole('button', { name: 'Reverse direction' }));
+    await userEvent.type(screen.getByLabelText('Amount you receive'), '2');
+    expect(quoteHook.mock.lastCall?.[0]).toMatchObject({ direction: 'buy', mode: 'exactOutput', amountWei: 2n * 10n ** 18n });
   });
-
-  it('refuses an amount above the book and names the limit', async () => {
+  it('does not present fixture receipts before connecting', async () => {
     render(<SwapPage />);
-    const pay = screen.getByLabelText('Amount you pay');
-    await userEvent.clear(pay);
-    await userEvent.type(pay, '99');
-    expect(screen.getByText('Above the book')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Amount too large' })).toBeDisabled();
-  });
-
-  it('goes idle with an empty amount', async () => {
-    render(<SwapPage />);
-    await userEvent.clear(screen.getByLabelText('Amount you pay'));
-    expect(screen.getByRole('button', { name: 'Enter an amount' })).toBeDisabled();
-  });
-
-  it('switches to Receipts and offers no amount input on the receipt side', async () => {
-    render(<SwapPage />);
-    await receipts();
+    await userEvent.click(screen.getByRole('button', { name: 'Receipts' }));
+    expect(screen.getByText('Connect to see receipts')).toBeInTheDocument();
+    expect(screen.queryByText(/18421/)).toBeNull();
+    // the picker opens, but only to say why it is empty
+    await userEvent.click(screen.getByRole('button', { name: 'Select a receipt' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('Connect your wallet to see your receipts.');
+    expect(screen.queryAllByRole('button', { name: /^#\d+/ })).toHaveLength(0);
+    await userEvent.keyboard('{Escape}');
     expect(screen.queryByLabelText('Amount you pay')).toBeNull();
     expect(screen.queryByLabelText('Amount you receive')).toBeNull();
-    expect(screen.getByRole('button', { name: /18421/ })).toBeInTheDocument();
   });
-
-  it('offers no exchange control on Receipts - the trade only goes one way', async () => {
+  it('has nothing to buy and never offers a fractional receipt trade', async () => {
     render(<SwapPage />);
-    expect(screen.getByRole('button', { name: 'Reverse direction' })).toBeInTheDocument();
-    await receipts();
-    expect(screen.queryByRole('button', { name: 'Reverse direction' })).toBeNull();
-  });
-
-  it('gives exactly one whole receipt, never a fraction', async () => {
-    render(<SwapPage />);
-    await receipts();
-    const row = screen.getByText('You give').closest('.qrow') as HTMLElement;
-    expect(within(row).getByText('1 receipt · #18421')).toBeInTheDocument();
-  });
-
-  it('prices a receipt against its mark and shows the entitlement beside it', async () => {
-    render(<SwapPage />);
-    await receipts();
-    expect(screen.getByText('3.937458 WETH')).toBeInTheDocument();   // mark less fee
-    expect(screen.getByText('4.12 ETH')).toBeInTheDocument();        // entitlement
-  });
-
-  it('reprices when another receipt is chosen', async () => {
-    render(<SwapPage />);
-    await receipts();
-    await userEvent.click(screen.getByRole('button', { name: /18422/ }));
-    expect(screen.getByText('1.720877 WETH')).toBeInTheDocument();
-  });
-
-  it('reverses the pair', async () => {
-    render(<SwapPage />);
-    expect(screen.getByRole('combobox', { name: 'Pay asset' })).toHaveTextContent('wstETH');
+    await userEvent.click(screen.getByRole('button', { name: 'Receipts' }));
     await userEvent.click(screen.getByRole('button', { name: 'Reverse direction' }));
-    expect(screen.getByRole('combobox', { name: 'Pay asset' })).toHaveTextContent('WETH');
+    expect(screen.getByText('Nothing in inventory')).toBeInTheDocument();
+    // nothing is quoted until a whole receipt is chosen, in either direction
+    expect(quoteHook.mock.lastCall?.[0]).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Reverse direction' }));
+    expect(quoteHook.mock.lastCall?.[0]).toBeNull();
+    expect(screen.queryByLabelText('Amount you pay')).toBeNull();
   });
 });
 
-describe('/swap quote states', () => {
-  it('says a receipt is not quotable and that recovery is unaffected', async () => {
+describe('the one-transaction offer', () => {
+  const USER = '0x1234567890abcdef1234567890abcdef12345678';
+  afterEach(() => { ctl.address = undefined; ctl.atomic = null; });
+  const offer = () => screen.queryByRole('checkbox');
+
+  it('offers the upgrade only for a token-funded trade, the one two-call case', async () => {
+    ctl.address = USER; ctl.atomic = 'ready';
     render(<SwapPage />);
-    await receipts();
-    await userEvent.click(screen.getByRole('button', { name: /18990/ }));
-    expect(screen.getByText('No quote available')).toBeInTheDocument();
-    expect(screen.getByText(/does not affect recovery/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Not quotable' })).toBeDisabled();
+    // selling wstETH means approve then swap
+    expect(offer()).not.toBeNull();
+    // paying in ETH needs no allowance, so there is nothing to join together
+    await userEvent.click(screen.getByRole('button', { name: 'Reverse direction' }));
+    expect(offer()).toBeNull();
   });
 
-  it('shows no figures at all when there is no quote', async () => {
-    render(<SwapPage />);
-    await receipts();
-    await userEvent.click(screen.getByRole('button', { name: /18990/ }));
-    expect(screen.queryByText(/Conservative mark/)).toBeNull();
-  });
-
-  it('lets the quote expire and offers a refresh', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      render(<SwapPage />);
-      expect(screen.getByRole('button', { name: 'Connect wallet' })).toBeInTheDocument();
-      await act(() => vi.advanceTimersByTimeAsync(31_000));
-      expect(screen.getByText('expired')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Refresh quote' })).toBeEnabled();
-    } finally {
-      vi.useRealTimers();
+  it('never offers an upgrade the wallet cannot make, or one it does not need', () => {
+    ctl.address = USER;
+    for (const status of ['unsupported', 'supported', null]) {
+      ctl.atomic = status;
+      const { unmount } = render(<SwapPage />);
+      expect(offer(), String(status)).toBeNull();
+      unmount();
     }
   });
 
-  it('re-prices when an expired quote is refreshed', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      render(<SwapPage />);
-      await act(() => vi.advanceTimersByTimeAsync(31_000));
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      await user.click(screen.getByRole('button', { name: 'Refresh quote' }));
-      expect(screen.getByText(/expires in/)).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
+  it('does not offer an account upgrade to someone who has not connected', () => {
+    ctl.atomic = 'ready';
+    render(<SwapPage />);
+    expect(offer()).toBeNull();
+  });
+
+  it('leaves the upgrade off until it is ticked', async () => {
+    ctl.address = USER; ctl.atomic = 'ready';
+    render(<SwapPage />);
+    expect(offer()).not.toBeChecked();
+    await userEvent.click(offer()!);
+    expect(offer()).toBeChecked();
+  });
+});
+
+describe('the outcome of a run', () => {
+  afterEach(() => { run.busy = false; run.status = 'ready'; run.hash = undefined; run.error = undefined; });
+
+  it('says nothing at all until a run has an outcome', () => {
+    render(<SwapPage />);
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('announces a landed swap with the transaction it landed as', async () => {
+    run.status = 'swapped'; run.hash = '0xfeed';
+    render(<SwapPage />);
+    expect(screen.getByRole('status')).toHaveTextContent('Transaction completed');
+    expect(screen.getByRole('link', { name: /View on explorer/ })).toHaveAttribute(
+      'href', expect.stringContaining('0xfeed'),
+    );
+    // and it can be sent away
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss notification' }));
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('raises a failure rather than announcing one', () => {
+    run.status = 'failed'; run.error = 'Reverted by the vault';
+    render(<SwapPage />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Reverted by the vault');
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('lightens the action button one step per phase, and only while running', () => {
+    const { container, rerender } = render(<SwapPage />);
+    expect(container.querySelector('.act')).not.toHaveAttribute('data-phase');
+    for (const status of ['preparing', 'approving', 'swapping']) {
+      run.busy = true; run.status = status;
+      rerender(<SwapPage />);
+      expect(container.querySelector('.act'), status).toHaveAttribute('data-phase', status);
+      // and it cannot be pressed again mid-run
+      expect(container.querySelector('.act'), status).toBeDisabled();
     }
   });
 });
 
-describe('the derived leg', () => {
-  it('is blank rather than zero when nothing was quoted', async () => {
+describe('unfunded withdrawals blocking a sale', () => {
+  const unavailable = (extra: object) => ({ quote: { state: 'unavailable', payWei: 0n, receiveWei: 0n, feeWei: 0n, rate: '', expiresAt: null, reason: 'x', ...extra }, executable: undefined });
+  afterEach(() => { ctl.address = undefined; quoteHook.mockReset(); funder.mockReset(); });
+
+  it('offers funding only when the exit queue is the blocker', () => {
+    quoteHook.mockReturnValue(unavailable({}));
+    const { unmount } = render(<SwapPage />);
+    expect(screen.queryByRole('button', { name: 'Fund withdrawals' })).toBeNull();
+    unmount();
+    ctl.address = '0x1234567890abcdef1234567890abcdef12345678';
+    quoteHook.mockReturnValue(unavailable({ blocker: 'unfundedWithdrawals' }));
     render(<SwapPage />);
-    const pay = screen.getByLabelText('Amount you pay');
-    await userEvent.clear(pay);
-    await userEvent.type(pay, '99');
-    // 0 in the receive well would read as a price the vault had offered
-    expect(screen.getByLabelText('Amount you receive')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Fund withdrawals' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Waiting on withdrawals' })).toBeDisabled();
   });
 
-  it('keeps the last figures visible once a quote expires', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      render(<SwapPage />);
-      const before = (screen.getByLabelText('Amount you receive') as HTMLInputElement).value;
-      expect(before).not.toBe('');
-      await act(() => vi.advanceTimersByTimeAsync(31_000));
-      expect(screen.getByText('expired')).toBeInTheDocument();
-      expect(screen.getByLabelText('Amount you receive')).toHaveValue(before);
-    } finally {
-      vi.useRealTimers();
-    }
+  it('funds from the connected wallet, then announces what it reserved', async () => {
+    ctl.address = '0x1234567890abcdef1234567890abcdef12345678';
+    quoteHook.mockReturnValue(unavailable({ blocker: 'unfundedWithdrawals' }));
+    funder.mockResolvedValue({ hash: '0xabc', tickets: 1, shares: 10n ** 22n, assets: 10n ** 16n, stillPending: 0n });
+    render(<SwapPage />);
+    await userEvent.click(screen.getByRole('button', { name: 'Fund withdrawals' }));
+    expect(funder.mock.calls[0][0]).toBe(ctl.address);
+    expect(await screen.findByText('Withdrawals funded')).toBeInTheDocument();
+    expect(screen.getByText(/1 request · 0.01 ETH reserved for LPs · selling reopened/)).toBeInTheDocument();
   });
 });

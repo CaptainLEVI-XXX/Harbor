@@ -1,6 +1,7 @@
 'use client';
 
 import * as Select from '@radix-ui/react-select';
+import TokenMark from '@/components/TokenMark';
 import type { Asset } from '@/lib/swap/types';
 
 type Props = {
@@ -21,6 +22,7 @@ export default function AssetSelect({ label, value, options, onChange }: Props) 
   return (
     <Select.Root value={value} onValueChange={onChange}>
       <Select.Trigger className="asset" aria-label={label}>
+        <TokenMark symbol={value} chain />
         <Select.Value />
         <Select.Icon className="caret">▾</Select.Icon>
       </Select.Trigger>
@@ -30,8 +32,11 @@ export default function AssetSelect({ label, value, options, onChange }: Props) 
           <Select.Viewport>
             {options.map(asset => (
               <Select.Item key={asset.symbol} value={asset.symbol} className="assetitem">
-                <Select.ItemText>{asset.symbol}</Select.ItemText>
-                <small>{asset.name}</small>
+                <TokenMark symbol={asset.symbol} />
+                <span>
+                  <Select.ItemText>{asset.symbol}</Select.ItemText>
+                  <small>{asset.name}</small>
+                </span>
               </Select.Item>
             ))}
           </Select.Viewport>

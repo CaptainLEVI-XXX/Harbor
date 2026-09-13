@@ -67,7 +67,6 @@ canvas.layer {
   display: block;
 }
 
-
 /* ---------- foreground ---------- */
 .fg {
   position: relative;
@@ -81,9 +80,14 @@ canvas.layer {
   pointer-events: none;        /* the ground below stays clickable */
 }
 .fg button, .fg a { pointer-events: auto; cursor: pointer; }
-.fg input, .fg [role='combobox'], .fg [role='listbox'] { pointer-events: auto; }
+.fg input, .fg select, .fg [role='combobox'], .fg [role='listbox'] { pointer-events: auto; }
 
-.nav { display: flex; align-items: center; padding: 2.2% 3.1% 0; }
+.nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 2.2% 3.1% 0; }
+/* three columns, the outer two equal: the links sit on the page's true centre
+   whatever the wordmark and the wallet button measure, so nothing that lines up
+   with the bar (the swap deck) moves when the button changes width */
+.nav > .mark { justify-self: start; }
+.nav > .connect, .nav > .wallet { justify-self: end; }
 
 .mark {
   display: flex; align-items: baseline;
@@ -98,7 +102,7 @@ canvas.layer {
 .mark sup { align-self: flex-start; margin-left: 0.3em; font-size: 0.42em; font-weight: 500; color: #6F6689; }
 
 .navlinks {
-  margin: 0 auto;
+  margin: 0;
   display: flex; align-items: center; gap: 0.08em;
   padding: 0.34em;
   /* the lattice radius, not a pill - the nav is a tile like everything else */
@@ -122,6 +126,23 @@ canvas.layer {
   color: #4A2F6B; font-weight: 600;
   box-shadow: 0 1px 3px rgba(74,47,107,.10);
 }
+/* named, not navigable: a lavender curtain drawn over the item, and the word
+   for why. No hover, no focus stop, no cursor promising a destination. */
+.navlinks .soonlink {
+  display: inline-flex; align-items: center; gap: 0.42em;
+  padding: 0.62em 0.72em 0.62em 1.12em;
+  border-radius: 0.72em; line-height: 1;
+  color: #9086A8; cursor: default; user-select: none;
+  background: linear-gradient(160deg, rgba(198,178,238,.34) 0%, rgba(214,199,240,.14) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.42);
+}
+.navlinks .soon {
+  font-style: normal; font-size: 0.66em; font-weight: 600; letter-spacing: .03em;
+  padding: 0.30em 0.54em; border-radius: 0.62em; color: #6A3FD1;
+  background: rgba(255,255,255,.78);
+  box-shadow: inset 0 0 0 1px rgba(150,120,215,.24);
+}
+
 .navlinks a:hover {
   background: linear-gradient(135deg, rgba(255,255,255,1), rgba(255,255,255,.72));
   color: #4A2F6B;
@@ -148,6 +169,109 @@ canvas.layer {
     0 14px 30px -12px rgba(74,47,107,.7);
 }
 .connect:active { transform: translateY(0); }
+
+/* ---------- the connected wallet ----------
+   Balance first, then the address: the figure is what changes. The menu is the
+   receipt picker's glass, anchored under the button; nothing in it signs out
+   except the Disconnect at its foot. Type is px - the menu is a fixed size,
+   not a share of the nav. */
+.wallet { position: relative; pointer-events: auto; }
+.wbtn { display: inline-flex; align-items: center; gap: .55em; padding-right: 1.1em; }
+/* a wallet with a transaction still waiting on a block: a soft beat beside it */
+.wbtn .waddr[data-pending]::before {
+  content: ''; display: inline-block; width: .42em; height: .42em; margin-right: .45em; border-radius: 50%;
+  vertical-align: .12em; background: rgba(255,255,255,.85); animation: wpend 1.4s ease-in-out infinite;
+}
+@keyframes wpend { 50% { opacity: .35; } }
+.wmenu .wpend { font-style: normal; color: #6F6689; }
+.wbtn .waddr { color: #fff; }
+.wbtn .wcaret { width: .8em; height: .8em; transition: transform .16s ease; }
+.wbtn[aria-expanded="true"] .wcaret { transform: rotate(180deg); }
+.wbtn:focus-visible, .wmenu :focus-visible { outline: 2px solid #6A3FD1; outline-offset: 3px; }
+
+.wmenu {
+  position: absolute; right: 0; top: calc(100% + 10px); z-index: 70;
+  width: 320px; max-width: calc(100vw - 32px); padding: 16px;
+  border-radius: 26px; text-align: left;
+  font-family: var(--font-body), system-ui, sans-serif; font-size: 14px; color: #4A2F6B;
+  background: linear-gradient(155deg, rgba(255,255,255,.88), rgba(252,249,255,.78) 42%, rgba(236,227,251,.74));
+  -webkit-backdrop-filter: blur(26px) saturate(1.4); backdrop-filter: blur(26px) saturate(1.4);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.98), inset 0 0 0 1px rgba(255,255,255,.6),
+    0 34px 70px -34px rgba(74,47,107,.55), 0 10px 24px -16px rgba(74,47,107,.25);
+  animation: wmenuin .18s cubic-bezier(.2,.8,.2,1);
+  cursor: default; user-select: text;
+}
+@keyframes wmenuin { from { opacity: 0; transform: translateY(-6px); } }
+.wmenu button { font-family: inherit; cursor: pointer; }
+.wmenu button[disabled] { cursor: not-allowed; }
+
+.wwho { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500; color: #6F6689; }
+.wdot { width: 7px; height: 7px; border-radius: 50%; background: #B3A7C8; }
+.wdot.on { background: #6A3FD1; box-shadow: 0 0 0 3px rgba(106,63,209,.14); }
+.waddrrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0 0; }
+.waddrrow .num { font-size: 15px; color: #4A2F6B; }
+.wcopy {
+  display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 0; border-radius: 11px;
+  font-size: 12.5px; font-weight: 500; color: #4A2F6B;
+  background: rgba(255,255,255,.72); box-shadow: inset 0 0 0 1px rgba(116,94,166,.16);
+  transition: background .15s ease;
+}
+.wcopy:hover { background: rgba(255,255,255,.98); }
+.wcopy svg { width: 14px; height: 14px; }
+
+.wfig { margin: 14px 0 0; padding: 14px 0 0; border-top: 1px solid rgba(116,94,166,.12); }
+.wfig b { font-size: 26px; font-weight: 400; letter-spacing: -.03em; color: #4A2F6B; }
+.wfig i { margin-left: 6px; font-style: normal; font-size: 14px; color: #9086A8; }
+.wfig .usd { display: block; margin: 3px 0 0; font-size: 13px; }
+
+.wacts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 0; }
+.wact {
+  padding: 10px 12px; border: 0; border-radius: 15px; font-size: 14px; font-weight: 600; color: #4A2F6B;
+  background: linear-gradient(155deg, rgba(255,255,255,.96), rgba(248,244,254,.8));
+  box-shadow: inset 0 1px 0 #fff, inset 0 0 0 1px rgba(116,94,166,.16), 0 8px 18px -12px rgba(74,47,107,.42);
+  transition: box-shadow .15s ease, transform .15s ease;
+}
+.wact:hover { box-shadow: inset 0 1px 0 #fff, inset 0 0 0 1px rgba(116,94,166,.26), 0 10px 22px -12px rgba(74,47,107,.5); }
+.wact:active { transform: translateY(1px); }
+.wact.wide { width: 100%; margin-top: 12px; }
+.wout {
+  width: 100%; margin: 14px 0 0; padding: 12px 0 0; border: 0; border-top: 1px solid rgba(116,94,166,.12);
+  background: none; text-align: left; font-size: 13.5px; font-weight: 500; color: #6F6689;
+}
+.wout:hover { color: #4A2F6B; }
+
+.whead { display: flex; align-items: center; gap: 6px; margin: -4px 0 12px -6px; }
+.whead strong { font-family: var(--font-display), system-ui, sans-serif; font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
+.wback { width: 30px; height: 30px; border: 0; border-radius: 10px; background: none; font-size: 22px; line-height: 1; color: #6F6689; }
+.wback:hover { background: rgba(255,255,255,.7); color: #4A2F6B; }
+.wqr { width: 148px; height: 148px; margin: 2px auto 12px; padding: 12px; border-radius: 20px; background: #fff; box-shadow: inset 0 0 0 1px rgba(116,94,166,.14); }
+.wqr svg { display: block; width: 100%; height: 100%; }
+.waddrfull { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; border-radius: 15px; background: rgba(255,255,255,.6); box-shadow: inset 0 0 0 1px rgba(116,94,166,.12); }
+.waddrfull .num { flex: 1; min-width: 0; font-size: 12px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
+.wnote { margin: 10px 2px 0; font-size: 12px; line-height: 1.5; color: #6F6689; }
+
+.wfield { display: block; margin: 0 0 10px; }
+.wfield > span:first-child { display: block; margin: 0 0 5px 2px; font-size: 12.5px; font-weight: 500; color: #6F6689; }
+.wfield input {
+  width: 100%; min-width: 0; padding: 10px 12px; border: 0; border-radius: 14px; outline: none;
+  font-family: var(--font-mono), ui-monospace, monospace; font-size: 13.5px; color: #4A2F6B;
+  background: rgba(255,255,255,.72); box-shadow: inset 0 0 0 1px rgba(116,94,166,.16);
+}
+.wfield input:focus { box-shadow: inset 0 0 0 1.5px rgba(106,63,209,.5); }
+.wfield input[aria-invalid="true"] { box-shadow: inset 0 0 0 1.5px rgba(168,60,86,.45); }
+.wamt { display: flex; align-items: center; gap: 8px; }
+.wamt input { flex: 1; }
+.wamt em { font-style: normal; font-size: 13px; color: #9086A8; }
+.wmax { padding: 7px 10px; border: 0; border-radius: 11px; font-size: 12px; font-weight: 600; color: #4A2F6B; background: rgba(255,255,255,.8); box-shadow: inset 0 0 0 1px rgba(116,94,166,.18); }
+.wfield small { display: block; margin: 5px 2px 0; font-size: 12px; color: #9086A8; }
+.werr { margin: 0 2px 8px; font-size: 12.5px; color: #A83C56; }
+.wmenu .act.wsend { width: 100%; margin-top: 4px; padding: 13px; border-radius: 17px; font-size: 14.5px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .wmenu { animation: none; }
+  .wbtn .waddr[data-pending]::before { animation: none; }
+  .wbtn .wcaret, .wcopy, .wact { transition: none; }
+}
 
 .col {
   flex: 1;
@@ -179,6 +303,45 @@ canvas.layer {
   .stage { cursor: default; }
 }
 
+/* ---------- dollars ----------
+   A dollar figure is a reading aid beside the token amount, never the amount:
+   it is always quieter than the figure it translates. */
+.usd {
+  margin-left: 6px;
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px; font-weight: 400; letter-spacing: 0;
+  color: #9086A8;
+}
+/* under a headline figure the dollars get their own line, never its baseline */
+.earn .qrow .big .usd,
+.earn .stat .usd,
+.earn .tlabs .usd { display: block; margin: 3px 0 0; }
+
+.earn .qrow .big .usd { text-align: right; font-size: 12px; }
+.earn .tlabs .usd { font-size: 11px; }
+.earn .pos .big .usd { margin-left: 8px; font-size: 12.5px; }
+
+/* the $ sits in the input's own type, so "$4,000" reads as one figure */
+.amt .cur {
+  margin-right: -14px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 34px; font-weight: 400; letter-spacing: -.02em; color: #9086A8;
+}
+
+/* the counterpart line under a field doubles as the unit switch - it reads as
+   a quiet caption and gives itself away on hover, not with a glyph */
+.fmeta button.flip,
+.earn .fmeta button.flip {
+  display: inline-flex; align-items: center;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font-family: var(--font-body), system-ui, sans-serif; font-variant-numeric: tabular-nums;
+  font-size: 13px; color: #6F6689; text-decoration: none;
+}
+.fmeta .fusd { font-size: 13px; color: #6F6689; font-variant-numeric: tabular-nums; }
+.fmeta button.flip { transition: color .15s; }
+.fmeta button.flip:hover,
+.fmeta button.flip:focus-visible { color: #4A2F6B; }
 
 /* ============================================================
    SWAP - four depths, every one derived from the lattice cell.
@@ -192,7 +355,11 @@ canvas.layer {
   padding: 6px 0 26px;
   font-size: 15px;                 /* px, not cqw: the panel is a fixed 512 */
 }
-.panel { width: 512px; }
+.panel { width: 512px; max-width: calc(100vw - 24px); }
+.swap-wrap { align-items: flex-start; padding-top: 28px; }
+.swap-wrap .qnote { overflow-wrap: anywhere; }
+.swap-wrap .qrow { gap: 12px; }
+.fg button:disabled { cursor: not-allowed; }
 
 /* DEPTH 1 - raised off the lattice */
 .modal {
@@ -211,7 +378,7 @@ canvas.layer {
 }
 
 /* DEPTH 2 - pressed into the modal */
-.well, .list {
+.well {
   border-radius: 24px;
   background: linear-gradient(135deg, rgba(226,215,244,.72), rgba(238,231,250,.55));
   box-shadow:
@@ -219,46 +386,12 @@ canvas.layer {
     inset 0 -1px 0 rgba(255,255,255,.85);
 }
 .well { padding: 15px 20px 13px; }
-.list { padding: 6px; }
 
 /* DEPTH 4 - flat on the modal face, behind a hairline */
 .sec {
   padding: 15px 4px 3px;
   margin-top: 14px;
   border-top: 1px solid rgba(116,94,166,.13);
-}
-
-/* DEPTH 3 - a HOLE cut through the seam where the two wells touch.
-   Four rules make it read as carved: no outer shadow, no border, a face
-   darker than its surround, and the lip highlight below the opening.
-   The wrapper is zero-height and the button is absolutely positioned:
-   `place-items:center` on a zero-height track does NOT straddle - the track
-   sizes to content and the item renders downward, 29px low. */
-.rev { position: relative; height: 0; z-index: 3; }
-.rev button {
-  position: absolute; left: 50%; top: 0;
-  transform: translate(-50%, -50%);
-  width: 56px; height: 56px; border-radius: 30%;
-  display: grid; place-items: center;
-  font-size: 18px; color: #5F4A82; border: 0;
-  background:
-    linear-gradient(135deg, rgba(120,98,164,.22) 0%, rgba(150,130,190,.07) 42%, rgba(255,255,255,.50) 100%),
-    linear-gradient(#E4DBF3, #E9E2F6);
-  box-shadow:
-    inset 0 5px 9px -2px rgba(74,56,100,.34),      /* top wall, in shadow */
-    inset 4px 0 8px -4px rgba(74,56,100,.22),      /* left wall */
-    inset 0 -5px 8px -3px rgba(255,255,255,.90),   /* bottom wall, catching light */
-    inset -4px 0 7px -4px rgba(255,255,255,.62),   /* right wall */
-    0 1px 0 rgba(255,255,255,.95);                 /* the lip below the hole */
-  transition: box-shadow .2s cubic-bezier(.2,.8,.2,1);
-}
-.rev button:hover {           /* a hole deepens; it does not lift */
-  box-shadow:
-    inset 0 7px 12px -2px rgba(74,56,100,.42),
-    inset 5px 0 10px -4px rgba(74,56,100,.28),
-    inset 0 -5px 8px -3px rgba(255,255,255,.92),
-    inset -4px 0 7px -4px rgba(255,255,255,.66),
-    0 1px 0 rgba(255,255,255,.95);
 }
 
 /* ---------- panel head ---------- */
@@ -312,7 +445,7 @@ canvas.layer {
 
 .asset {
   display: flex; align-items: center; gap: 8px;
-  padding: 7px 13px 7px 12px; border-radius: 16px;
+  padding: 7px 13px 7px 8px; border-radius: 16px;
   font-family: inherit; font-weight: 600; font-size: 16px; color: #4A2F6B;
   white-space: nowrap;
   background: linear-gradient(135deg, rgba(255,255,255,.9), rgba(233,225,246,.85));
@@ -323,6 +456,22 @@ canvas.layer {
     0 1px 3px -1px rgba(74,47,107,.18);
 }
 .asset .caret { font-size: 10px; color: #9086A8; }
+
+/* ---------- token marks ----------
+   The coin sits on the pill's own baseline grid: 24px in the tile, 20px in
+   the menu. The chain badge is a corner, not a second coin - it never grows
+   past 44% or it starts competing with the asset it qualifies. */
+.tmark { position: relative; display: inline-flex; flex: none; }
+.tmark > svg { display: block; width: 24px; height: 24px; border-radius: 50%; }
+/* the vault mark is not a disc: no clipping, and its drop shadow stays inside the pill */
+.tmark.hweth > svg { border-radius: 0; filter: none !important; }
+.tmark .chainmark {
+  position: absolute; right: -3px; bottom: -3px;
+  width: 44%; height: 44%; border-radius: 50%;
+  box-shadow: 0 0 0 1.6px #F7F3FD;
+}
+.assetitem .tmark > svg { width: 20px; height: 20px; }
+.assetitem > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .asset[data-state="open"] { box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 0 0 2px rgba(106,63,209,.22); }
 
 .assetmenu {
@@ -332,8 +481,10 @@ canvas.layer {
   box-shadow: 0 24px 48px -20px rgba(74,47,107,.55), 0 4px 10px -5px rgba(74,47,107,.2);
   font-family: var(--font-body), system-ui, sans-serif;
 }
+/* the coin sits BESIDE the name it belongs to. This was two rules that
+   disagreed, and the later one stacked the coin on top of its own label. */
 .assetitem {
-  display: flex; flex-direction: column; gap: 1px;
+  display: flex; flex-direction: row; align-items: center; gap: 10px;
   padding: 9px 12px; border-radius: 14px; font-size: 14px; color: #4A2F6B;
   outline: none; cursor: pointer;
 }
@@ -343,48 +494,46 @@ canvas.layer {
 /* ---------- quote ---------- */
 .qhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 11px; }
 .qhead b { font-weight: 600; font-size: 14px; }
+/* the block the quote was read at belongs to the heading, not to a sentence
+   underneath it: it is what the quote IS, not a remark about it */
+.qhead .qblock {
+  font-style: normal; font-weight: 400; font-size: 11.5px; color: #9086A8;
+  margin-left: 9px; padding-left: 9px; border-left: 1px solid rgba(116,94,166,.22);
+}
+.qhead .qblock i {
+  font-style: normal; font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+}
 .count {
   font-family: var(--font-mono), ui-monospace, monospace;
   font-variant-numeric: tabular-nums; font-size: 13px; color: #6A3FD1;
 }
 .qrow { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; padding: 4px 0; color: #6F6689; }
 .qrow > span:last-child {
+  display: flex; align-items: center; justify-content: flex-end; gap: 7px;
   font-family: var(--font-mono), ui-monospace, monospace;
   font-variant-numeric: tabular-nums; color: #4A2F6B; white-space: nowrap;
 }
 .qrow small { color: #9086A8; margin-left: 5px; }
-.qrow > span.big { font-size: 20px; font-weight: 500; color: #6A3FD1; }
+/* the tolerance is policy, not a control: the chip says who chose it */
+.qrow .chip {
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-style: normal; font-size: 11px; font-weight: 500; color: #6F6689;
+  padding: 2px 7px; border-radius: 8px;
+  background: rgba(255,255,255,.72); box-shadow: inset 0 0 0 1px rgba(116,94,166,.14);
+}
+.routemark { width: 15px; height: 15px; flex: none; }
 .qnote { margin: 11px 0 0; font-size: 12px; color: #6F6689; line-height: 1.5; }
 
 /* ---------- receipts ---------- */
-.rhead, .rcpt { display: grid; grid-template-columns: 66px 1fr 84px 40px 16px; gap: 12px; align-items: center; }
-.rhead {
-  padding: 7px 15px 5px;
-  font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; color: #9086A8;
-}
-.rhead span:nth-child(2), .rhead span:nth-child(3), .rhead span:nth-child(4) { text-align: right; }
-.rcpt {
-  width: 100%; text-align: left; padding: 11px 15px; border-radius: 17px;
-  color: inherit; background: none; border: 0; font-family: inherit;
-  transition: background .15s;
-}
-.rcpt:hover:not([disabled]) { background: rgba(255,255,255,.55); }
-.rcpt[aria-pressed="true"] {
-  background: linear-gradient(135deg, rgba(255,255,255,.95), rgba(255,255,255,.72));
-  box-shadow: 0 1px 3px rgba(74,47,107,.14), inset 0 0 0 1px rgba(106,63,209,.28);
-}
-.rcpt[disabled] { opacity: .5; cursor: not-allowed; }
+
 .rid { font-family: var(--font-mono), ui-monospace, monospace; font-size: 13px; color: #6F6689; }
 .ent {
   font-family: var(--font-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums;
   font-size: 14.5px; text-align: right; white-space: nowrap;
 }
-.mk {
-  font-family: var(--font-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums;
-  font-size: 13px; color: #6F6689; text-align: right; white-space: nowrap;
-}
+
 .qd { font-size: 12px; color: #9086A8; text-align: right; white-space: nowrap; }
-.chev { color: #9086A8; text-align: right; }
 
 /* ---------- action ---------- */
 .act {
@@ -400,17 +549,607 @@ canvas.layer {
 }
 .act[disabled] { opacity: .42; cursor: not-allowed; box-shadow: none; }
 
-.swap-foot {
-  text-align: center; margin: 13px 0 0;
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 11px; color: #9086A8;
+/* the one-transaction offer: a consequential, one-time account change, so it
+   is opt-in, states what it costs, and never appears when there is nothing to
+   join together */
+.upgrade {
+  display: flex; align-items: flex-start; gap: 10px; margin-top: 14px;
+  padding: 12px 14px; border-radius: 18px; cursor: pointer;
+  background: rgba(255,255,255,.5); box-shadow: inset 0 0 0 1px rgba(116,94,166,.13);
+  font-size: 13px; color: #4A2F6B;
 }
-.dim { opacity: .45; }
+.upgrade input { margin: 2px 0 0; accent-color: #6A3FD1; flex: none; }
+.upgrade small { display: block; margin-top: 3px; font-size: 11.5px; color: #6F6689; line-height: 1.45; }
 
+/* ---------- testnet ----------
+   A ladder, not a form: three rungs, each one an asset and the single button
+   that obtains it. A closed rung is dimmed rather than explained - the rung
+   above it is the explanation. */
+.steps { list-style: none; margin: 18px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.steps li {
+  display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 14px;
+  padding: 13px 15px 13px 19px; border-radius: 24px;
+  background: linear-gradient(135deg, rgba(226,215,244,.72), rgba(238,231,250,.55));
+  box-shadow: inset 0 2px 6px rgba(88,70,110,.11), inset 0 -1px 0 rgba(255,255,255,.85);
+  transition: opacity .18s;
+}
+.steps li[data-shut] { opacity: .5; }
+.swap-wrap.ladder .panel { width: 560px; }
+.steps .rlabel {
+  display: inline-flex; align-items: center; white-space: nowrap;
+  font-size: 15px; font-weight: 500; color: #4A2F6B;
+}
+/* the ladder's buttons sit in a row, so they take their width from their label */
+.steps .act { width: auto; margin: 0; padding: 11px 20px; font-size: 14px; border-radius: 16px; text-decoration: none; }
+/* the faucet rung has no amount, so its button takes that column too */
+.steps li:first-child .act { grid-column: 2 / 4; }
+
+/* the amount a rung will spend, with what it is worth underneath */
+.tamt {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+  padding: 7px 13px; border-radius: 15px; min-width: 104px;
+  background: rgba(255,255,255,.55); box-shadow: inset 0 0 0 1px rgba(116,94,166,.13);
+}
+.tamt-in {
+  display: flex; align-items: baseline; gap: 3px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 16px; letter-spacing: -.01em;
+}
+/* the box takes its width from the digits inside it, so the $ and the unit sit
+   against the figure instead of against the edges of the tile */
+.tamt .grow { display: inline-grid; min-width: 0; }
+.tamt .grow::after,
+.tamt .grow input { grid-area: 1 / 1; font: inherit; letter-spacing: inherit; text-align: right; }
+.tamt .grow::after { content: attr(data-value); visibility: hidden; white-space: pre; }
+.tamt .grow input {
+  width: 100%; min-width: 0; border: 0; background: none; padding: 0; outline: none;
+  color: #4A2F6B;
+}
+/* the $ and the unit take the figure's own type, so each reads as one thing */
+.tamt .cur, .tamt .unit { font-style: normal; color: #9086A8; }
+.tamt .unit { font-size: 12.5px; }
+/* the counterpart doubles as the unit switch, exactly as it does in a swap tile */
+.tamt button.flip {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font-family: var(--font-body), system-ui, sans-serif; font-variant-numeric: tabular-nums;
+  font-size: 11px; color: #9086A8; transition: color .15s;
+}
+.tamt button.flip:hover, .tamt button.flip:focus-visible { color: #6F6689; }
+.tamt button.flip[disabled] { cursor: default; }
+
+/* ---------- the one-liner behind an (i) ---------- */
+.info { position: relative; display: inline-flex; margin-left: 7px; }
+.infodot {
+  width: 15px; height: 15px; border-radius: 50%; padding: 0; border: 0;
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 10px; font-weight: 600; line-height: 15px; color: #6F6689;
+  background: rgba(255,255,255,.72); box-shadow: inset 0 0 0 1px rgba(116,94,166,.22);
+  transition: color .15s;
+}
+.infodot:hover { color: #4A2F6B; }
+.infobubble {
+  position: absolute; left: 0; bottom: calc(100% + 8px);
+  width: max-content; max-width: 244px; padding: 8px 11px; border-radius: 12px;
+  white-space: normal;
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 12px; font-weight: 400; line-height: 1.45; color: #E4DBF3;
+  background: #4A2F6B; box-shadow: 0 12px 26px -12px rgba(74,47,107,.7);
+  opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 30;
+}
+.info:hover .infobubble, .info:focus-within .infobubble { opacity: 1; }
+
+/* ============================================================
+   SWAP DECK - the carved pair
+   ------------------------------------------------------------
+   Everything here is scoped to .swapx, which only the swap route
+   wears. /testnet reuses .swap-wrap, .panel, .seg and .act and
+   must keep the depths it was drawn for.
+
+   The enclosing card is GONE: the head, the tabs, the quote and
+   the action sit directly on the lattice, and the only large
+   glass surfaces on the route are Pay and Receive.
+
+   JS writes --tile, --pgap, --pr from lib/swap/carve.ts, so the
+   silhouette path and these rules can never disagree.
+   ============================================================ */
+
+.swapx {
+  /* A swap card, at a swap card's proportions: ~480 across, a panel a little
+     over 120 tall, the amount at 36. Every vertical measure still gives way a
+     little on a short window, but the floors are close to the caps now - at
+     this size the deck fits a laptop with room to spare. */
+  --pad: clamp(15px, 2.5vh, 23px);       /* panel padding */
+  --minh: clamp(112px, 16.4vh, 152px);   /* panel height */
+  --amount: clamp(29px, 4.6vh, 42px);
+  --caption: clamp(12.5px, 1.6vh, 15px);
+  /* the page's one lane: the nav bar's own width, measured in the page and
+     written here as --lane. The fallback is the card width it had before. */
+  --deck: clamp(360px, var(--lane, 480px), 860px);
+  --tile: 96px;                /* one lattice cell - JS corrects it */
+  --tile-r: 28.6px;
+  --pgap: 15px;
+  --pr: 34px;
+  align-items: flex-start;
+  padding: clamp(12px, 3vh, 30px) 0 clamp(12px, 3.4vh, 34px);
+  font-size: 15px;
+}
+/* one lane: the deck takes the nav bar's width AND its left edge. A single
+   auto margin absorbs the free space, so --lane-left places the card exactly;
+   with no lane to speak of both margins go auto and it simply centres. */
+.swapx .panel {
+  width: var(--deck);
+  max-width: calc(100vw - 32px);
+  margin-left: var(--lane-left, auto);
+  margin-right: auto;
+}
+
+/* ---------- the glass ----------
+   Two gradients, not a flat white: a translucent sheet that lets the lattice
+   through and stays brighter along the top, where the light is. */
+.swapx .deck { display: flex; flex-direction: column; }
+
+.swapx .gpanel {
+  position: relative;
+  display: flex;
+  min-height: var(--minh);
+  border-radius: var(--pr);
+  /* the pre-measurement fallback: the same material, minus the notch */
+  background: linear-gradient(155deg, rgba(255,255,255,.52), rgba(252,249,255,.40) 38%, rgba(226,213,247,.34));
+  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  backdrop-filter: blur(22px) saturate(1.4);
+  box-shadow: 0 22px 44px -30px rgba(74,47,107,.4);
+}
+/* once the silhouette is known the box stops painting itself: the face, the
+   edge and the shadow all follow the path instead, notch included */
+.swapx .gpanel[data-carved] {
+  background: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.swapx .gface {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(155deg,
+      rgba(255,255,255,.54) 0%,
+      rgba(252,249,255,.42) 38%,
+      rgba(228,216,247,.34) 100%);
+  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  backdrop-filter: blur(22px) saturate(1.4);
+}
+/* the trim: shadow outside the shape, thickness and hairline inside it */
+.swapx .gart {
+  position: absolute; top: 0; left: 0;
+  overflow: visible; pointer-events: none;
+}
+.swapx .gbody {
+  position: relative;
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: var(--pad);
+}
+
+/* ---------- the control ----------
+   One lattice cell, carrying the lattice's own 25/84 corner, sitting in the
+   channel the two notches leave for it. The slot is exactly the gap, so the
+   control is centred on the seam without a magic offset. */
+.swapx .pivotslot { position: relative; height: var(--pgap); z-index: 5; }
+.swapx .pivot {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: var(--tile); height: var(--tile);
+  border: 0; padding: 0; border-radius: var(--tile-r);
+  display: grid; place-items: center;
+  /* clearer than the panels: it is the nearest surface to the eye */
+  background: linear-gradient(155deg, rgba(255,255,255,.66), rgba(253,251,255,.52) 42%, rgba(233,223,250,.44));
+  -webkit-backdrop-filter: blur(15px) saturate(1.3);
+  backdrop-filter: blur(15px) saturate(1.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.98),
+    inset 0 0 0 1px rgba(255,255,255,.52),
+    0 12px 24px -16px rgba(74,47,107,.42);
+  transition: background .17s ease, box-shadow .17s ease, transform .17s ease;
+}
+.swapx .pivoticon { width: 38%; height: 38%; display: block; }
+.swapx .pivot:hover:not([disabled]) {
+  transform: translate(-50%, -50%) scale(1.03);
+  background: linear-gradient(155deg, rgba(255,255,255,.78), rgba(254,253,255,.62) 42%, rgba(238,231,252,.52));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,1),
+    inset 0 0 0 1px rgba(255,255,255,.62),
+    0 16px 30px -16px rgba(74,47,107,.48);
+}
+.swapx .pivot:active:not([disabled]) {
+  transform: translate(-50%, -50%) scale(.975);
+  box-shadow:
+    inset 0 2px 5px -1px rgba(74,56,100,.20),
+    inset 0 0 0 1px rgba(255,255,255,.5),
+    0 6px 14px -10px rgba(74,47,107,.4);
+}
+.swapx .pivot[disabled] { opacity: .55; }
+
+/* ---------- inside a panel ----------
+   The amount is the figure; everything beside it is a caption. Only the
+   amount grows with the panel. */
+.swapx .frow { margin-bottom: 2px; }
+.swapx .flabel { font-size: clamp(13px, 1.7vh, 16px); font-weight: 500; color: #4A2F6B; }
+.swapx .amt { gap: clamp(8px, 1.4vh, 13px); margin: 0; }
+.swapx .amt input { font-size: var(--amount); }
+/* the $ keeps a hair of air before the figure: close enough to read as one
+   amount, far enough that the two glyphs never touch */
+.swapx .amt .cur { font-size: var(--amount); margin-right: calc(var(--amount) * -.16); }
+.swapx .fmeta { font-size: var(--caption); align-items: baseline; }
+.swapx .fmeta button.flip, .swapx .fmeta .fusd { font-size: var(--caption); }
+
+.swapx .asset {
+  gap: clamp(6px, 1vh, 9px);
+  padding: clamp(5px, .9vh, 8px) clamp(11px, 1.7vh, 16px) clamp(5px, .9vh, 8px) clamp(5px, .9vh, 8px);
+  border-radius: clamp(15px, 2.2vh, 22px); font-size: clamp(15px, 1.9vh, 18px);
+  background: linear-gradient(155deg, rgba(255,255,255,.86), rgba(238,231,250,.70));
+  border: 1px solid rgba(255,255,255,.80);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.95),
+    0 8px 18px -12px rgba(74,47,107,.34);
+  transition: background .16s ease, box-shadow .16s ease;
+}
+.swapx .asset:hover {
+  background: linear-gradient(155deg, rgba(255,255,255,.95), rgba(243,237,252,.80));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,1), 0 10px 22px -12px rgba(74,47,107,.4);
+}
+.swapx .asset .tmark > svg:not(.chainmark) { width: clamp(21px, 2.9vh, 27px); height: clamp(21px, 2.9vh, 27px); }
+.swapx .asset .caret { font-size: 11px; }
+
+/* ---------- head, tabs, quote, action ----------
+   All four sit on the lattice now, so they align to the panel edge rather
+   than to a card's padding. */
+/* the title is gone: the tabs are the only thing above the deck, and they
+   keep the panels' content column so nothing looks adrift */
+.swapx .swap-head { justify-content: flex-end; margin: 0 0 clamp(8px, 1.5vh, 13px); }
+.swapx .seg { padding: 4px; border-radius: 17px; }
+.swapx .seg button { padding: clamp(7px, 1.1vh, 10px) clamp(14px, 2.2vh, 20px); border-radius: clamp(12px, 1.7vh, 15px); font-size: clamp(13px, 1.65vh, 15.5px); }
+.swapx .seg button { transition: color .16s ease, background .16s ease; }
+
+/* no hairline: a rule floating on the lattice reads as a seam in the page */
+.swapx .sec { border-top: 0; padding: clamp(12px, 2.2vh, 18px) 2px 2px; margin-top: 0; }
+.swapx .qhead { flex-wrap: wrap; gap: 2px 14px; margin-bottom: clamp(3px, .9vh, 8px); }
+.swapx .qhead b { font-size: clamp(13.5px, 1.7vh, 16px); }
+.swapx .qhead .qblock { font-size: clamp(11px, 1.25vh, 12px); }
+.swapx .count { font-size: var(--caption); }
+.swapx .qrow { font-size: var(--caption); padding: clamp(2px, .45vh, 4px) 0; }
+.swapx .qrow > span:last-child { font-size: var(--caption); }
+.swapx .qrow .chip { font-size: 11px; padding: 2px 7px; }
+.swapx .routemark { width: 14px; height: 14px; }
+.swapx .qnote { font-size: 12px; }
+
+.swapx .act {
+  width: 100%; margin: clamp(12px, 2.1vh, 20px) 0 0;
+  padding: clamp(14px, 2vh, 19px); border-radius: clamp(18px, 2.5vh, 23px);
+  font-size: clamp(15px, 1.85vh, 18px);
+  position: relative; overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.24), 0 14px 30px -18px rgba(74,47,107,.62);
+}
+.swapx .act:hover:not([disabled]) {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.30), 0 18px 36px -18px rgba(74,47,107,.7);
+}
+
+/* ---------- receipts ----------
+   The other surface has no notch, but it lost the same enclosing card, so its
+   list and summary become glass in their own right rather than pressed wells. */
+.swapx .well {
+  border-radius: 26px;
+  background: linear-gradient(155deg, rgba(255,255,255,.66), rgba(250,247,254,.52) 40%, rgba(228,216,247,.44));
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
+  backdrop-filter: blur(22px) saturate(1.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.92),
+    inset 0 0 0 1px rgba(255,255,255,.42),
+    0 20px 40px -28px rgba(74,47,107,.45);
+}
+.swapx .well { padding: 15px 18px 13px; margin-top: 10px; }
+
+.swapx .note { margin: 10px 2px 0; font-size: var(--caption); color: #6F6689; }
+
+.swapx .upgrade { border-radius: 20px; padding: 14px 16px; background: rgba(255,255,255,.58); }
+
+/* THE RUN.
+   A swap is three states in a wallet the page cannot see into, so the button
+   itself carries the progress: it starts at the resting plum and lightens one
+   step per phase, and it is not pressable again until the run ends. The
+   lightening is a white wash over the same gradient, not a second palette. */
+.swapx .act[data-phase] { cursor: progress; }
+.swapx .act[data-phase][disabled] { opacity: 1; }
+.swapx .act[data-phase="preparing"] {
+  background-image: linear-gradient(rgba(255,255,255,.10), rgba(255,255,255,.10)),
+                    linear-gradient(135deg, #5C3D82, #4A2F6B 52%, #402659);
+}
+.swapx .act[data-phase="approving"] {
+  background-image: linear-gradient(rgba(255,255,255,.22), rgba(255,255,255,.22)),
+                    linear-gradient(135deg, #5C3D82, #4A2F6B 52%, #402659);
+}
+.swapx .act[data-phase="swapping"] {
+  background-image: linear-gradient(rgba(255,255,255,.34), rgba(255,255,255,.34)),
+                    linear-gradient(135deg, #5C3D82, #4A2F6B 52%, #402659);
+}
+/* one travelling highlight while the wallet is open - the only animation on
+   this route, and it runs only while something is genuinely pending */
+.swapx .act[data-phase]::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 32%, rgba(255,255,255,.26) 50%, transparent 68%);
+  transform: translateX(-100%);
+  animation: actrun 1.5s cubic-bezier(.45,.05,.55,.95) infinite;
+}
+@keyframes actrun { to { transform: translateX(100%); } }
+
+/* the amount fields kill the UA outline, so the route states focus itself.
+   A field is the exception: a box drawn around the digits cuts across the
+   notch, so a focused field brightens its own pane instead, and the caret
+   says where typing lands. */
+.swapx :focus-visible { outline: 2px solid #6A3FD1; outline-offset: 3px; }
+.swapx .pivot:focus-visible { outline-offset: 4px; }
+.swapx .amt input:focus-visible { outline: none; }
+.swapx .gpanel:has(.amt input:focus) .gface {
+  background:
+    linear-gradient(155deg,
+      rgba(255,255,255,.64) 0%,
+      rgba(253,251,255,.52) 38%,
+      rgba(233,223,250,.44) 100%);
+}
+
+/* ---------- the outcome (every route) ----------
+   A transaction confirms on chain, long after the eye has left the button.
+   The notice is the deck's material at a quarter of its weight, docked out of
+   the way. Unscoped: Swap, Earn, Testnet and the wallet menu all raise it. */
+.toastdock {
+  position: fixed; right: 22px; bottom: 22px; z-index: 60;
+  max-width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast {
+  display: flex; align-items: flex-start; gap: 13px;
+  padding: 15px 15px 15px 16px; border-radius: 24px;
+  pointer-events: auto;
+  background: linear-gradient(155deg, rgba(255,255,255,.78), rgba(252,249,255,.66) 42%, rgba(231,221,249,.58));
+  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  backdrop-filter: blur(22px) saturate(1.4);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.96),
+    inset 0 0 0 1px rgba(255,255,255,.5),
+    0 26px 48px -24px rgba(74,47,107,.5);
+  animation: toastin .2s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes toastin { from { opacity: 0; transform: translateY(8px); } }
+.toastmark {
+  flex: none; display: grid; place-items: center;
+  width: 32px; height: 32px; border-radius: 10px;
+  background: linear-gradient(150deg, rgba(255,255,255,.95), rgba(222,208,246,.85));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.7);
+}
+.toastmark svg { width: 18px; height: 18px; }
+.toastbody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.toast strong { font-size: 14.5px; font-weight: 600; color: #4A2F6B; }
+.toast small {
+  font-size: 12.5px; color: #6F6689; line-height: 1.45; overflow-wrap: anywhere;
+}
+.toastlink {
+  margin-top: 5px; align-self: flex-start;
+  font-size: 12.5px; font-weight: 500; color: #4A2F6B;
+  text-decoration: underline; text-underline-offset: 3px;
+  text-decoration-color: rgba(74,47,107,.35);
+  transition: text-decoration-color .16s ease;
+}
+.toastlink:hover { text-decoration-color: rgba(74,47,107,.9); }
+.toastx {
+  flex: none; width: 24px; height: 24px; margin: -2px -2px 0 0;
+  display: grid; place-items: center;
+  border: 0; border-radius: 8px; background: none; color: #9086A8;
+  transition: color .16s ease, background .16s ease;
+}
+.toastx svg { width: 12px; height: 12px; }
+.toastx:hover { color: #4A2F6B; background: rgba(255,255,255,.66); }
+/* what the chain and the wallet say about it: quiet, tabular, one line each */
+.toastmeta {
+  display: grid; grid-template-columns: auto 1fr; gap: 3px 12px;
+  margin: 8px 0 1px; padding-top: 8px; border-top: 1px solid rgba(116,94,166,.14);
+  font-size: 12px; line-height: 1.35;
+}
+.toastmeta dt { color: #9086A8; }
+.toastmeta dd { margin: 0; color: #4A2F6B; min-width: 0; overflow-wrap: anywhere; }
+.toastmeta .num { font-size: 11.5px; }
+.toastspin { animation: toastspin .9s linear infinite; transform-origin: 50% 50%; }
+@keyframes toastspin { to { transform: rotate(360deg); } }
+.toastbar {
+  display: block; height: 3px; margin: 7px 0 2px; border-radius: 3px; overflow: hidden; background: rgba(116,94,166,.14);
+}
+.toastbar i {
+  display: block; height: 100%; width: 92%; border-radius: 3px; background: #6F6689;
+  transform-origin: left; animation: toastbar 12s cubic-bezier(.2,.6,.4,1) both;
+}
+@keyframes toastbar { from { transform: scaleX(0); } }
+
+/* the one blocker a reader can clear: said once, with the call that clears it */
+.swapx .unblock {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap;
+  margin: 12px 0 0; padding: 12px 12px 12px 16px; border-radius: 20px;
+  background: linear-gradient(155deg, rgba(255,255,255,.62), rgba(250,247,254,.48) 40%, rgba(228,216,247,.40));
+  -webkit-backdrop-filter: blur(20px) saturate(1.3); backdrop-filter: blur(20px) saturate(1.3);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.92), inset 0 0 0 1px rgba(255,255,255,.44), 0 18px 36px -28px rgba(74,47,107,.42);
+}
+.swapx .unblock p { flex: 1 1 220px; margin: 0; font-size: 12.5px; line-height: 1.5; color: #6F6689; }
+.swapx .unblock .ghost {
+  flex: none; padding: 9px 16px; border: 0; border-radius: 14px; cursor: pointer;
+  font-family: inherit; font-size: 13.5px; font-weight: 600; color: #4A2F6B;
+  background: linear-gradient(155deg, rgba(255,255,255,.95), rgba(248,244,254,.78));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,1), inset 0 0 0 1px rgba(116,94,166,.18), 0 8px 18px -12px rgba(74,47,107,.46);
+  transition: box-shadow .16s ease, transform .16s ease;
+}
+.swapx .unblock .ghost:hover:not([disabled]) { box-shadow: inset 0 1px 0 rgba(255,255,255,1), inset 0 0 0 1px rgba(116,94,166,.26), 0 10px 22px -12px rgba(74,47,107,.52); }
+.swapx .unblock .ghost:active:not([disabled]) { transform: translateY(1px); }
+.swapx .unblock .ghost[disabled] { cursor: progress; opacity: .7; }
+
+/* a failure is read, not glanced at: it keeps the mark's place for its words */
+.toast[data-tone="failed"] { box-shadow:
+  inset 0 1px 0 rgba(255,255,255,.96),
+  inset 0 0 0 1px rgba(168,60,86,.30),
+  0 26px 48px -24px rgba(74,47,107,.5); }
+
+/* ---------- receipts on the deck ----------
+   A receipt is one whole thing, so its panel holds a name, not an amount: the
+   ID sits where the figure would, in the figure's own type, and the pill
+   beside it opens the picker. The cash leg is read from the quote, never
+   typed, so it is an output set exactly like the amount it stands in for. */
+.swapx .rpick, .swapx .rcash {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums;
+  font-size: var(--amount); font-weight: 400; letter-spacing: -.02em; color: #4A2F6B;
+  line-height: 1.5;   /* the amount input's own line box, so both decks are one height */
+}
+.swapx .rpick.none, .swapx .rcash.none { color: #B3A7C8; }
+/* the ETH on the cash leg is a label, not a menu: same pill, no caret, no hover */
+.swapx .asset.still { cursor: default; }
+.swapx .asset.still:hover {
+  background: linear-gradient(155deg, rgba(255,255,255,.86), rgba(238,231,250,.70));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 8px 18px -12px rgba(74,47,107,.34);
+}
+.swapx .asset[disabled] { opacity: .55; cursor: not-allowed; }
+.swapx .asset[data-state="open"] { box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 0 0 2px rgba(106,63,209,.22); }
+
+/* ---------- the receipt picker ----------
+   Portalled to <body>, so nothing here can lean on .swapx. The sheet is the
+   deck's glass made a little more solid - it floats over content, not over
+   the bare lattice - and the veil only tints and softens what is behind it. */
+.rveil {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(74,47,107,.16);
+  -webkit-backdrop-filter: blur(5px) saturate(1.1);
+  backdrop-filter: blur(5px) saturate(1.1);
+  animation: rveilin .18s ease-out;
+}
+.rsheet {
+  position: fixed; left: 50%; top: 50%; z-index: 81;
+  transform: translate(-50%, -50%);
+  width: min(460px, calc(100vw - 32px));
+  max-height: min(600px, calc(100dvh - 48px));
+  display: flex; flex-direction: column;
+  padding: 20px 14px 16px; border-radius: 30px;
+  font-family: var(--font-body), system-ui, sans-serif; color: #4A2F6B;
+  background: linear-gradient(155deg, rgba(255,255,255,.86), rgba(252,249,255,.76) 42%, rgba(236,227,251,.72));
+  -webkit-backdrop-filter: blur(28px) saturate(1.4);
+  backdrop-filter: blur(28px) saturate(1.4);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.98),
+    inset 0 0 0 1px rgba(255,255,255,.6),
+    0 40px 80px -36px rgba(74,47,107,.55),
+    0 12px 26px -16px rgba(74,47,107,.25);
+  animation: rsheetin .22s cubic-bezier(.2,.8,.2,1);
+}
+.rsheet:focus { outline: none; }
+.rsheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 0 8px 14px; }
+.rsheet h2 {
+  margin: 0; font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 19px; font-weight: 600; letter-spacing: -.02em; line-height: 1.25; color: #4A2F6B;
+}
+.rsheet-head p { margin: 4px 0 0; font-size: 13px; line-height: 1.45; color: #6F6689; }
+.rclose {
+  flex: none; display: grid; place-items: center; width: 30px; height: 30px; margin: -2px -2px 0 0;
+  border: 0; border-radius: 10px; color: #6F6689; cursor: pointer;
+  background: rgba(255,255,255,.6); box-shadow: inset 0 0 0 1px rgba(116,94,166,.12);
+  transition: color .16s ease, background .16s ease;
+}
+.rclose svg { width: 12px; height: 12px; }
+.rclose:hover { color: #4A2F6B; background: rgba(255,255,255,.95); }
+
+.rcols, .ropt { display: grid; grid-template-columns: minmax(0, 1fr) auto 52px 18px; align-items: center; gap: 14px; }
+.rcols {
+  padding: 0 18px 7px 14px; margin: 0 0 4px;   /* the right edge clears the list's own gutter */
+  border-bottom: 1px solid rgba(116,94,166,.12);
+  font-size: 12px; font-weight: 500; color: #6F6689;
+}
+.rcols span:nth-child(2), .rcols span:nth-child(3) { text-align: right; }
+/* the list scrolls inside the sheet, never the sheet itself: the head and
+   the note stay put however many receipts there are. The cap lands on half
+   a row, so the cut edge reads as "more below" rather than as the end. */
+.rscroll { position: relative; min-height: 0; display: flex; flex-direction: column; }
+.rrows {
+  list-style: none; margin: 0; padding: 2px 4px 2px 0;
+  max-height: calc(50px * 5.5); min-height: 0;
+  overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 2px;
+  scrollbar-width: thin; scrollbar-color: rgba(116,94,166,.32) transparent;
+}
+.rrows::-webkit-scrollbar { width: 8px; }
+.rrows::-webkit-scrollbar-track { background: transparent; }
+.rrows::-webkit-scrollbar-thumb {
+  background: rgba(116,94,166,.3); border: 2px solid transparent; border-radius: 99px; background-clip: content-box;
+}
+.rrows::-webkit-scrollbar-thumb:hover { background: rgba(116,94,166,.46); background-clip: content-box; }
+/* the fade marks the cut; it only appears while there is more to see */
+.rscroll[data-more]::after {
+  content: ''; position: absolute; left: 0; right: 12px; bottom: 0; height: 34px; pointer-events: none;
+  background: linear-gradient(rgba(240,233,251,0), rgba(240,233,251,.94));
+}
+.ropt {
+  width: 100%; height: 48px; padding: 0 14px; border: 0; border-radius: 17px;
+  font-family: inherit; text-align: left; color: #4A2F6B; background: none; cursor: pointer;
+  transition: background .15s ease, box-shadow .15s ease;
+}
+.ropt:hover { background: rgba(255,255,255,.62); }
+.ropt:active { background: rgba(255,255,255,.8); box-shadow: inset 0 1px 3px rgba(74,47,107,.1); }
+.ropt[aria-pressed="true"] {
+  background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(255,255,255,.8));
+  box-shadow: 0 1px 3px rgba(74,47,107,.12), inset 0 0 0 1.5px rgba(106,63,209,.34);
+}
+.ropt:focus-visible { outline: 2px solid #6A3FD1; outline-offset: -2px; }
+.ropt .rid { font-size: 15px; color: #4A2F6B; letter-spacing: -.01em; }
+.ropt .ent { font-size: 14px; color: #4A2F6B; }
+.ropt .ent small { font-family: var(--font-body), system-ui, sans-serif; font-size: 12px; color: #9086A8; }
+.ropt .qd { font-size: 13px; color: #6F6689; font-variant-numeric: tabular-nums; }
+.rtick { display: grid; place-items: center; color: #4A2F6B; }
+.rtick svg { width: 16px; height: 16px; }
+.rempty { margin: 0; padding: 22px 14px 18px; font-size: 14px; line-height: 1.5; color: #5B4478; text-align: center; }
+.rfoot {
+  margin: 10px 0 0; padding: 12px 10px 0; border-top: 1px solid rgba(116,94,166,.12);
+  font-size: 12px; line-height: 1.5; color: #6F6689;
+}
+@keyframes rveilin { from { opacity: 0; } }
+@keyframes rsheetin { from { opacity: 0; transform: translate(-50%, calc(-50% + 10px)) scale(.985); } }
+
+/* ---------- narrower ----------
+   The notch, the amount and the token pill all shrink together: the geometry
+   comes from lib/swap/carve.ts, which uses the same two breakpoints. */
+
+@media (max-width: 520px) {
+  .toastdock { right: 10px; left: 10px; bottom: 10px; max-width: none; }
+  .swapx { --pad: 14px; --minh: clamp(104px, 14.5vh, 116px); --amount: clamp(26px, 4.2vh, 30px); }
+  .swapx .panel { max-width: calc(100vw - 20px); }
+  .swapx .asset { font-size: 14.5px; }
+  .swapx .qrow .chip { font-size: 10.5px; }
+}
+
+/* a carved surface does not need to breathe on its own */
+@media (prefers-reduced-motion: reduce) {
+  .swapx .pivot, .swapx .asset, .swapx .act, .swapx .seg button { transition: none; }
+  .swapx .act[data-phase]::after { animation: none; }
+  .toast { animation: none; }
+  .toastspin { animation-duration: 2.4s; }
+  .toastbar i { animation: none; transform: scaleX(.5); }
+  .swapx .unblock .ghost { transition: none; }
+  .rveil, .rsheet { animation: none; }
+  .ropt, .rclose { transition: none; }
+  .swapx .pivot:hover:not([disabled]),
+  .swapx .pivot:active:not([disabled]) { transform: translate(-50%, -50%); }
+  .swapx .act:hover:not([disabled]) { transform: none; }
+}
 
 /* ================= earn =================
-   Ported from client/design/earn-v2.html, scoped under .earn so the swap
-   page's .modal/.well/.sec/.list/.act rules in this file cannot collide.
+   Scoped under .earn so the swap page's .modal/.well/.sec/.list/.act rules in
+   this file cannot collide. The route speaks the swap deck's language: the
+   page is the lattice, and glass is spent only where there is something to
+   read - a figure, a field, a group of related data. Headings, tabs, quiet
+   rows and actions sit straight on the ground.
    Two rules from the spec are load-bearing here:
      - a chart is a WELL (depth 2), never a new surface
      - .gain/.loss are STATE, defined once at the top of this file, and
@@ -422,68 +1161,105 @@ canvas.layer {
       margin:0 auto;padding:30px 44px 96px;
       display:grid;grid-template-columns:minmax(0,760px) 420px;gap:24px;
       align-items:start;justify-content:center}
+.earn { column-gap: 40px; color: #4A2F6B; }
 /* a grid child's default min-width is auto, so a wide table would push the
-   track open and take the page with it. This is what kept the page from
-   fitting; the .col collision above was making it worse. */
+   track open and take the page with it. */
 .earn .stack > *{min-width:0;max-width:100%}
-.earn .stack{display:flex;flex-direction:column;gap:20px;min-width:0}
-.earn .rail{position:sticky;top:84px;display:flex;flex-direction:column;gap:14px}
+.earn .stack{display:flex;flex-direction:column;gap:18px;min-width:0}
+.earn .rail{position:sticky;top:84px;display:flex;flex-direction:column;gap:16px;min-width:0}
+/* The deposit is what the page is for, so it never scrolls away. A rail taller
+   than the window rides with the page until its foot shows, and back down
+   until its head shows - the page script writes --rail-top as you scroll. */
+.earn .rail{top:var(--rail-top,84px)}
 
-/* DEPTH 1 - the modal */
-.earn .modal{border-radius:34px;padding:22px;
+/* ---------- the material ----------
+   One pane of glass, the deck's own: a wash that lets the lattice through,
+   brighter along the top where the light is, a luminous hairline inside the
+   edge and a soft plum shadow outside it. Transparency lives on the surface,
+   never on the content, so every figure stays at full ink. */
+.earn .modal,
+.earn .metric,
+.earn .pane,
+.earn .tabs,
+.earn .alert {
   background:
-    linear-gradient(135deg,rgba(255,255,255,.92) 0%,rgba(255,255,255,.62) 46%,rgba(214,199,240,.42) 100%),
-    linear-gradient(135deg,#F7F3FD,#EFE8F9);
-  border:1px solid rgba(255,255,255,.9);
+    linear-gradient(155deg, rgba(255,255,255,.62) 0%, rgba(252,249,255,.48) 40%, rgba(230,218,248,.40) 100%);
+  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  backdrop-filter: blur(22px) saturate(1.4);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,1),
-    inset 0 -1px 0 rgba(116,94,166,.08),
-    0 40px 80px -32px rgba(74,47,107,.62),
-    0 12px 28px -14px rgba(74,47,107,.22),
-    0 3px 8px -4px rgba(74,47,107,.10)}
-/* DEPTH 2 - wells. A CHART IS A WELL. */
-.earn .well{border-radius:24px;
-  background:linear-gradient(135deg,rgba(226,215,244,.72),rgba(238,231,250,.55));
-  box-shadow:inset 0 2px 6px rgba(88,70,110,.11),inset 0 -1px 0 rgba(255,255,255,.85)}
-/* DEPTH 4 - flat, hairline-divided */
-.earn .sec{padding-top:16px;margin-top:16px;border-top:1px solid rgba(116,94,166,.13)}
+    inset 0 1px 0 rgba(255,255,255,.94),
+    inset 0 0 0 1px rgba(255,255,255,.46),
+    0 22px 44px -30px rgba(74,47,107,.42);
+}
+.earn .modal{border-radius:28px;padding:22px 24px 20px}
+.earn .pane{border-radius:26px}
+
+/* DEPTH 2 - wells. A CHART IS A WELL. On the ground a well is a small pane;
+   inside a pane it is only a lighter floor, never a second slab of glass. */
+.earn .well{border-radius:22px;
+  background:linear-gradient(155deg,rgba(255,255,255,.60),rgba(250,247,254,.46) 40%,rgba(230,218,248,.38));
+  -webkit-backdrop-filter:blur(18px) saturate(1.3);backdrop-filter:blur(18px) saturate(1.3);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.92),inset 0 0 0 1px rgba(255,255,255,.44),0 16px 32px -26px rgba(74,47,107,.40)}
+.earn .modal .well{background:rgba(255,255,255,.30);-webkit-backdrop-filter:none;backdrop-filter:none;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.58),inset 0 1px 3px rgba(88,70,110,.05)}
+/* DEPTH 4 - flat, on whatever it sits on */
+.earn .sec{padding:12px 6px 0;margin-top:0;border-top:0}
 
 .earn .glass{background:linear-gradient(135deg,rgba(255,255,255,.80),rgba(255,255,255,.58) 55%,rgba(255,255,255,.46));
   border:1px solid rgba(255,255,255,.72);
   box-shadow:0 1px 0 rgba(255,255,255,.9) inset,0 10px 26px -18px rgba(74,47,107,.34)}
 .earn .seg{display:inline-flex;gap:2px;padding:3px;border-radius:16px;flex:none}
 .earn .seg button{padding:6px 13px;border-radius:13px;font-weight:500;color:#6F6689;font-size:12.5px;
-            transition:color .15s}
+            transition:color .15s,background .15s}
 .earn .seg button:hover{color:#4A2F6B}
 .earn .seg button[aria-pressed=true]{background:linear-gradient(135deg,#fff,rgba(255,255,255,.72));
   color:#4A2F6B;font-weight:600;box-shadow:0 1px 3px rgba(74,47,107,.1)}
 
-/* ---------- hero ---------- */
-.earn .ident{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}
-.earn .vname{display:flex;align-items:flex-start;gap:13px;padding-top:2px}
-.earn .vname .badge{width:44px;height:44px;border-radius:30%;display:grid;place-items:center;flex:none;
-  font-family:var(--font-mono), ui-monospace, monospace;font-size:13px;font-weight:500;color:#fff;letter-spacing:-.02em;
-  background:linear-gradient(135deg,#6A4A96,#4A2F6B 60%,#3B2456);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.32),0 8px 18px -8px rgba(74,47,107,.6)}
-.earn .vname h1{font-family:var(--font-display), system-ui, sans-serif;font-weight:700;font-size:27px;letter-spacing:-.03em;line-height:1.06}
-.earn .vname p{margin:5px 0 0;color:#6F6689;font-size:12.5px;line-height:1.45}
-.earn .hero-apy{text-align:right;line-height:1;flex:none}
-.earn .hero-apy b{display:block;font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;
-            font-size:47px;font-weight:400;letter-spacing:-.035em;color:#6A3FD1;line-height:.92}
-.earn .hero-apy .lab{display:block;margin-top:9px;color:#6F6689;font-size:12.5px}
-.earn .hero-apy .delta{display:block;margin-top:4px;font-size:12px;font-family:var(--font-mono), ui-monospace, monospace;
-                 font-variant-numeric:tabular-nums}
+/* ---------- the quiet button ----------
+   Refresh, retry, show: secondary actions are a small clear pill, so the one
+   filled plum button on the page stays the only thing that commits money. */
+.earn .ghost{display:inline-flex;align-items:center;gap:6px;flex:none;
+  padding:7px 14px;border:0;border-radius:14px;
+  font-family:var(--font-body), system-ui, sans-serif;font-size:12.5px;font-weight:500;line-height:1.2;color:#5B4478;
+  background:linear-gradient(155deg,rgba(255,255,255,.80),rgba(248,244,254,.62));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.96),inset 0 0 0 1px rgba(116,94,166,.13),0 6px 14px -10px rgba(74,47,107,.40);
+  transition:color .16s ease,background .16s ease,box-shadow .16s ease,transform .16s ease}
+.earn .ghost:hover{color:#4A2F6B;background:linear-gradient(155deg,rgba(255,255,255,.96),rgba(251,249,255,.78));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,1),inset 0 0 0 1px rgba(116,94,166,.18),0 8px 18px -10px rgba(74,47,107,.46)}
+.earn .ghost:active{transform:translateY(1px);
+  box-shadow:inset 0 1px 3px rgba(74,47,107,.16),inset 0 0 0 1px rgba(116,94,166,.16)}
 
-.earn .stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:19px;border-top:1px solid rgba(116,94,166,.13);padding-top:16px}
-.earn .stat{padding-right:22px}
-.earn .stat + .stat{border-left:1px solid rgba(116,94,166,.09);padding-left:22px}
-.earn .stat span{display:block;color:#6F6689;font-size:12.5px;margin-bottom:6px}
-.earn .stat b{font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;font-size:19px;font-weight:500;letter-spacing:-.015em}
-.earn .stat i{font-style:normal;font-size:13px;color:#9086A8;margin-left:5px}
+.earn :focus-visible{outline:2px solid #6A3FD1;outline-offset:3px}
+.earn .amt input:focus-visible{outline:0}
+
+/* ---------- hero ----------
+   The name is the page's title, set on the ground. Each figure is its own
+   pane, so a missing one reads as missing rather than as a gap in a card. */
+.earn .hero{display:flex;flex-direction:column;gap:20px}
+.earn .vname{display:flex;align-items:center;gap:18px;padding:4px 2px 0}
+.earn .vaultmark{position:relative;flex:none;width:62px;height:62px}
+.earn .vaultmark > svg{display:block;width:100%;height:100%}
+
+.earn .vname h1{font-family:var(--font-display), system-ui, sans-serif;font-weight:700;font-size:38px;letter-spacing:-.03em;line-height:1.04;color:#4A2F6B}
+.earn .vname p{margin:6px 0 0;color:#5B4478;font-size:15px;line-height:1.45}
+.earn .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.earn .metric{border-radius:24px;padding:17px 18px 16px;min-width:0;min-height:112px;
+  display:flex;flex-direction:column;align-items:flex-start;gap:7px}
+.earn .metric .lab{font-size:13px;color:#6F6689;line-height:1.3}
+.earn .metric .fig{display:flex;align-items:baseline;flex-wrap:wrap;gap:0 6px;min-width:0}
+.earn .metric b{display:block;font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;
+  font-size:23px;font-weight:400;letter-spacing:-.025em;line-height:1.1;color:#4A2F6B}
+.earn .metric i{font-style:normal;font-size:13px;color:#9086A8}
+.earn .metric .usd{margin:0;font-size:12px}
+.earn .hero-apy b{font-weight:400;color:#6A3FD1}
+.earn .hero-apy .delta{display:block;font-size:12px;line-height:1.35;font-family:var(--font-body), system-ui, sans-serif;
+                 font-variant-numeric:tabular-nums}
+.earn .delta.none{color:#6F6689}
+.earn .hero > .note{margin:0;padding:0 4px}
 
 /* ---------- charts ---------- */
 .earn .chart{padding:16px 18px 10px}
-.earn .chart + .list{margin-top:16px}
+
 .earn .chead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:8px}
 .earn .chead .when{font-size:12px;color:#6F6689;letter-spacing:.005em}
 .earn .chead .now{font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;font-size:22px;font-weight:500;
@@ -492,119 +1268,231 @@ canvas.layer {
                   letter-spacing:0}
 .earn .ctools{display:flex;align-items:center;gap:9px}
 .earn .chart svg{display:block;width:100%;height:auto;touch-action:none}
+/* .fg lets the pointer fall through to the lattice; anything that answers a
+   hover has to take it back, or its readout never fires */
+.earn .chart svg, .earn .stats.four .stat{pointer-events:auto}
 .earn .gtick{fill:#9086A8;font-family:var(--font-mono), ui-monospace, monospace;font-size:9.5px}
 .earn .xtick{fill:#9086A8;font-family:var(--font-body), system-ui, sans-serif;font-size:10px}
 .earn .band{transition:opacity .16s}
 
-/* ---------- section head ---------- */
-.earn .shead{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:15px}
-.earn .shead h2{font-family:var(--font-display), system-ui, sans-serif;font-weight:600;font-size:17.5px;letter-spacing:-.02em}
-.earn .shead .aside{font-size:12.5px;color:#6F6689}
+/* ---------- section head ----------
+   Title left, the section's standing right. The standing is secondary ink
+   with a mark whose SHAPE carries the state, so a stale or historical figure
+   never borrows the look of a live one. */
+.earn .shead{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 16px;margin-bottom:10px}
+.earn .shead h2{font-family:var(--font-display), system-ui, sans-serif;font-weight:600;font-size:19px;letter-spacing:-.02em;line-height:1.25;color:#4A2F6B}
 
-/* ---------- strategies: the chart's legend IS the table ---------- */
-.earn .list{padding:6px}
-.earn .cols{grid-template-columns:1fr 168px 100px 96px 92px}
-.earn .shdr, .earn .srow, .earn .stot{display:grid;gap:14px;align-items:center}
-.earn .shdr{padding:8px 14px 7px;font-size:10.5px;letter-spacing:.045em;text-transform:uppercase;color:#9086A8}
-.earn .srow{padding:11px 14px;border-radius:17px;width:100%;text-align:left;color:inherit;transition:background .15s}
-.earn .shdr span:not(:first-child), .earn .srow>:not(:first-child), .earn .stot>:not(:first-child){text-align:right}
-.earn .srow:hover{background:rgba(255,255,255,.6)}
-.earn .pair{display:flex;align-items:center;gap:10px;font-weight:500;font-size:14px;min-width:0}
-.earn .sw{width:9px;height:22px;border-radius:4px;flex:none;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 1px 2px rgba(74,47,107,.18)}
-.earn .pair .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.earn .pair .who i{font-style:normal;color:#9086A8;font-weight:400}
-.earn .srow .num{font-size:13.5px}
-.earn .num.sub{color:#6F6689;font-size:13px}
+.earn .status{display:inline-flex;align-items:center;flex-wrap:wrap;gap:0 5px;font-size:12.5px;line-height:1.4;color:#6F6689}
+.earn .status::before{content:'';flex:none;width:8px;height:8px;margin-right:4px;border-radius:50%;
+  background:transparent;box-shadow:inset 0 0 0 1.5px rgba(116,94,166,.55)}
+
+.earn .status[data-tone=past]::before{background:linear-gradient(90deg,rgba(116,94,166,.55) 50%,transparent 50%)}
+
+.earn .status .num{font-size:12px}
+
+.earn .note{margin:14px 0 0;font-size:12px;color:#6F6689;line-height:1.55;max-width:78ch}
+.earn .empty{margin:4px 0 0;padding:14px 0 4px;font-size:13.5px;color:#5B4478}
+
+/* ---------- figures in a group ----------
+   Flat on the pane, divided by hairlines: the pane already groups them, and
+   a card per figure inside a card is the nesting this page gave up. */
+.earn .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:14px;padding-top:16px;
+  border-top:1px solid rgba(116,94,166,.12)}
+.earn .stats.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.earn .stat{min-width:0;padding:0 18px}
+.earn .stat:first-child{padding-left:0}
+.earn .stat:last-child{padding-right:0}
+.earn .stat + .stat{border-left:1px solid rgba(116,94,166,.12)}
+.earn .stat span{display:block;color:#6F6689;font-size:12.5px;line-height:1.35;margin-bottom:7px}
+.earn .stat b{font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;font-size:22px;font-weight:400;
+  letter-spacing:-.025em;color:#4A2F6B}
+.earn .stats.four b{font-size:19px}
+.earn .stat .usd{font-size:12px}
+.earn .stat .swatch{display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:3px;vertical-align:0;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.4)}
+.earn .stat .pct{font-style:normal;color:#9086A8;font-variant-numeric:tabular-nums}
+.earn .stat[data-focused]{background:rgba(255,255,255,.3)}
+.earn .modal .chart{margin:4px 0 0}
+.earn .chart + .stats{margin-top:16px}
+.earn .stat i{font-style:normal;font-size:12.5px;color:#9086A8;margin-left:6px;white-space:nowrap}
+
+/* ---------- the performance table ----------
+   Figures right-aligned on a tabular face so a column reads down its decimal
+   point; the name column carries its settlement path as a second line. */
+.earn .tablewrap{overflow-x:auto;margin-top:12px;scrollbar-width:thin;scrollbar-color:rgba(116,94,166,.28) transparent}
+.earn .dtable{width:100%;min-width:560px;border-collapse:collapse}
+.earn .dtable th,
+.earn .dtable td{padding:11px 14px;text-align:right;vertical-align:top;white-space:nowrap;
+  border-bottom:1px solid rgba(116,94,166,.10)}
+.earn .dtable th:first-child,
+.earn .dtable td:first-child{text-align:left;padding-left:0}
+.earn .dtable th:last-child,
+.earn .dtable td:last-child{padding-right:0}
+.earn .dtable thead th{padding-top:4px;padding-bottom:9px;font-size:12px;font-weight:500;color:#6F6689;
+  border-bottom-color:rgba(116,94,166,.16)}
+.earn .dtable tbody th{font-size:14px;font-weight:500;color:#4A2F6B}
+.earn .dtable tbody th small{display:block;margin-top:2px;font-size:11.5px;font-weight:400;color:#9086A8}
+.earn .dtable td{font-size:13.5px;line-height:1.45}
+.earn .dtable td:not(.gain):not(.loss){color:#4A2F6B}
+.earn .dtable tbody tr:last-child > *{border-bottom:0}
+.earn .dtable td .usd{display:block;margin:2px 0 0;font-size:11.5px}
+.earn .strat-name{display:inline-flex;align-items:center;gap:10px}
+.earn .strat-name .tmark > svg{width:26px;height:26px}
+.earn .strat-name > span{display:flex;flex-direction:column}
+
+/* ---------- strategy performance ---------- */
+.earn .strat{margin-bottom:6px}
+.earn .strat .now .pl{margin-left:18px}
+.earn .strat .legend .tmark > svg{width:16px;height:16px}
+.earn .strat .legend li{gap:7px}
+.earn .strat .legend .num{font-size:12px;color:#4A2F6B}
+.earn .chart .lane{fill:#6F6689;font-family:var(--font-body), system-ui, sans-serif;font-size:11px}
+.earn .row .usd{margin-left:4px}
+
+/* chart legend: which shade is which, never a second readout */
+.earn .legend{list-style:none;display:flex;flex-wrap:wrap;gap:6px 16px;margin:6px 2px 2px;padding:0;font-size:12px;color:#6F6689}
+.earn .legend li{display:inline-flex;align-items:center;gap:6px}
+.earn .legend i{width:9px;height:9px;border-radius:3px}
+.earn .chart a{cursor:pointer}
+.earn .chart a:focus-visible{outline:none}
+.earn .chart a:focus-visible rect[data-bar]{stroke:#6A3FD1;stroke-width:2}
+
+/* ---------- event rows ---------- */
+.earn .rows{list-style:none;margin:4px 0 0;padding:0}
+.earn .row{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;padding:9px 0;
+  border-bottom:1px solid rgba(116,94,166,.10)}
+.earn .row:last-child{border-bottom:0}
+.earn .row .what{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 12px;min-width:0;font-size:13.5px;color:#4A2F6B}
+.earn .row .what small{font-size:11.5px;color:#9086A8;font-variant-numeric:tabular-nums}
+.earn .row .what.end{flex-direction:column;align-items:flex-end;text-align:right}
+.earn .row .what .num{font-size:13px}
+.earn .row a{flex:none;margin:-4px -8px;padding:4px 8px;border-radius:10px;
+  font-size:13px;color:#4A2F6B;text-decoration:none;transition:background .15s ease}
+.earn .row a:hover{background:rgba(255,255,255,.66)}
+
 .earn .num.none{color:#9086A8}
-.earn .hold{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
-.earn .hold .pct{font-size:11px;color:#9086A8;font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums}
-.earn .stot{padding:13px 14px 5px;margin-top:5px;border-top:1px solid rgba(116,94,166,.13);font-size:12.5px;color:#6F6689}
-.earn .stot .num{font-size:13.5px}
 
-/* ---------- duo ---------- */
-.earn .duo{display:grid;grid-template-columns:262px 1fr;gap:28px}
-.earn .duo .rule{border-left:1px solid rgba(116,94,166,.13);padding-left:28px}
-.earn .liq{display:flex;flex-direction:column;gap:12px}
-.earn .liq div{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
-.earn .liq span{font-size:13px;color:#6F6689}
-.earn .liq .num{font-size:14px;font-weight:500}
-.earn .prose{font-size:13.5px;line-height:1.64;color:#5B4478;max-width:62ch}
-.earn .prose p{margin:0 0 12px}
-.earn .prose p:last-child{margin-bottom:0}
-.earn .prose b{font-weight:600;color:#4A2F6B}
-.earn .links{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
-.earn .links a{padding:7px 13px;border-radius:14px;font-size:12.5px;font-weight:500;color:#6F6689;
-         text-decoration:none;background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.8);
-         transition:color .15s,background .15s}
-.earn .links a:hover{color:#4A2F6B;background:rgba(255,255,255,.9)}
-.earn .note{font-size:12px;color:#6F6689;line-height:1.55}
+/* contract links close the group they belong to: text, not buttons */
+.earn .links{display:flex;flex-wrap:wrap;gap:4px 22px;margin-top:14px;padding-top:12px;
+  border-top:1px solid rgba(116,94,166,.12)}
+.earn .links a{padding:2px 0;font-size:12.5px;font-weight:500;color:#5B4478;
+  text-decoration:underline;text-underline-offset:3px;text-decoration-color:rgba(91,68,120,.28);
+  transition:color .15s,text-decoration-color .15s}
+.earn .links a:hover{color:#4A2F6B;text-decoration-color:rgba(74,47,107,.8)}
 
-/* ---------- activity ---------- */
-.earn .act-row{display:grid;grid-template-columns:60px 1fr 104px;align-items:center;gap:12px;
-         padding:10px 14px;border-radius:17px;font-size:13.5px;transition:background .15s}
-.earn .act-row:hover{background:rgba(255,255,255,.6)}
-.earn .act-row .t{font-family:var(--font-mono), ui-monospace, monospace;font-size:12px;color:#9086A8}
-.earn .act-row .r{font-size:11.5px;color:#6F6689;text-align:right}
-.earn .act-row em{font-style:normal;font-weight:500}
-.earn .act-row .num{font-size:13.5px}
+/* ---------- live-read failure ---------- */
+.earn .alert{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 16px;
+  margin:0;padding:12px 14px 12px 18px;border-radius:20px;font-size:13px;line-height:1.45;color:#4A2F6B;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.94),inset 0 0 0 1px rgba(168,60,86,.30),0 18px 36px -28px rgba(74,47,107,.42)}
 
-/* ---------- rail ---------- */
-.earn .pos{padding:16px 19px 15px;border-radius:26px}
-.earn .pos .top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
-.earn .pos .lab{font-size:12.5px;color:#6F6689}
-.earn .pos .big{font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;font-size:22px;font-weight:500;letter-spacing:-.02em}
-.earn .pos .big i{font-style:normal;font-size:13px;color:#9086A8;margin-left:4px}
-.earn .pos .bot{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:7px;
-          font-size:12.5px;color:#6F6689}
-.earn .pos .bot b{font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;font-weight:500}
+/* ---------- rail ----------
+   The heading sits on the ground; the position figure, the two fields and
+   the in-flight exit are the only glass. */
+.earn .pos h2{margin:0 0 10px 4px;font-family:var(--font-display), system-ui, sans-serif;font-size:18px;font-weight:600;
+  letter-spacing:-.02em;color:#4A2F6B}
+.earn .pos .pane{padding:18px 22px 17px}
+.earn .pos .big{font-size:30px;letter-spacing:-.03em;line-height:1.15;color:#4A2F6B;white-space:normal;overflow-wrap:anywhere}
+.earn .pos .big i{font-style:normal;font-family:var(--font-body), system-ui, sans-serif;font-size:15px;font-weight:500;
+  letter-spacing:0;color:#9086A8;margin-left:8px}
+.earn .pos .worth{display:flex;align-items:baseline;flex-wrap:wrap;gap:0 8px;margin:6px 0 0;font-size:14px;color:#5B4478}
+.earn .pos .worth .num{font-size:14px}
+.earn .pos .worth .usd{margin:0;font-size:12.5px}
+.earn .pos .pnl{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;margin:10px 0 0;padding-top:10px;
+  border-top:1px solid rgba(116,94,166,.12)}
+.earn .pos .pnl .num{font-size:15px;font-weight:500}
+.earn .pos .pnl .usd{margin:0;font-size:12.5px}
+.earn .pos .pnl .chip{margin-left:auto}
 
-.earn .tabs{display:flex;gap:2px;padding:3px;border-radius:18px;margin-bottom:15px}
-.earn .tabs button{flex:1;padding:9px 0;border-radius:15px;font-weight:500;font-size:14px;color:#6F6689;
-             transition:color .15s}
-.earn .tabs button:hover{color:#4A2F6B}
-.earn .tabs button[aria-pressed=true]{background:linear-gradient(135deg,#fff,rgba(255,255,255,.72));
-  color:#4A2F6B;font-weight:600;box-shadow:0 1px 3px rgba(74,47,107,.1)}
+.earn .tabs{display:flex;gap:2px;padding:4px;border-radius:19px;margin-bottom:12px}
+.earn .tabs button{flex:1;padding:10px 0;border:0;border-radius:15px;background:none;
+  font-family:var(--font-body), system-ui, sans-serif;font-weight:500;font-size:14.5px;color:#6F6689;
+  transition:color .16s ease,background .16s ease,box-shadow .16s ease}
+.earn .tabs button:hover{color:#4A2F6B;background:rgba(255,255,255,.34)}
+.earn .tabs button[aria-pressed=true]{background:linear-gradient(135deg,#fff,rgba(255,255,255,.76));
+  color:#4A2F6B;font-weight:600;box-shadow:inset 0 1px 0 #fff,0 2px 6px -2px rgba(74,47,107,.16)}
+.earn .tabs button:active{background:rgba(255,255,255,.5)}
 
-.earn .field{padding:15px 20px 13px}
+/* ---------- the carved pair ----------
+   The swap deck's glass, at a rail's proportions. Geometry comes from
+   lib/swap/carve.ts through CarvedDeck, so the notch and these rules agree. */
+.earn .panelcard{--pad:17px 20px 15px;--minh:118px;--amount:34px;display:flex;flex-direction:column}
+.earn .deck{display:flex;flex-direction:column}
+.earn .gpanel{position:relative;display:flex;min-height:var(--minh);border-radius:var(--pr);
+  background:linear-gradient(155deg,rgba(255,255,255,.52),rgba(252,249,255,.40) 38%,rgba(226,213,247,.34));
+  -webkit-backdrop-filter:blur(22px) saturate(1.4);backdrop-filter:blur(22px) saturate(1.4);
+  box-shadow:0 22px 44px -30px rgba(74,47,107,.4)}
+.earn .gpanel[data-carved]{background:none;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+.earn .gface{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(155deg,rgba(255,255,255,.56) 0%,rgba(252,249,255,.44) 38%,rgba(228,216,247,.36) 100%);
+  -webkit-backdrop-filter:blur(22px) saturate(1.4);backdrop-filter:blur(22px) saturate(1.4)}
+.earn .gart{position:absolute;top:0;left:0;overflow:visible;pointer-events:none}
+.earn .gbody{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;padding:var(--pad)}
+.earn .pivotslot{position:relative;height:var(--pgap);z-index:5}
+.earn .pivot{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:var(--tile);height:var(--tile);border-radius:var(--tile-r);display:grid;place-items:center;
+  background:linear-gradient(155deg,rgba(255,255,255,.66),rgba(253,251,255,.52) 42%,rgba(233,223,250,.44));
+  -webkit-backdrop-filter:blur(15px) saturate(1.3);backdrop-filter:blur(15px) saturate(1.3);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.98),inset 0 0 0 1px rgba(255,255,255,.52),0 12px 24px -16px rgba(74,47,107,.42)}
+.earn .pivoticon{display:block;width:38%;height:38%}
+.earn button.pivot{border:0;padding:0;transition:background .17s ease,box-shadow .17s ease,transform .17s ease}
+.earn button.pivot:hover{transform:translate(-50%,-50%) scale(1.03);
+  background:linear-gradient(155deg,rgba(255,255,255,.78),rgba(254,253,255,.62) 42%,rgba(238,231,252,.52));
+  box-shadow:inset 0 1px 0 #fff,inset 0 0 0 1px rgba(255,255,255,.62),0 16px 30px -16px rgba(74,47,107,.48)}
+.earn button.pivot:active{transform:translate(-50%,-50%) scale(.975);
+  box-shadow:inset 0 2px 5px -1px rgba(74,56,100,.20),inset 0 0 0 1px rgba(255,255,255,.5),0 6px 14px -10px rgba(74,47,107,.4)}
+.earn button.pivot:focus-visible{outline-offset:4px}
+
 .earn .frow{display:flex;align-items:center;justify-content:space-between}
-.earn .flabel{font-size:13px;color:#5B4478}
-.earn .amt{display:flex;align-items:center;gap:14px;margin:7px 0 6px}
-.earn .amt input{flex:1;min-width:0;border:0;background:none;padding:0;caret-color:#6A3FD1;
+.earn .flabel{font-size:14px;font-weight:500;color:#4A2F6B}
+.earn .amt{display:flex;align-items:center;gap:12px;margin:6px 0}
+.earn .amt input{flex:1;min-width:0;border:0;background:none;padding:0;outline:none;caret-color:#6A3FD1;
   font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;
-  font-size:34px;font-weight:400;letter-spacing:-.025em;color:#4A2F6B}
-.earn .amt input::placeholder{color:rgba(144,134,168,.65)}
-.earn .asset{display:flex;align-items:center;gap:8px;padding:7px 13px 7px 8px;border-radius:16px;
-  font-weight:600;font-size:15px;white-space:nowrap;
-  background:linear-gradient(135deg,rgba(255,255,255,.9),rgba(233,225,246,.85));
-  border:1px solid rgba(255,255,255,.85);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.95),
-             0 6px 14px -7px rgba(74,47,107,.35),0 1px 3px -1px rgba(74,47,107,.18)}
+  font-size:var(--amount);font-weight:400;letter-spacing:-.025em;color:#4A2F6B}
+.earn .amt input::placeholder{color:rgba(144,134,168,.7)}
+.earn .amt .cur{font-size:var(--amount);margin-right:calc(var(--amount) * -.16)}
+.earn .gpanel:has(.amt input:focus) .gface{background:linear-gradient(155deg,rgba(255,255,255,.66) 0%,rgba(253,251,255,.54) 38%,rgba(233,223,250,.46) 100%)}
+.earn .asset{display:flex;align-items:center;gap:8px;padding:6px 14px 6px 7px;border-radius:18px;
+  font-weight:600;font-size:16px;white-space:nowrap;color:#4A2F6B;
+  background:linear-gradient(155deg,rgba(255,255,255,.88),rgba(238,231,250,.72));
+  border:1px solid rgba(255,255,255,.8);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 8px 18px -12px rgba(74,47,107,.34)}
 .earn .asset i{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
          font-size:9px;font-style:normal;font-family:var(--font-mono), ui-monospace, monospace;color:#fff;
          box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
-.earn .fmeta{display:flex;justify-content:space-between;font-size:12px;color:#5F4A7C}
-.earn .fmeta .num{font-size:12px}
+.earn .fmeta{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:13px;color:#5F4A7C}
+.earn .fmeta .num{font-size:12.5px}
 
-.earn .qrow{display:flex;justify-content:space-between;font-size:13px;padding:4.5px 0;color:#6F6689}
-.earn .qrow span:last-child{font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;color:#4A2F6B;font-size:13px}
+.earn .qrow{display:flex;justify-content:space-between;align-items:baseline;gap:16px;font-size:13.5px;padding:5px 0;color:#6F6689}
+.earn .qrow span:last-child{display:inline-flex;align-items:center;justify-content:flex-end;gap:7px;
+  font-family:var(--font-mono), ui-monospace, monospace;font-variant-numeric:tabular-nums;color:#4A2F6B;
+  font-size:13px;text-align:right}
+/* a quiet qualifier: says where a figure came from, never how good it is */
+.earn .chip{font-family:var(--font-body), system-ui, sans-serif;font-style:normal;font-size:11px;font-weight:500;line-height:1.3;
+  color:#6F6689;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,.72);box-shadow:inset 0 0 0 1px rgba(116,94,166,.16)}
+.earn .metric .lab .chip{margin-left:7px;vertical-align:1px}
+
+.earn .sec{padding-top:14px}
 .earn .qrow .big{font-size:19px;font-weight:500;color:#6A3FD1}
-.earn .qrow:has(.big){padding:6px 0 9px;align-items:baseline}
 
-.earn .act{width:100%;margin-top:15px;padding:15px;border-radius:20px;color:#fff;font-weight:600;font-size:15px;
+.earn .act{width:100%;margin-top:14px;padding:15px;border:0;border-radius:20px;color:#fff;font-weight:600;font-size:15px;
   background:linear-gradient(135deg,#5C3D82,#4A2F6B 52%,#402659);
-  box-shadow:0 1px 0 rgba(255,255,255,.26) inset,0 16px 34px -16px rgba(74,47,107,.7);
+  box-shadow:0 1px 0 rgba(255,255,255,.24) inset,0 14px 30px -18px rgba(74,47,107,.62);
   transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .18s}
 .earn .act:hover:not([disabled]){transform:translateY(-1px);
-  box-shadow:0 1px 0 rgba(255,255,255,.3) inset,0 20px 40px -16px rgba(74,47,107,.78)}
+  box-shadow:0 1px 0 rgba(255,255,255,.3) inset,0 18px 36px -18px rgba(74,47,107,.72)}
 .earn .act:active:not([disabled]){transform:translateY(0);
   box-shadow:0 1px 0 rgba(255,255,255,.2) inset,0 8px 18px -12px rgba(74,47,107,.6)}
-.earn .act[disabled]{opacity:.4;cursor:not-allowed;box-shadow:none}
-.earn .foot{text-align:center;font-size:11.5px;color:#9086A8;margin-top:13px;line-height:1.4}
+.earn .act[disabled]{opacity:.42;cursor:not-allowed;box-shadow:none}
+.earn .foot{text-align:center;font-size:12px;color:#6F6689;margin-top:12px;line-height:1.45}
+.earn .panelcard > .note{margin:10px 6px 0}
+.earn .panelcard > [role=alert]{color:#4A2F6B}
+
+.earn .upgrade{margin-top:14px;padding:14px 16px;border-radius:20px;background:rgba(255,255,255,.52);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
 
 /* ---------- exit tracker ---------- */
-.earn .track{margin-top:15px;padding:15px 18px 14px}
-.earn .track h3{font-size:12.5px;font-weight:600;color:#4A2F6B;margin-bottom:14px}
+.earn .track{margin-top:14px;padding:15px 18px 14px}
+.earn .track h3{font-size:13px;font-weight:600;color:#4A2F6B;margin-bottom:14px}
 .earn .rail-line{position:relative;height:11px;margin:0 6px 10px}
 .earn .rail-line .bar{position:absolute;left:5px;right:5px;top:5px;height:1.5px;
                 background:repeating-linear-gradient(90deg,rgba(116,94,166,.42) 0 4px,transparent 4px 8px)}
@@ -619,124 +1507,70 @@ canvas.layer {
          font-size:13px;font-weight:500;color:#4A2F6B;margin-top:4px}
 .earn .tlabs .idle, .earn .tlabs .idle b{color:#9086A8;font-weight:400}
 
-
-/* the components emit these instead of an inline gradient */
-.earn .asset i.tok-weth  { background: linear-gradient(135deg, #7C63A8, #4A2F6B); }
-.earn .asset i.tok-hweth { background: linear-gradient(135deg, #8E6FC8, #6A3FD1); }
-
-/* the prototype did this in JS; the table does it with a data attribute */
-.earn .srow[data-focused] { background: rgba(255, 255, 255, .72); }
-
 /* px, not cqw: every measurement above is px at a 15px base, and .fg sets
    1.30cqw. .swap-wrap already does this for the same reason. */
 .earn { font-size: 15px; }
 
-/* ---------- capped lists ----------
-   Six strategies and a day of fills would otherwise make these cards taller
-   than the charts above them, which is what made the page feel oversized.
-   The rows scroll inside a fixed frame; the column header and the totals row
-   stay put, because a total that scrolls away is not a total. */
-.earn .scroller {
-  /* Rows are a fixed height so the cap lands on exactly half a row - that
-     half row is the affordance. A content-sized row clips at an arbitrary
-     point and reads as a rendering bug rather than as "there is more". */
-  max-height: calc(var(--row) * 5.5);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(116, 94, 166, .28) transparent;
-}
-.earn .scroller::-webkit-scrollbar { width: 8px; }
-.earn .scroller::-webkit-scrollbar-track { background: transparent; }
-.earn .scroller::-webkit-scrollbar-thumb {
-  background: rgba(116, 94, 166, .26);
-  border: 2px solid transparent;
-  border-radius: 99px;
-  background-clip: content-box;
-}
-.earn .scroller::-webkit-scrollbar-thumb:hover { background: rgba(116, 94, 166, .42); background-clip: content-box; }
-.earn .list .scroller { --row: 48px; }
-.earn .acts .scroller { --row: 40px; }
-
-/* The header and the totals row sit OUTSIDE the scroll, so both are always
-   visible however far the rows are scrolled. (An earlier pass made .shdr
-   sticky, which did nothing: it was never inside the scroll container.) */
-
-/* ---------- tighter rows ----------
-   The two-line holding cell was making every row 76px tall. */
-.earn .srow { height: 48px; padding: 0 14px; }
-.earn .act-row { height: 40px; padding: 0 14px; font-size: 13px; }
-.earn .hold { gap: 0; }
-.earn .hold .pct { font-size: 10px; line-height: 1.3; opacity: .8; }
-.earn .srow .num { font-size: 13px; }
-.earn .pair { font-size: 13.5px; }
-.earn .sw { height: 20px; width: 8px; }
-
-/* the strategy name deserves the room; the holding figure does not need 168px */
-.earn .cols { grid-template-columns: 1fr 152px 94px 86px 84px; }
-
-/* the note lines up with the row text inside the well above it, not with the
-   well's outer edge - otherwise it reads as a different column */
-.earn .note { padding: 15px 20px 0; }
-
-/* ---------- the duo reads better with the prose given the width it needs */
-.earn .duo { grid-template-columns: 250px 1fr; gap: 30px; }
-.earn .prose { max-width: 58ch; }
-
-/* The nav is full-bleed on the locked routes, where the content is a single
-   centred modal and alignment does not read. On a wide data page it does: the
-   wordmark should share a left edge with the first card, and Connect should
-   share a right edge with the panel. */
-.stage--scroll .nav {
-  width: 100%;
-  max-width: calc(1204px + 88px);
-  margin: 0 auto;
-  padding: 26px 44px 0;
-}
-
-/* ---------- chart chrome ----------
-   The range control was competing with the figure it belongs to. */
+/* ---------- chart chrome ---------- */
 .earn .chart .seg button { padding: 5px 11px; font-size: 12px; }
 .earn .chart { padding: 15px 16px 8px; }
-.earn .chead { margin-bottom: 6px; }
+.earn .chead { align-items: center; margin-bottom: 6px; }
 .earn .chead .now { font-size: 21px; }
 .earn .gtick { font-size: 9px; }
 .earn .xtick { font-size: 9.5px; }
-
-/* The half row at the cap is the "there is more" affordance, but a hard cut
-   reads as clipping. A short fade over the bottom edge makes it deliberate.
-   It stops short of the scrollbar gutter so the thumb is never dimmed. */
-.earn .scrollwrap { position: relative; }
-.earn .scrollwrap::after {
-  content: '';
-  position: absolute;
-  left: 0; right: 10px; bottom: 0;
-  height: 30px;
-  pointer-events: none;
-  background: linear-gradient(rgba(235, 227, 249, 0), rgba(235, 227, 249, .96));
-  border-bottom-left-radius: 18px;
-  border-bottom-right-radius: 18px;
-}
-
-/* the contract links close the card rather than trailing one column */
-.earn .duo + .links {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(116, 94, 166, .13);
-}
-
-/* ---------- chart header ----------
-   At rest the header names the chart; the figures belong to the hover. Both
-   states are the same height, so moving the pointer over a chart never nudges
-   the layout. */
-.earn .chead { align-items: center; }
 .earn .clabel { min-height: 44px; display: flex; flex-direction: column; justify-content: center; }
 .earn .chead .when { font-weight: 500; color: #5B4478; }
-.earn .chead .now.rest {
-  font-size: 14px;
-  font-weight: 400;
-  color: #6F6689;
-  letter-spacing: 0;
+.earn .chead .now.rest { font-size: 14px; font-weight: 400; color: #6F6689; letter-spacing: 0; }
+
+/* ---------- narrower ---------- */
+/* a rail taller than the window cannot stick, or its foot is unreachable */
+@media (max-width: 1180px) {
+  .earn .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-/* the stats row needs to clear its descenders before the well starts */
-.earn .chart { margin-top: 24px; }
+/* one column: the vault's name first, then the decision, then the evidence */
+@media (max-width: 980px) {
+  .earn { grid-template-columns: minmax(0, 1fr); padding: 20px 16px 64px; row-gap: 18px; }
+  .earn .stack { display: contents; }
+  .earn .stack > * { order: 2; }
+  .earn .stack > .alert, .earn .stack > .hero { order: 0; }
+  .earn .rail { position: static; order: 1; max-height: none; overflow: visible; margin: 0; padding: 0; }
+}
+@media (max-width: 560px) {
+  .earn .vname { gap: 14px; }
+
+  .earn .vname h1 { font-size: 30px; }
+  .earn .vname p { font-size: 14px; }
+  .earn .metrics { gap: 10px; }
+  .earn .metric { padding: 14px 15px 13px; min-height: 0; border-radius: 22px; }
+  .earn .metric b { font-size: 20px; }
+  .earn .modal { padding: 18px 18px 16px; border-radius: 24px; }
+  .earn .shead h2 { font-size: 17.5px; }
+  /* three figures abreast do not fit a phone: they become labelled rows */
+  .earn .stats, .earn .stats.four { grid-template-columns: minmax(0, 1fr); padding-top: 4px; }
+  .earn .stat { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; padding: 10px 0; }
+  .earn .stat + .stat { border-left: 0; padding-left: 0; border-top: 1px solid rgba(116,94,166,.10); }
+  .earn .stat span { margin: 0 auto 0 0; }
+  .earn .stat b, .earn .stats.four b { font-size: 17px; }
+  .earn .stat i { margin-left: 0; }
+  .earn .row { align-items: flex-start; }
+  .earn .row .what { flex-direction: column; align-items: flex-start; }
+  .earn .row .what.end { align-items: flex-end; }
+  .earn .panelcard { --pad: 15px 16px 13px; --minh: 108px; --amount: 30px; }
+  .earn .pos .big { font-size: 26px; }
+
+  /* a chart's viewBox shrinks to half size on a phone; its labels must not */
+  .earn .gtick, .earn .xtick { font-size: 13px; }
+  /* the axis gutter is sized for desktop type; let a longer tick use the well's padding */
+  .earn .chart svg { overflow: visible; }
+  .earn .chart .lane { font-size: 15px; }
+  .earn .chead .now { font-size: 18px; }
+  /* the readout, then the controls on their own line, wrapping if they must */
+  .earn .chead { flex-wrap: wrap; align-items: flex-start; }
+  .earn .ctools { flex-wrap: wrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .earn .ghost, .earn .act, .earn button.pivot, .earn .seg button, .earn .row a, .earn .links a { transition: none; }
+  .earn .act:hover:not([disabled]), .earn .ghost:active { transform: none; }
+  .earn button.pivot:hover, .earn button.pivot:active { transform: translate(-50%, -50%); }
+}
